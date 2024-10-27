@@ -84,7 +84,7 @@ int getPluginSettingDefaultValue(int settingIndex)
 {
    if ( 0 == settingIndex )
       return 1;
-   return 0;
+   return 1;
 }
 
 int getPluginSettingOptionsCount(int settingIndex)
