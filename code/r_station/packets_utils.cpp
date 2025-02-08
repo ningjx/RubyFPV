@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -33,8 +33,10 @@
 #include "../base/config.h"
 #include "../base/flags.h"
 #include "../base/encr.h"
+#include "../base/models_list.h"
 #include "../base/hardware_radio.h"
 #include "../base/radio_utils.h"
+#include "../base/commands.h"
 #include "../common/radio_stats.h"
 #include "../common/string_utils.h"
 #include "../radio/radiolink.h"
@@ -44,10 +46,11 @@
 
 #include "radio_links_sik.h"
 #include "processor_rx_video.h"
-#include "links_utils.h"
 #include "shared_vars.h"
+#include "shared_vars_state.h"
 #include "timers.h"
 #include "test_link_params.h"
+#include "ruby_rt_station.h"
 
 u8 s_RadioRawPacket[MAX_PACKET_TOTAL_SIZE];
 
@@ -226,33 +229,34 @@ int _get_lower_datarate_value(int iDataRate, int iLevelsDown )
    return iDataRate;
 }
 
-int compute_packet_uplink_datarate(int iVehicleRadioLink, int iRadioInterface, type_radio_links_parameters* pRadioLinksParams)
+int compute_packet_uplink_datarate(int iVehicleRadioLink, int iRadioInterface, type_radio_links_parameters* pRadioLinksParams, u8* pPacketData)
 {
-   if ( g_bNegociatingRadioLinks )
-      return DEFAULT_RADIO_DATARATE_LOWEST;
-
    radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(iRadioInterface);
    if ( (NULL == pRadioHWInfo) || (NULL == pRadioLinksParams) )
       return DEFAULT_RADIO_DATARATE_DATA;
    
+   if ( (pRadioHWInfo->iRadioType == RADIO_TYPE_ATHEROS) ||
+        (pRadioHWInfo->iRadioType == RADIO_TYPE_RALINK) )
+      return DEFAULT_RADIO_DATARATE_LOWEST;
+
    int nRateTx = DEFAULT_RADIO_DATARATE_DATA;
    if ( NULL == g_pCurrentModel )
       return nRateTx;
 
-   int nVideoProfile = -1;
-   for( int i=0; i<MAX_VIDEO_PROCESSORS; i++ )
-   {
-      if ( NULL == g_pVideoProcessorRxList[i] )
-         break;
-      if ( NULL == g_pCurrentModel )
-         break;
-      if ( g_pVideoProcessorRxList[i]->m_uVehicleId != g_pCurrentModel->uVehicleId )
-         continue;
+   bool bUsesHT40 = false;
+   if ( g_pCurrentModel->radioLinksParams.link_radio_flags[iVehicleRadioLink] & RADIO_FLAG_HT40_VEHICLE )
+      bUsesHT40 = true;
 
-      nVideoProfile = g_pVideoProcessorRxList[i]->getCurrentlyReceivedVideoProfile();
-      break;
-   }   
-   
+   int nVideoProfileAdaptive = -1;
+   if ( NULL != g_pCurrentModel )
+   {
+      type_global_state_vehicle_runtime_info* pRuntimeInfo = getVehicleRuntimeInfo(g_pCurrentModel->uVehicleId);
+      if ( NULL != pRuntimeInfo )
+         nVideoProfileAdaptive = pRuntimeInfo->uPendingVideoProfileToSet;
+      if ( (nVideoProfileAdaptive < 0) || (nVideoProfileAdaptive >= VIDEO_PROFILE_LAST) )
+         nVideoProfileAdaptive = -1;
+   }
+
    switch ( pRadioLinksParams->uUplinkDataDataRateType[iVehicleRadioLink] )
    {
       case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_FIXED:
@@ -261,20 +265,62 @@ int compute_packet_uplink_datarate(int iVehicleRadioLink, int iRadioInterface, t
 
       case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO:
          nRateTx = pRadioLinksParams->link_datarate_video_bps[iVehicleRadioLink];
-         if ( 0 != g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].radio_datarate_video_bps )
-         if ( getRealDataRateFromRadioDataRate(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].radio_datarate_video_bps, 0) < getRealDataRateFromRadioDataRate(nRateTx, 0) )
-            nRateTx = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].radio_datarate_video_bps;
-         if ( nVideoProfile >= 0 && nVideoProfile < MAX_VIDEO_LINK_PROFILES )
-         if ( nVideoProfile != g_pCurrentModel->video_params.user_selected_video_link_profile )
+         if ( NULL != g_pCurrentModel )
          {
-            int nRate = g_pCurrentModel->video_link_profiles[nVideoProfile].radio_datarate_video_bps;
-            if ( nRate != 0 )
-            if ( getRealDataRateFromRadioDataRate(nRate, 0) < getRealDataRateFromRadioDataRate(nRateTx, 0) )
+            // User set fixed datarate for this user profile?
+            if ( 0 != g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].radio_datarate_video_bps )
+            if ( getRealDataRateFromRadioDataRate(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].radio_datarate_video_bps, bUsesHT40) < getRealDataRateFromRadioDataRate(nRateTx, bUsesHT40) )
+               nRateTx = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].radio_datarate_video_bps;
+            
+            // If no adaptive video profile is active, use video MQ profile for data uplink  
+            // An adaptive video profile is active?
+            bool bUpdatedWithAdaptive = false;
+            if ( (nVideoProfileAdaptive >= 0) && (nVideoProfileAdaptive < MAX_VIDEO_LINK_PROFILES) )
+            if ( nVideoProfileAdaptive != g_pCurrentModel->video_params.user_selected_video_link_profile )
+            {
+               // Fixed datarate for this adaptive profile?
+               int nRate = g_pCurrentModel->video_link_profiles[nVideoProfileAdaptive].radio_datarate_video_bps;
+               if ( nRate != 0 )
+               if ( getRealDataRateFromRadioDataRate(nRate, bUsesHT40) < getRealDataRateFromRadioDataRate(nRateTx, bUsesHT40) )
+               {
                   nRateTx = nRate;
+                  bUpdatedWithAdaptive = true;
+               }
+               // Use computed auto datarate for this adaptive video profile
+               if ( nVideoProfileAdaptive == VIDEO_PROFILE_MQ )
+               {
+                  nRate = utils_get_video_profile_mq_radio_datarate(g_pCurrentModel);
+                  if ( getRealDataRateFromRadioDataRate(nRate, bUsesHT40) < getRealDataRateFromRadioDataRate(nRateTx, bUsesHT40) )
+                  {
+                     nRateTx = nRate;
+                     bUpdatedWithAdaptive = true;
+                  }
+               }
+               if ( nVideoProfileAdaptive == VIDEO_PROFILE_LQ )
+               {
+                  nRate = utils_get_video_profile_lq_radio_datarate(g_pCurrentModel);
+                  if ( getRealDataRateFromRadioDataRate(nRate, bUsesHT40) < getRealDataRateFromRadioDataRate(nRateTx, bUsesHT40) )
+                  {
+                     nRateTx = nRate;
+                     bUpdatedWithAdaptive = true;
+                  }
+               }
+
+               if ( ! bUpdatedWithAdaptive )
+               {
+                  nRate = utils_get_video_profile_mq_radio_datarate(g_pCurrentModel);
+                  if ( getRealDataRateFromRadioDataRate(nRate, bUsesHT40) < getRealDataRateFromRadioDataRate(nRateTx, bUsesHT40) )
+                  {
+                     nRateTx = nRate;
+                     bUpdatedWithAdaptive = true;
+                  }                
+               }
+            }
          }
          break;
 
       case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_LOWEST:
+      case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO:
       default:
          if ( pRadioLinksParams->link_datarate_video_bps[iVehicleRadioLink] > 0 )
             nRateTx = DEFAULT_RADIO_DATARATE_LOWEST;
@@ -283,11 +329,30 @@ int compute_packet_uplink_datarate(int iVehicleRadioLink, int iRadioInterface, t
          break;
    }  
 
-   if ( (pRadioHWInfo->iRadioType == RADIO_TYPE_ATHEROS) ||
-           (pRadioHWInfo->iRadioType == RADIO_TYPE_RALINK) )
-      return nRateTx;
+   bool bUseLowest = false;
+   if ( NULL != g_pCurrentModel )
+   {
+      int iRuntimeIndex = getVehicleRuntimeIndex(g_pCurrentModel->uVehicleId);
+      if ( -1 != iRuntimeIndex )
+      {
+         if ( g_State.vehiclesRuntimeInfo[iRuntimeIndex].bIsVehicleLinkToControllerLostAlarm )
+            bUseLowest = true;
+         if ( g_State.vehiclesRuntimeInfo[iRuntimeIndex].uLastTimeReceivedAckFromVehicle > g_TimeNow + 1000 )
+            bUseLowest = true;
+      }
+   }
 
-   if ( g_bIsVehicleLinkToControllerLost )
+   if ( NULL != pPacketData )
+   {
+      t_packet_header* pPH = (t_packet_header*)pPacketData;
+      // Use lowest datarate for these packets.
+      if ( (pPH->packet_type == PACKET_TYPE_NEGOCIATE_RADIO_LINKS) ||
+           (pPH->packet_type == PACKET_TYPE_COMMAND) ||
+           (pPH->packet_type == PACKET_TYPE_RUBY_PAIRING_REQUEST) )
+         bUseLowest = true;
+   }
+
+   if ( bUseLowest )
    {
       if ( nRateTx > 0 )
          nRateTx = DEFAULT_RADIO_DATARATE_LOWEST;
@@ -316,79 +381,57 @@ bool _send_packet_to_serial_radio_interface(int iLocalRadioLinkId, int iRadioInt
    if ( hardware_radio_index_is_sik_radio(iRadioInterfaceIndex) )
       iAirRate = hardware_radio_sik_get_air_baudrate_in_bytes(iRadioInterfaceIndex);
 
-   bool bPacketsSent = true;
-
-   u8* pData = pPacketData;
-   int nLength = nPacketLength;
-   while ( nLength > 0 )
+   t_packet_header* pPH = (t_packet_header*)pPacketData;
+   u8 uPacketType = pPH->packet_type;
+   if ( ! radio_can_send_packet_on_slow_link(iLocalRadioLinkId, uPacketType, 1, g_TimeNow) )
+      return false;
+      
+   if ( iAirRate > 0 )
+   if ( g_SM_RadioStats.radio_interfaces[iRadioInterfaceIndex].txBytesPerSec >= (DEFAULT_RADIO_SERIAL_MAX_TX_LOAD * (u32)iAirRate) / 100 )
    {
-      t_packet_header* pPH = (t_packet_header*)pData;
-      if ( ! radio_can_send_packet_on_slow_link(iLocalRadioLinkId, pPH->packet_type, 1, g_TimeNow) )
+      static u32 sl_uLastTimeInterfaceTxOverloaded = 0;
+      if ( g_TimeNow > sl_uLastTimeInterfaceTxOverloaded + 20000 )
       {
-         nLength -= pPH->total_length;
-         pData += pPH->total_length;
-         continue;
+         sl_uLastTimeInterfaceTxOverloaded = g_TimeNow;
+         log_line("Radio interface %d is tx overloaded: sending %d bytes/sec and air data rate is %d bytes/sec", iRadioInterfaceIndex+1, (int)g_SM_RadioStats.radio_interfaces[iRadioInterfaceIndex].txBytesPerSec, iAirRate);
+         send_alarm_to_central(ALARM_ID_RADIO_LINK_DATA_OVERLOAD, (g_SM_RadioStats.radio_interfaces[iRadioInterfaceIndex].txBytesPerSec & 0xFFFFFF) | (((u32)iRadioInterfaceIndex)<<24), (u32)iAirRate);
       }
-      if ( iAirRate > 0 )
-      if ( g_SM_RadioStats.radio_interfaces[iRadioInterfaceIndex].txBytesPerSec >= (DEFAULT_RADIO_SERIAL_MAX_TX_LOAD * (u32)iAirRate) / 100 )
-      {
-         static u32 sl_uLastTimeInterfaceTxOverloaded = 0;
-         if ( g_TimeNow > sl_uLastTimeInterfaceTxOverloaded + 20000 )
-         {
-            sl_uLastTimeInterfaceTxOverloaded = g_TimeNow;
-            log_line("Radio interface %d is tx overloaded: sending %d bytes/sec and air data rate is %d bytes/sec", iRadioInterfaceIndex+1, (int)g_SM_RadioStats.radio_interfaces[iRadioInterfaceIndex].txBytesPerSec, iAirRate);
-            send_alarm_to_central(ALARM_ID_RADIO_LINK_DATA_OVERLOAD, (g_SM_RadioStats.radio_interfaces[iRadioInterfaceIndex].txBytesPerSec & 0xFFFFFF) | (((u32)iRadioInterfaceIndex)<<24), (u32)iAirRate);
-         }
-         nLength -= pPH->total_length;
-         pData += pPH->total_length;
-         continue;
-      }
-
-      if ( (iLocalRadioLinkId < 0) || (iLocalRadioLinkId >= MAX_RADIO_INTERFACES) )
-         iLocalRadioLinkId = 0;
-      u16 uRadioLinkPacketIndex = radio_get_next_radio_link_packet_index(iLocalRadioLinkId);
-      pPH->radio_link_packet_index = uRadioLinkPacketIndex;
-
-      if ( pPH->packet_flags & PACKET_FLAGS_BIT_HEADERS_ONLY_CRC )
-         radio_packet_compute_crc((u8*)pPH, sizeof(t_packet_header));
-      else
-         radio_packet_compute_crc((u8*)pPH, pPH->total_length);
-
-      if ( pRadioHWInfo->openedForWrite )
-      {
-         int iWriteResult = radio_tx_send_serial_radio_packet(iRadioInterfaceIndex, (u8*)pPH, pPH->total_length);
-         if ( iWriteResult > 0 )
-         {
-            int iTotalSent = pPH->total_length;
-            if ( 0 < g_pCurrentModel->radioLinksParams.iSiKPacketSize )
-               iTotalSent += sizeof(t_packet_header_short) * (int) (pPH->total_length / g_pCurrentModel->radioLinksParams.iSiKPacketSize);
-            u32 uStreamId = (pPH->stream_packet_idx) >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
-            radio_stats_update_on_packet_sent_on_radio_interface(&g_SM_RadioStats, g_TimeNow, iRadioInterfaceIndex, iTotalSent);
-            radio_stats_update_on_packet_sent_on_radio_link(&g_SM_RadioStats, g_TimeNow, iLocalRadioLinkId, (int)uStreamId, pPH->total_length, 1);
-         }
-         else
-         {
-            bPacketsSent = false;
-            log_softerror_and_alarm("Failed to write to serial radio interface %d.", iRadioInterfaceIndex+1);
-            if ( iWriteResult == -2 )
-            {
-               if ( hardware_radio_is_sik_radio(pRadioHWInfo) )
-                  radio_links_flag_reinit_sik_interface(iRadioInterfaceIndex);
-               nLength = 0;
-               break;
-            }
-         }
-      }
-      else
-      {
-         bPacketsSent = false;
-         log_softerror_and_alarm("Radio serial interface %d is not opened for write. Can't send packet on it.", iRadioInterfaceIndex+1);
-      }
-      nLength -= pPH->total_length;
-      pData += pPH->total_length;
+      return false;
    }
 
-   return bPacketsSent;
+   if ( (iLocalRadioLinkId < 0) || (iLocalRadioLinkId >= MAX_RADIO_INTERFACES) )
+      iLocalRadioLinkId = 0;
+   u16 uRadioLinkPacketIndex = radio_get_next_radio_link_packet_index(iLocalRadioLinkId);
+   pPH->radio_link_packet_index = uRadioLinkPacketIndex;
+
+   if ( pPH->packet_flags & PACKET_FLAGS_BIT_HEADERS_ONLY_CRC )
+      radio_packet_compute_crc((u8*)pPH, sizeof(t_packet_header));
+   else
+      radio_packet_compute_crc((u8*)pPH, pPH->total_length);
+
+   if ( 1 != pRadioHWInfo->openedForWrite )
+   {
+      log_softerror_and_alarm("Radio serial interface %d is not opened for write. Can't send packet on it.", iRadioInterfaceIndex+1);
+      return false;
+   }
+
+   int iWriteResult = radio_tx_send_serial_radio_packet(iRadioInterfaceIndex, pPacketData, nPacketLength);
+   if ( iWriteResult > 0 )
+   {
+      int iTotalSent = nPacketLength;
+      if ( g_pCurrentModel->radioLinksParams.iSiKPacketSize > 0 )
+         iTotalSent += sizeof(t_packet_header_short) * (int) (nPacketLength / g_pCurrentModel->radioLinksParams.iSiKPacketSize);
+      u32 uStreamId = (pPH->stream_packet_idx) >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
+      radio_stats_update_on_packet_sent_on_radio_interface(&g_SM_RadioStats, g_TimeNow, iRadioInterfaceIndex, iTotalSent);
+      radio_stats_update_on_packet_sent_on_radio_link(&g_SM_RadioStats, g_TimeNow, iLocalRadioLinkId, (int)uStreamId, nPacketLength);
+      return true;
+   }
+
+   log_softerror_and_alarm("Failed to write to serial radio interface %d.", iRadioInterfaceIndex+1);
+   if ( iWriteResult == -2 )
+   if ( hardware_radio_is_sik_radio(pRadioHWInfo) )
+      radio_links_flag_reinit_sik_interface(iRadioInterfaceIndex);
+   return false;
 }
 
 bool _send_packet_to_wifi_radio_interface(int iLocalRadioLinkId, int iRadioInterfaceIndex, u8* pPacketData, int nPacketLength)
@@ -406,15 +449,11 @@ bool _send_packet_to_wifi_radio_interface(int iLocalRadioLinkId, int iRadioInter
    
    u32 microT = get_current_timestamp_micros();
 
+   int nRateTx = compute_packet_uplink_datarate(iVehicleRadioLinkId, iRadioInterfaceIndex, &(g_pCurrentModel->radioLinksParams), pPacketData);
+   radio_set_out_datarate(nRateTx);
+
    u32 radioFlags = g_pCurrentModel->radioLinksParams.link_radio_flags[iVehicleRadioLinkId];
    radio_set_frames_flags(radioFlags);
-
-   int nRateTx = compute_packet_uplink_datarate(iVehicleRadioLinkId, iRadioInterfaceIndex, &(g_pCurrentModel->radioLinksParams));
-   
-   t_packet_header* pPH = (t_packet_header*)pPacketData;
-   if ( pPH->packet_type == PACKET_TYPE_RUBY_PAIRING_REQUEST )
-      nRateTx = DEFAULT_RADIO_DATARATE_DATA;
-   radio_set_out_datarate(nRateTx);
 
    if ( test_link_is_in_progress() )
       log_line("Test link in progress. Sending radio packet using datarate: %d", nRateTx);
@@ -431,40 +470,42 @@ bool _send_packet_to_wifi_radio_interface(int iLocalRadioLinkId, int iRadioInter
    if ( hpp() )
       be = 1;
 
-   int totalLength = radio_build_new_raw_packet(iLocalRadioLinkId, s_RadioRawPacket, pPacketData, nPacketLength, RADIO_PORT_ROUTER_UPLINK, be);
-   if ( radio_write_raw_packet(iRadioInterfaceIndex, s_RadioRawPacket, totalLength) )
+   int totalLength = radio_build_new_raw_ieee_packet(iLocalRadioLinkId, s_RadioRawPacket, pPacketData, nPacketLength, RADIO_PORT_ROUTER_UPLINK, be);
+   int iRepeatCount = 0;
+   bool bDuplicate = false;
+
+   t_packet_header* pPH = (t_packet_header*)pPacketData;
+   if ( (pPH->packet_type == PACKET_TYPE_VIDEO_REQ_MULTIPLE_PACKETS) ||
+        (pPH->packet_type == PACKET_TYPE_VIDEO_SWITCH_VIDEO_KEYFRAME_TO_VALUE) ||
+        (pPH->packet_type == PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL) )
+      bDuplicate = true;
+
+   if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_COMMANDS )
+   if ( pPH->packet_type == PACKET_TYPE_COMMAND )
+   {
+      t_packet_header_command* pPHC = (t_packet_header_command*)(pPacketData + sizeof(t_packet_header));
+      if ( pPHC->command_type == COMMAND_ID_SET_RADIO_LINK_FREQUENCY )
+         bDuplicate = true;
+   }
+
+   if ( bDuplicate )
+   {
+      iRepeatCount++;
+      Model* pModel = findModelWithId(pPH->vehicle_id_dest, 7);
+      if ( (NULL != pModel) && (pModel->uModelFlags & MODEL_FLAG_PRIORITIZE_UPLINK) )
+         iRepeatCount++;
+   }
+
+   if ( radio_write_raw_ieee_packet(iRadioInterfaceIndex, s_RadioRawPacket, totalLength, iRepeatCount) )
    {
       radio_stats_update_on_packet_sent_on_radio_interface(&g_SM_RadioStats, g_TimeNow, iRadioInterfaceIndex, nPacketLength);
       radio_stats_set_tx_radio_datarate_for_packet(&g_SM_RadioStats, iRadioInterfaceIndex, iLocalRadioLinkId, nRateTx, 0);
+      
+      u32 uStreamId = (pPH->stream_packet_idx) >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
+      
+      radio_stats_update_on_packet_sent_on_radio_link(&g_SM_RadioStats, g_TimeNow, iLocalRadioLinkId, (int)uStreamId, pPH->total_length);
+      s_StreamsLastTxTime[uStreamId] = get_current_timestamp_micros() - microT;
 
-      int iCountChainedPackets[MAX_RADIO_STREAMS];
-      int iTotalBytesOnEachStream[MAX_RADIO_STREAMS];
-      memset(iCountChainedPackets, 0, MAX_RADIO_STREAMS*sizeof(int));
-      memset(iTotalBytesOnEachStream, 0, MAX_RADIO_STREAMS*sizeof(int));
-
-      u8* pData = pPacketData;
-      int nLength = nPacketLength;
-      while ( nLength > 0 )
-      {
-         pPH = (t_packet_header*)pData;
-         u32 uStreamId = (pPH->stream_packet_idx) >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
-
-         iCountChainedPackets[uStreamId]++;
-         iTotalBytesOnEachStream[uStreamId] += pPH->total_length;
-
-         nLength -= pPH->total_length;
-         pData += pPH->total_length;
-      }
-
-      for( int i=0; i<MAX_RADIO_STREAMS; i++ )
-      {
-         if ( 0 == iCountChainedPackets[i] )
-            continue;
-         radio_stats_update_on_packet_sent_on_radio_link(&g_SM_RadioStats, g_TimeNow, iLocalRadioLinkId, i, iTotalBytesOnEachStream[i], iCountChainedPackets[i]);
-         s_StreamsLastTxTime[i] = get_current_timestamp_micros() - microT;
-      }
-
-      t_packet_header* pPH = (t_packet_header*)pPacketData;
       if ( pPH->packet_type == PACKET_TYPE_SIK_CONFIG )
       {
          u8 uVehicleLinkId = *(pPacketData + sizeof(t_packet_header));
@@ -478,7 +519,7 @@ bool _send_packet_to_wifi_radio_interface(int iLocalRadioLinkId, int iRadioInter
    return false;
 }
 
-int send_packet_to_radio_interfaces(u8* pPacketData, int nPacketLength, int iSendToSingleRadioLink, int iTraceSource)
+int send_packet_to_radio_interfaces(u8* pPacketData, int nPacketLength, int iSendToSingleRadioLink, int iRepeatCount, int iTraceSource)
 {
    if ( nPacketLength <= 0 )
       return -1;
@@ -491,82 +532,51 @@ int send_packet_to_radio_interfaces(u8* pPacketData, int nPacketLength, int iSen
 
    _computeBestTXCardsForEachLocalRadioLink( &iTXInterfaceIndexForLocalRadioLinks[0] );
 
-   //int iHasCommandPacket = 0;
-   //u32 uCommandId = MAX_U32;
-   //u32 uCommandResendCount = 0;
-   u32 uDestVehicleId = 0;
-   int iTotalPackets = 0;
-   bool bPacketSent = false;
-   
-   bool bHasPingPacket = false;
+   bool bIsPingPacket = false;
    int iPingOnLocalRadioLinkId = -1;
-
-   // Set packets indexes and chained counters, if multiple packets are found in the input buffer
-
-   int iCountChainedPackets[MAX_RADIO_STREAMS];
-   int iTotalBytesOnEachStream[MAX_RADIO_STREAMS];
-   memset(iCountChainedPackets, 0, MAX_RADIO_STREAMS*sizeof(int));
-   memset(iTotalBytesOnEachStream, 0, MAX_RADIO_STREAMS*sizeof(int));
-
-   u8 uFirstPacketType = 0;
-   t_packet_header* pPHTemp = (t_packet_header*)pPacketData;
-   uFirstPacketType = pPHTemp->packet_type;
-
-   u8* pData = pPacketData;
-   int nLength = nPacketLength;
    
-   while ( nLength > 0 )
+   // Set packet index
+
+   t_packet_header* pPH = (t_packet_header*)pPacketData;
+   u8 uPacketFlags = pPH->packet_flags;
+   u8 uPacketType = pPH->packet_type;
+   int iPacketLength = pPH->total_length;
+   u32 uDestVehicleId = pPH->vehicle_id_dest;
+   u32 uStreamId = (pPH->stream_packet_idx) >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
+
+   if ( pPH->packet_type == PACKET_TYPE_RUBY_PING_CLOCK )
    {
-      iTotalPackets++;
-      t_packet_header* pPH = (t_packet_header*)pData;
-
-      if ( pPH->packet_type == PACKET_TYPE_RUBY_PING_CLOCK )
-      {
-         u8 uLocalRadioLinkId = 0;
-         memcpy( &uLocalRadioLinkId, pData + sizeof(t_packet_header)+sizeof(u8), sizeof(u8));
-         iPingOnLocalRadioLinkId = (int)uLocalRadioLinkId;
-         bHasPingPacket = true;
-      }
-
-      if ( pPH->packet_type == PACKET_TYPE_TEST_RADIO_LINK )
-      {
-         int iModelRadioLinkIndex = pData[sizeof(t_packet_header)+2];
-         int iCmdType = pData[sizeof(t_packet_header)+4];
-         for( int iRadioLink = 0; iRadioLink < g_SM_RadioStats.countLocalRadioLinks; iRadioLink++ )
-         {
-            int iVehicleRadioLinkId = g_SM_RadioStats.radio_links[iRadioLink].matchingVehicleRadioLinkId;
-            if ( iCmdType != PACKET_TYPE_TEST_RADIO_LINK_COMMAND_START )
-            if ( iCmdType != PACKET_TYPE_TEST_RADIO_LINK_COMMAND_END )
-            if ( iVehicleRadioLinkId == iModelRadioLinkIndex )
-            {
-               iSendToSingleRadioLink = iRadioLink;
-               break;
-            }
-         }
-      }
-      //if ( pPH->packet_type == PACKET_TYPE_VIDEO_REQ_MULTIPLE_PACKETS2)
-      //   iCountRetransmissionsPackets++;
-
-      uDestVehicleId = pPH->vehicle_id_dest;
-      u32 uStreamId = (pPH->stream_packet_idx) >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
-
-      if ( pPH->packet_type != PACKET_TYPE_RUBY_PING_CLOCK )
-      if ( pPH->packet_type != PACKET_TYPE_RUBY_PING_CLOCK_REPLY )
-         s_StreamsTxPacketIndex[uStreamId]++;
-
-      pPH->stream_packet_idx = (((u32)uStreamId)<<PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX) | (s_StreamsTxPacketIndex[uStreamId] & PACKET_FLAGS_MASK_STREAM_PACKET_IDX);
-
-      iCountChainedPackets[uStreamId]++;
-      iTotalBytesOnEachStream[uStreamId] += pPH->total_length;
-
-      if ( s_bReceivedInvalidRadioPackets )
-         pPH->vehicle_id_src = 0;
-
-      nLength -= pPH->total_length;
-      pData += pPH->total_length;
+      u8 uLocalRadioLinkId = 0;
+      memcpy( &uLocalRadioLinkId, pPacketData + sizeof(t_packet_header)+sizeof(u8), sizeof(u8));
+      iPingOnLocalRadioLinkId = (int)uLocalRadioLinkId;
+      bIsPingPacket = true;
    }
 
-   // Send the received composed packet (or single packet) to each local radio link
+   if ( pPH->packet_type == PACKET_TYPE_TEST_RADIO_LINK )
+   {
+      int iModelRadioLinkIndex = pPacketData[sizeof(t_packet_header)+2];
+      int iCmdType = pPacketData[sizeof(t_packet_header)+4];
+      for( int iRadioLink = 0; iRadioLink < g_SM_RadioStats.countLocalRadioLinks; iRadioLink++ )
+      {
+         int iVehicleRadioLinkId = g_SM_RadioStats.radio_links[iRadioLink].matchingVehicleRadioLinkId;
+         if ( iCmdType != PACKET_TYPE_TEST_RADIO_LINK_COMMAND_START )
+         if ( iCmdType != PACKET_TYPE_TEST_RADIO_LINK_COMMAND_END )
+         if ( iVehicleRadioLinkId == iModelRadioLinkIndex )
+         {
+            iSendToSingleRadioLink = iRadioLink;
+         }
+      }
+   }
+     
+   if ( uPacketType != PACKET_TYPE_RUBY_PING_CLOCK )
+   if ( uPacketType != PACKET_TYPE_RUBY_PING_CLOCK_REPLY )
+      s_StreamsTxPacketIndex[uStreamId]++;
+
+   pPH->stream_packet_idx = (((u32)uStreamId)<<PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX) | (s_StreamsTxPacketIndex[uStreamId] & PACKET_FLAGS_MASK_STREAM_PACKET_IDX);
+   
+   // Send the packet to each local radio link
+
+   bool bPacketSent = false;
 
    for( int iLocalRadioLinkId=0; iLocalRadioLinkId<g_SM_RadioStats.countLocalRadioLinks; iLocalRadioLinkId++ )
    {
@@ -596,7 +606,7 @@ int send_packet_to_radio_interfaces(u8* pPacketData, int nPacketLength, int iSen
          break;
 
       // Send Ping packets only to the assigned radio link
-      if ( bHasPingPacket && (1 == iTotalPackets) )
+      if ( bIsPingPacket )
       if ( iLocalRadioLinkId != iPingOnLocalRadioLinkId )
          continue;
 
@@ -608,25 +618,32 @@ int send_packet_to_radio_interfaces(u8* pPacketData, int nPacketLength, int iSen
 
       radio_stats_set_tx_card_for_radio_link(&g_SM_RadioStats, iLocalRadioLinkId, iRadioInterfaceIndex);
 
-      if ( hardware_radio_index_is_serial_radio(iRadioInterfaceIndex) )
+      for( int i=0; i<=iRepeatCount; i++ )
       {
-         if ( g_bUpdateInProgress )
-            continue;
-         bPacketSent |= _send_packet_to_serial_radio_interface(iLocalRadioLinkId, iRadioInterfaceIndex, pPacketData, nPacketLength);
+         if ( hardware_radio_index_is_serial_radio(iRadioInterfaceIndex) )
+         {
+            if ( g_bUpdateInProgress )
+               continue;
+            bPacketSent |= _send_packet_to_serial_radio_interface(iLocalRadioLinkId, iRadioInterfaceIndex, pPacketData, nPacketLength);
+         }
+         else
+            bPacketSent |= _send_packet_to_wifi_radio_interface(iLocalRadioLinkId, iRadioInterfaceIndex, pPacketData, nPacketLength);
+      
+         if ( i < iRepeatCount )
+            hardware_sleep_micros(400);
       }
-      else
-         bPacketSent |= _send_packet_to_wifi_radio_interface(iLocalRadioLinkId, iRadioInterfaceIndex, pPacketData, nPacketLength);
    }
 
 
    if ( bPacketSent )
    {
-      for( int i=0; i<MAX_RADIO_STREAMS; i++ )
-      {
-         if ( 0 == iCountChainedPackets[i] )
-            continue;
-         radio_stats_update_on_packet_sent_for_radio_stream(&g_SM_RadioStats, g_TimeNow, uDestVehicleId, i, iTotalBytesOnEachStream[i]);
-      }
+      if ( radio_packet_type_is_high_priority(uPacketFlags, uPacketType) )
+         g_SMControllerRTInfo.uTxHighPriorityPackets[g_SMControllerRTInfo.iCurrentIndex]++;
+      else
+         g_SMControllerRTInfo.uTxPackets[g_SMControllerRTInfo.iCurrentIndex]++;
+      
+      radio_stats_update_on_packet_sent_for_radio_stream(&g_SM_RadioStats, g_TimeNow, uDestVehicleId, uStreamId, uPacketType, iPacketLength);
+
       if ( NULL != g_pProcessStats )
          g_pProcessStats->lastRadioTxTime = g_TimeNow;
 
@@ -641,7 +658,7 @@ int send_packet_to_radio_interfaces(u8* pPacketData, int nPacketLength, int iSen
    }
    else
    {
-      log_softerror_and_alarm("Packet not sent! No radio interface could send it. Packet type: %s, count packets data: %d", str_get_packet_type(uFirstPacketType), iCountChainedPackets[0]);
+      log_softerror_and_alarm("Packet not sent! No radio interface could send it. Packet type: %s", str_get_packet_type(uPacketType));
       char szFreq1[64];
       char szFreq2[64];
       char szFreq3[64];

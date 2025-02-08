@@ -8,11 +8,8 @@
 #define COMMAND_ID_SET_VEHICLE_NAME 3
 
 #define COMMAND_ID_SET_TX_POWERS 4
-// 8 bytes: 0...5: u8 RTL8812AU, u8 RTL8812EU, u8 Atheros, u8 maxRTL8812AU, u8 maxRTL8812EU, u8 maxAtheros,
-//          6: u8 radio card index, 
-//          7: u8 power, if 0 -> not set
-// First 8 bytes can be 0xFF or 0x00 for no changes in those params
-// Byte 9,10,11 (if present, optional): 0x81 then tx power Sik, then 0x81
+// byte 0: count interfaces
+// N-bytes: power for each card (raw power values)
 
 // deprecated starting in 8.3, using now test link functionality to change frequency for 2.4/5.8ghz. still using this command for 433/868 bands
 #define COMMAND_ID_SET_RADIO_LINK_FREQUENCY 5
@@ -34,10 +31,16 @@
 #define COMMAND_ID_SET_RADIO_LINK_FLAGS_CONFIRMATION 8
 // param is radio link id
 
-#define COMMAND_ID_SET_RADIO_SLOTTIME 9
-#define COMMAND_ID_SET_RADIO_THRESH62 10
+#define COMMAND_ID_SET_AUTO_TX_POWERS 9
+// param: byte 0: auto adjust vehicle power
+// param: byte 1: auto adjust controller power
+
+// Deprecated in 10.1
+//#define COMMAND_ID_SET_RADIO_THRESH62 10
+
 #define COMMAND_ID_SET_RADIO_CARD_MODEL 11
-// param: low byte: card index, second byte: card model
+// param: low byte: card index, second byte: card model (if 0xFF, then autodetect it again)
+// response has the new card model in command_response_param
 
 #define COMMAND_ID_SET_MODEL_FLAGS 12
 // param u32 new model flags
@@ -92,11 +95,11 @@ typedef struct
 // parameter is the sik packet size
 
 #define COMMAND_ID_SET_CAMERA_PARAMETERS 30
-// Has a camera profile index and a camera_parameters_t struct as input
+// Has camera index as param and a camera_parameters_t struct as input data
 // Has no particular response structure
 
 #define COMMAND_ID_SET_CAMERA_PROFILE 31
-// Have no particular input/response structure:
+// param is the new profile index
 
 #define COMMAND_ID_SET_CURRENT_CAMERA 32
 // param: camera index

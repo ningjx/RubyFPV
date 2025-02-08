@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -111,7 +111,7 @@ void MenuControllerDev::addItems()
    m_pItemsSlider[9]->setCurrentValue(pCS->iDevRxLoopTimeout);
    m_IndexRxLoopTimeout = addMenuItem(m_pItemsSlider[9]);
 
-   m_IndexDebugRTStatsGraphs = addMenuItem(new MenuItem("Real time debug stats graphs", "Show live monitor of Rx links and video stats"));
+   m_IndexDebugRTStatsGraphs = addMenuItem(new MenuItem("Show real time stats graphs", "Show live monitor of Rx links and video stats"));
    m_pMenuItems[m_IndexDebugRTStatsGraphs]->showArrow();
 
    m_IndexDebugRTStatsConfig = addMenuItem(new MenuItem("Real time debug stats config", "Configure live monitor of Rx links and video stats"));
@@ -144,7 +144,14 @@ void MenuControllerDev::addItems()
 
    addMenuItem(new MenuItemSection("Other Settings"));
 
-   m_IndexVersion = addMenuItem(new MenuItem("Modules versions", "Get all modules versions."));
+   m_pItemsSelect[1] = new MenuItemSelect("Local video output mode", "Change the way data is sent to the local video streamer.");
+   m_pItemsSelect[1]->addSelection("Shared Mem");
+   m_pItemsSelect[1]->addSelection("Pipes");
+   m_pItemsSelect[1]->addSelection("UDP");
+   m_pItemsSelect[1]->setIsEditable();
+   m_pItemsSelect[1]->setSelectedIndex(pCS->iStreamerOutputMode);
+   m_IndexStreamerMode = addMenuItem(m_pItemsSelect[1]);
+
    m_IndexResetDev = addMenuItem(new MenuItem("Reset Developer Settings", "Resets all the developer settings to the factory default values."));
    m_IndexExit = addMenuItem(new MenuItem("Exit to shell", "Closes Ruby and exits to linux shell."));
 
@@ -283,137 +290,24 @@ void MenuControllerDev::onSelectItem()
       return;
    }
 
-   if ( m_IndexVersion == m_SelectedIndex )
-   {
-      char szBuff[1024];
-      char szOutput[1024];
-
-      Menu* pMenu = new Menu(0,"All Modules Versions",NULL);
-      pMenu->m_xPos = 0.32;
-      pMenu->m_yPos = 0.17;
-      pMenu->m_Width = 0.6;
-      
-      hw_execute_bash_command_raw_silent("./ruby_start -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_start: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_controller -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_controller: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_central -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_central: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_rt_station -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_rt_station: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_rx_telemetry -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_rx_telemetry: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_tx_rc -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_tx_rc: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_i2c -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_i2c: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_player_p -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_player_p: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_update_worker -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_update_worker: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_rt_vehicle -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_rt_vehicle: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      hw_execute_bash_command_raw_silent("./ruby_tx_telemetry -ver", szOutput);
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      if ( strlen(szOutput)> 0 )
-      if ( szOutput[strlen(szOutput)-1] == 10 || szOutput[strlen(szOutput)-1] == 13 )
-         szOutput[strlen(szOutput)-1] = 0;
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "ruby_tx_telemetry: %s", szOutput);
-      pMenu->addTopLine(szBuff);
-
-      add_menu_to_stack(pMenu);
-      return;
-   }
-
    if ( m_IndexResetDev == m_SelectedIndex )
    {
       Menu* pm = new MenuConfirmation("Developer Settings Reset", "All developer settings where reset.", 2);
       pm->m_yPos = 0.4;
       add_menu_to_stack(pm);
+      return;
    }
-
+   if ( m_IndexStreamerMode == m_SelectedIndex )
+   {
+      pCS->iStreamerOutputMode = m_pItemsSelect[1]->getSelectedIndex();
+      log_line("Streamer output mode was changed to: %d", pCS->iStreamerOutputMode);
+      save_ControllerSettings();
+      pairing_stop();
+      ruby_signal_alive();
+      pairing_start_normal();
+      return;
+   }
+  
    if ( bUpdatedController )
    {
       save_ControllerSettings();

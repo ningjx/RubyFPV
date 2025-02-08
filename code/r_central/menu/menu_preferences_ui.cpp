@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -52,10 +52,12 @@ MenuPreferencesUI::MenuPreferencesUI(bool bShowOnlyOSD)
    m_IndexMenuStacked = -1;
 
    m_IndexUnits = -1;
+   m_IndexUnitsHeight = -1;
    m_IndexPersistentMessages = -1;
    m_IndexLogWindow = -1;
    m_IndexMonitor = -1;
    m_IndexMSPOSDFont = -1;
+   m_IndexLanguage = -1;
 
    if ( ! m_bShowOnlyOSD )
    {
@@ -103,11 +105,13 @@ MenuPreferencesUI::MenuPreferencesUI(bool bShowOnlyOSD)
 
    m_pItemsSelect[6] = new MenuItemSelect("OSD Screen Size", "Change how big is the OSD relative to the screen.");  
    m_pItemsSelect[6]->addSelection("100%");
+   m_pItemsSelect[6]->addSelection("98%");
    m_pItemsSelect[6]->addSelection("96%");
+   m_pItemsSelect[6]->addSelection("94%");
    m_pItemsSelect[6]->addSelection("92%");
+   m_pItemsSelect[6]->addSelection("90%");
    m_pItemsSelect[6]->addSelection("88%");
-   m_pItemsSelect[6]->addSelection("84%");
-   m_pItemsSelect[6]->addSelection("80%");
+   m_pItemsSelect[6]->addSelection("86%");
    m_IndexOSDSize = addMenuItem(m_pItemsSelect[6]);
 
    m_pItemsSelect[7] = new MenuItemSelect("OSD Flip Vertical", "Flips the OSD info vertically for rotated displays.");  
@@ -153,6 +157,15 @@ MenuPreferencesUI::MenuPreferencesUI(bool bShowOnlyOSD)
    if ( ! m_bShowOnlyOSD )
    {
       addMenuItem(new MenuItemSection("General"));
+
+      m_pItemsSelect[18] = new MenuItemSelect("Language", "Change the user interface language.");  
+      m_pItemsSelect[18]->addSelection("English");
+      m_pItemsSelect[18]->addSelection("French", false);
+      m_pItemsSelect[18]->addSelection("Spanish", false);
+      m_pItemsSelect[18]->setIsEditable();
+      m_IndexLanguage = addMenuItem(m_pItemsSelect[18]);
+    
+
       m_pItemsSelect[15] = new MenuItemSelect("Display Units", "Changes how the OSD displays data: in metric system or imperial system.");  
       m_pItemsSelect[15]->addSelection("Metric (km/h)");
       m_pItemsSelect[15]->addSelection("Metric (m/s)");
@@ -160,6 +173,14 @@ MenuPreferencesUI::MenuPreferencesUI(bool bShowOnlyOSD)
       m_pItemsSelect[15]->addSelection("Imperial (ft/s)");
       m_pItemsSelect[15]->setIsEditable();
       m_IndexUnits = addMenuItem(m_pItemsSelect[15]);
+
+      m_pItemsSelect[4] = new MenuItemSelect("Display Units (Heights)", "Changes how the OSD displays heights: in metric system or imperial system.");  
+      //m_pItemsSelect[4]->addSelection("Metric (km)");
+      m_pItemsSelect[4]->addSelection("Metric (m)");
+      //m_pItemsSelect[4]->addSelection("Imperial (mi)");
+      m_pItemsSelect[4]->addSelection("Imperial (ft)");
+      m_pItemsSelect[4]->setIsEditable();
+      m_IndexUnitsHeight = addMenuItem(m_pItemsSelect[4]);
 
       m_pItemsSelect[16] = new MenuItemSelect("Persist Messages Longer", "Keep the various messages and warnings longer on the screen.");  
       m_pItemsSelect[16]->addSelection("No");
@@ -219,6 +240,15 @@ void MenuPreferencesUI::valuesToUI()
       if ( p->iUnits == prefUnitsFeets )
          m_pItemsSelect[15]->setSelection(3);
 
+      if ( p->iUnitsHeight == prefUnitsMetric )
+         m_pItemsSelect[4]->setSelection(0);
+      if ( p->iUnitsHeight == prefUnitsMeters )
+         m_pItemsSelect[4]->setSelection(0);
+      if ( p->iUnitsHeight == prefUnitsImperial )
+         m_pItemsSelect[4]->setSelection(1);
+      if ( p->iUnitsHeight == prefUnitsFeets )
+         m_pItemsSelect[4]->setSelection(1);
+
       m_pItemsSelect[16]->setSelection(p->iPersistentMessages);
       m_pItemsSelect[17]->setSelection(p->iShowLogWindow);
    }
@@ -229,6 +259,10 @@ void MenuPreferencesUI::valuesToUI()
       int iFont = g_pCurrentModel->osd_params.uFlags & OSD_BIT_FLAGS_MASK_MSPOSD_FONT;
       m_pItemsSelect[14]->setSelectedIndex(iFont);
    }
+
+   if ( -1 != m_IndexLanguage )
+      m_pItemsSelect[18]->setSelectedIndex(0);
+
 }
 
 void MenuPreferencesUI::onShow()
@@ -297,18 +331,22 @@ void MenuPreferencesUI::Render()
          float ws = hs;
          float ho = hs;
          float wo = ws;
-         float x = m_xPos+m_RenderWidth-2.2*m_sfMenuPaddingX-ws;
+         float x = m_xPos+m_RenderWidth-2.8*m_sfMenuPaddingX-ws;
          x -= 0.04*m_sfScaleFactor;
          if ( NULL != p && p->iOSDScreenSize == 1 )
          { ho = hs*0.9; wo = ws*0.9; }
          if ( NULL != p && p->iOSDScreenSize == 2 )
-         { ho = hs*0.8; wo = ws*0.8; }
+         { ho = hs*0.8; wo = ws*0.84; }
          if ( NULL != p && p->iOSDScreenSize == 3 )
-         { ho = hs*0.7; wo = ws*0.7; }
+         { ho = hs*0.7; wo = ws*0.78; }
          if ( NULL != p && p->iOSDScreenSize == 4 )
-         { ho = hs*0.6; wo = ws*0.6; }
+         { ho = hs*0.6; wo = ws*0.72; }
          if ( NULL != p && p->iOSDScreenSize == 5 )
-         { ho = hs*0.5; wo = ws*0.5; }
+         { ho = hs*0.5; wo = ws*0.66; }
+         if ( NULL != p && p->iOSDScreenSize == 6 )
+         { ho = hs*0.5; wo = ws*0.60; }
+         if ( NULL != p && p->iOSDScreenSize == 7 )
+         { ho = hs*0.5; wo = ws*0.54; }
          g_pRenderEngine->drawRoundRect(x, y+0.5*(h-hs)-0.3*h, ws, hs, 0.002*m_sfMenuPaddingY);
          g_pRenderEngine->drawRoundRect(x+0.5*(ws-wo), y+0.5*(h-ho)-0.3*h, wo, ho,0.002*m_sfMenuPaddingY);
          g_pRenderEngine->setColors(get_Color_MenuText());
@@ -334,7 +372,7 @@ void MenuPreferencesUI::onSelectItem()
       return;
 
    if ( ! m_bShowOnlyOSD )
-   if ( m_IndexScaleMenu == m_SelectedIndex )
+   if ( (-1 != m_IndexScaleMenu) && (m_IndexScaleMenu == m_SelectedIndex) )
    {
       p->iScaleMenus = m_pItemsSelect[0]->getSelectedIndex()-2;
       if ( render_engine_uses_raw_fonts() )
@@ -347,7 +385,7 @@ void MenuPreferencesUI::onSelectItem()
    }
 
    if ( ! m_bShowOnlyOSD )
-   if ( m_IndexMenuStacked == m_SelectedIndex )
+   if ( (-1 != m_IndexMenuStacked) && (m_IndexMenuStacked == m_SelectedIndex) )
    {
       int iIndex = m_pItemsSelect[1]->getSelectedIndex();
       if ( 2 == iIndex )
@@ -425,7 +463,7 @@ void MenuPreferencesUI::onSelectItem()
       return;
    }
 
-   if ( m_IndexUnits == m_SelectedIndex )
+   if ( (-1 != m_IndexUnits) && (m_IndexUnits == m_SelectedIndex) )
    {
       int nSel = m_pItemsSelect[15]->getSelectedIndex();
       if ( 0 == nSel )
@@ -438,10 +476,19 @@ void MenuPreferencesUI::onSelectItem()
          p->iUnits = prefUnitsFeets;
    }
 
-   if ( m_IndexPersistentMessages == m_SelectedIndex )
+   if ( (-1 != m_IndexUnitsHeight) && (m_IndexUnitsHeight == m_SelectedIndex) )
+   {
+      int nSel = m_pItemsSelect[4]->getSelectedIndex();
+      if ( 0 == nSel )
+         p->iUnitsHeight = prefUnitsMeters;
+      if ( 1 == nSel )
+         p->iUnitsHeight = prefUnitsFeets;
+   }
+
+   if ( (-1 != m_IndexPersistentMessages) && (m_IndexPersistentMessages == m_SelectedIndex) )
       p->iPersistentMessages = m_pItemsSelect[16]->getSelectedIndex();
 
-   if ( m_IndexLogWindow == m_SelectedIndex )
+   if ( (-1 != m_IndexLogWindow) && (m_IndexLogWindow == m_SelectedIndex) )
    {
       p->iShowLogWindow = m_pItemsSelect[17]->getSelectedIndex();
       popup_log_set_show_flag(p->iShowLogWindow);
@@ -459,5 +506,12 @@ void MenuPreferencesUI::onSelectItem()
       g_pCurrentModel->osd_params.uFlags |= (uFont & OSD_BIT_FLAGS_MASK_MSPOSD_FONT);
    }
 
+   if ( (-1 != m_IndexLanguage) && (m_IndexLanguage == m_SelectedIndex) )
+   {
+      p->iLanguage = m_pItemsSelect[18]->getSelectedIndex();
+      save_Preferences();
+      valuesToUI();
+      return;
+   }
    save_Preferences();
 }

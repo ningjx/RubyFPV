@@ -42,7 +42,10 @@ void str_get_radio_frame_flags_description(u32 radioFlags, char* szOutput);
 char* str_get_radio_frame_flags_description2(u32 radioFlags);
 
 char* str_format_video_encoding_flags(u32 uVideoProfileEncodingFlags);
+char* str_format_video_frame_and_nal_flags(u32 uFrameAndNALFlags);
 char* str_get_video_profile_name(u32 videoProfileId);
+char* str_get_decode_h264_profile_name(u8 uH264Profile, u8 uH264ProfileConstrains, u8 uH264Level);
+
 char* str_get_radio_stream_name(int iStreamId);
 
 char* str_get_osd_screen_name(int iOSDId);

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga
+    Copyright (c) 2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -93,6 +93,8 @@ void controller_rt_info_init(controller_runtime_info* pRTInfo)
    pRTInfo->uUpdateIntervalMs = SYSTEM_RT_INFO_UPDATE_INTERVAL_MS;
    pRTInfo->uCurrentSliceStartTime = 0;
    pRTInfo->iCurrentIndex = 0;
+   pRTInfo->iCurrentIndex2 = 0;
+   pRTInfo->iCurrentIndex3 = 0;
 
    for( int i=0; i<SYSTEM_RT_INFO_INTERVALS; i++ )
    {
@@ -103,6 +105,8 @@ void controller_rt_info_init(controller_runtime_info* pRTInfo)
       }
       _controller_runtime_info_reset_dbm_slice(pRTInfo, i);
    }
+
+   pRTInfo->uTotalCountOutputSkippedBlocks = 0;
 }
 
 controller_runtime_info_vehicle* controller_rt_info_get_vehicle_info(controller_runtime_info* pRTInfo, u32 uVehicleId)
@@ -192,6 +196,8 @@ int controller_rt_info_check_advance_index(controller_runtime_info* pRTInfo, u32
    pRTInfo->iCurrentIndex++;
    if ( pRTInfo->iCurrentIndex >= SYSTEM_RT_INFO_INTERVALS )
       pRTInfo->iCurrentIndex = 0;
+   pRTInfo->iCurrentIndex2 = pRTInfo->iCurrentIndex;
+   pRTInfo->iCurrentIndex3 = pRTInfo->iCurrentIndex;
 
    // ---------------------------------------------------
    // Reset the new slice
@@ -202,16 +208,21 @@ int controller_rt_info_check_advance_index(controller_runtime_info* pRTInfo, u32
    {
       pRTInfo->uRxVideoPackets[iIndex][i] = 0;
       pRTInfo->uRxVideoECPackets[iIndex][i] = 0;
-      pRTInfo->uRxVideoRetrPackets[iIndex][i] = 0;
       pRTInfo->uRxDataPackets[iIndex][i] = 0;
+      pRTInfo->uRxHighPriorityPackets[iIndex][i] = 0;
       pRTInfo->uRxMissingPackets[iIndex][i] = 0;
       pRTInfo->uRxMissingPacketsMaxGap[iIndex][i] = 0;
    }
    pRTInfo->uRxProcessedPackets[iIndex] = 0;
+   pRTInfo->uRxMaxAirgapSlots[iIndex] = 0;
+   pRTInfo->uRxMaxAirgapSlots2[iIndex] = 0;
+
+   pRTInfo->uTxPackets[iIndex] = 0;
+   pRTInfo->uTxHighPriorityPackets[iIndex] = 0;
 
    pRTInfo->uRecvVideoDataPackets[iIndex] = 0;
    pRTInfo->uRecvVideoECPackets[iIndex] = 0;
-   pRTInfo->uRecvEndOfFrame[iIndex] = 0;
+   pRTInfo->uRecvFramesInfo[iIndex] = 0;
  
    for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
    {
@@ -224,6 +235,7 @@ int controller_rt_info_check_advance_index(controller_runtime_info* pRTInfo, u32
       pRTInfo->vehicles[i].uCountAckRetransmissions[iIndex] = 0;
    }
    pRTInfo->uOutputedVideoPackets[iIndex] = 0;
+   pRTInfo->uOutputedVideoPacketsRetransmitted[iIndex] = 0;
    pRTInfo->uOutputedVideoPacketsSingleECUsed[iIndex] = 0;
    pRTInfo->uOutputedVideoPacketsTwoECUsed[iIndex] = 0;
    pRTInfo->uOutputedVideoPacketsMultipleECUsed[iIndex] = 0;

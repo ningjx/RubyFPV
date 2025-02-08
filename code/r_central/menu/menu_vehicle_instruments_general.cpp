@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -51,6 +51,15 @@ MenuVehicleInstrumentsGeneral::MenuVehicleInstrumentsGeneral(void)
    m_pItemsSelect[10]->addSelection("Imperial (ft/s)");
    m_pItemsSelect[10]->setIsEditable();
    m_IndexUnits = addMenuItem(m_pItemsSelect[10]);
+
+   m_pItemsSelect[12] = new MenuItemSelect("Display Units (Heights)", "Changes how the OSD displays heights: in metric system or imperial system.");  
+   //m_pItemsSelect[12]->addSelection("Metric (km)");
+   m_pItemsSelect[12]->addSelection("Metric (m)");
+   //m_pItemsSelect[12]->addSelection("Imperial (mi)");
+   m_pItemsSelect[12]->addSelection("Imperial (ft)");
+   m_pItemsSelect[12]->setIsEditable();
+   m_IndexUnitsHeight = addMenuItem(m_pItemsSelect[12]);
+
 
    m_pItemsSelect[1] = new MenuItemSelect("Instruments Size", "Increase/decrease instruments sizes.");  
    m_pItemsSelect[1]->addSelection("Smallest");
@@ -138,7 +147,7 @@ MenuVehicleInstrumentsGeneral::~MenuVehicleInstrumentsGeneral()
 void MenuVehicleInstrumentsGeneral::valuesToUI()
 {
    Preferences* p = get_Preferences();
-   m_nOSDIndex = g_pCurrentModel->osd_params.layout;
+   m_nOSDIndex = g_pCurrentModel->osd_params.iCurrentOSDLayout;
 
    if ( p->iUnits == prefUnitsMetric )
       m_pItemsSelect[10]->setSelection(0);
@@ -148,6 +157,16 @@ void MenuVehicleInstrumentsGeneral::valuesToUI()
       m_pItemsSelect[10]->setSelection(2);
    if ( p->iUnits == prefUnitsFeets )
       m_pItemsSelect[10]->setSelection(3);
+
+   if ( p->iUnitsHeight == prefUnitsMetric )
+      m_pItemsSelect[12]->setSelection(0);
+   if ( p->iUnitsHeight == prefUnitsMeters )
+      m_pItemsSelect[12]->setSelection(0);
+   if ( p->iUnitsHeight == prefUnitsImperial )
+      m_pItemsSelect[12]->setSelection(1);
+   if ( p->iUnitsHeight == prefUnitsFeets )
+      m_pItemsSelect[12]->setSelection(1);
+
 
    //log_dword("start: osd flags", g_pCurrentModel->osd_params.osd_flags[m_nOSDIndex]);
    //log_dword("start: instruments flags", g_pCurrentModel->osd_params.instruments_flags[m_nOSDIndex]);
@@ -199,7 +218,7 @@ void MenuVehicleInstrumentsGeneral::onSelectItem()
       return;
    }
 
-   m_nOSDIndex = g_pCurrentModel->osd_params.layout;
+   m_nOSDIndex = g_pCurrentModel->osd_params.iCurrentOSDLayout;
 
    Preferences* p = get_Preferences();
    osd_parameters_t params;
@@ -221,6 +240,19 @@ void MenuVehicleInstrumentsGeneral::onSelectItem()
 
       save_Preferences();
       valuesToUI();
+      return;
+   }
+
+   if ( m_IndexUnitsHeight == m_SelectedIndex )
+   {
+      int nSel = m_pItemsSelect[12]->getSelectedIndex();
+      if ( 0 == nSel )
+         p->iUnitsHeight = prefUnitsMeters;
+      if ( 1 == nSel )
+         p->iUnitsHeight = prefUnitsFeets;
+      save_Preferences();
+      valuesToUI();
+      return;
    }
 
    if ( m_IndexAHISize == m_SelectedIndex )
@@ -242,15 +274,9 @@ void MenuVehicleInstrumentsGeneral::onSelectItem()
    if ( m_iIndexFlashOSDOnTelemLost == m_SelectedIndex )
    {
       if ( 0 == m_pItemsSelect[9]->getSelectedIndex() )
-      {
-         for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
-            params.osd_flags2[i] &= ~OSD_FLAG2_FLASH_OSD_ON_TELEMETRY_DATA_LOST;
-      }
+         params.osd_flags2[m_nOSDIndex] &= ~OSD_FLAG2_FLASH_OSD_ON_TELEMETRY_DATA_LOST;
       else
-      {
-         for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
-            params.osd_flags2[i] |= OSD_FLAG2_FLASH_OSD_ON_TELEMETRY_DATA_LOST;
-      }
+         params.osd_flags2[m_nOSDIndex] |= OSD_FLAG2_FLASH_OSD_ON_TELEMETRY_DATA_LOST;
       sendToVehicle = true;
    }
 

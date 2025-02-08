@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -65,6 +65,8 @@ int sEnableCRCGen = 0;
 
 int sRadioDataRate_bps = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS; // positive: clasic in bps; negative MCS (starts from -1)
 u32 sRadioFrameFlags = 0;
+u32 s_uTemporaryRadioFrameFlags = 0;
+int s_iUseTemporaryRadioFrameFlags = 0;
 
 int sAutoIncrementPacketCounter = 1;
 u32 sRadioReceivedFramesType = RADIO_FLAGS_FRAME_TYPE_DATA;
@@ -389,15 +391,15 @@ int radio_set_out_datarate(int rate_bps)
       rate_bps = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS;
 
    if ( (sRadioDataRate_bps != rate_bps) || (s_iLogCount_RadioRate == 0) )
-   if ( s_iLogCount_RadioRate < 4 || (s_uLastTimeLog_RadioRate + 20000) < get_current_timestamp_ms() )
+   if ( s_iLogCount_RadioRate < 6 || (s_uLastTimeLog_RadioRate + 20000) < get_current_timestamp_ms() )
    {
-      if ( s_iLogCount_RadioRate == 4 )
+      if ( s_iLogCount_RadioRate == 6 )
          s_iLogCount_RadioRate = 0;
       char szBuff[64];
       char szBuff2[64];
       str_getDataRateDescription(rate_bps, 0, szBuff);
       str_getDataRateDescription(sRadioDataRate_bps, 0, szBuff2);
-      log_line("Radio: Set TX DR to: %s (prev was: %s, %u pckts sent on it)", szBuff, szBuff2, s_uPacketsSentUsingCurrent_RadioRate);
+      log_line("Radio: Set TX DR (%d) to: %s (prev was: %s, %u pckts sent on it)", s_iLogCount_RadioRate, szBuff, szBuff2, s_uPacketsSentUsingCurrent_RadioRate);
       if ( s_iLogCount_RadioRate == 3 )
          log_line("Radio: Too many radio datarate changes, pausing log.");
       s_iLogCount_RadioRate++;
@@ -416,6 +418,8 @@ int radio_set_out_datarate(int rate_bps)
 
    if ( sRadioDataRate_bps > 0 )
    {
+      sRadioFrameFlags &= ~RADIO_FLAGS_USE_MCS_DATARATES;
+      sRadioFrameFlags |= RADIO_FLAGS_USE_LEGACY_DATARATES;
       if ( sRadioDataRate_bps > 56 )
       {
          s_uRadiotapHeaderLegacy[8] = (uint8_t)((int)(sRadioDataRate_bps/1000/1000) * 2);
@@ -429,6 +433,8 @@ int radio_set_out_datarate(int rate_bps)
    }
    else
    {
+      sRadioFrameFlags |= RADIO_FLAGS_USE_MCS_DATARATES;
+      sRadioFrameFlags &= ~RADIO_FLAGS_USE_LEGACY_DATARATES;
       int mcsRate = -sRadioDataRate_bps-1;
       if ( mcsRate < 0 )
          mcsRate = 0;
@@ -440,32 +446,22 @@ int radio_set_out_datarate(int rate_bps)
 
 void radio_set_frames_flags(u32 frameFlags)
 {
-   u32 frameFlagsFiltered = frameFlags;
+   u32 uFrameFlagsToSet = frameFlags;
+   if ( s_iUseTemporaryRadioFrameFlags )
+      uFrameFlagsToSet = s_uTemporaryRadioFrameFlags;
 
-   if ( (sRadioFrameFlags != frameFlagsFiltered) || (s_iLogCount_RadioFlags == 0) )
-   if ( s_iLogCount_RadioFlags < 10 || (s_uLastTimeLog_RadioFlags + 20000) < get_current_timestamp_ms() )
+   if ( sRadioDataRate_bps > 0 )
    {
-      if ( s_iLogCount_RadioFlags == 10 )
-         s_iLogCount_RadioFlags = 0;
-      char szBuff[128];
-      char szBuff2[128];
-      str_get_radio_frame_flags_description(frameFlags, szBuff);
-      str_get_radio_frame_flags_description(sRadioFrameFlags, szBuff2);
-      log_line("Radio: Set radio frames flags to 0x%04X: %s (previous was: %s, %u packets sent on it)", frameFlags, szBuff, szBuff2, s_uPacketsSentUsingCurrent_RadioFlags);
-      if ( s_iLogCount_RadioFlags == 9 )
-         log_line("Radio: Too many radio flags changes, pausing log.");
-      s_iLogCount_RadioFlags++;
-      if ( get_current_timestamp_ms() > s_uLastTimeLog_RadioFlags + 1000 )
-         s_iLogCount_RadioFlags = 0;
-      s_uLastTimeLog_RadioFlags = get_current_timestamp_ms();
+      uFrameFlagsToSet &= ~RADIO_FLAGS_USE_MCS_DATARATES;
+      uFrameFlagsToSet |= RADIO_FLAGS_USE_LEGACY_DATARATES;
+   }
+   else
+   {
+      uFrameFlagsToSet |= RADIO_FLAGS_USE_MCS_DATARATES;
+      uFrameFlagsToSet &= ~RADIO_FLAGS_USE_LEGACY_DATARATES;
    }
 
-   if ( sRadioFrameFlags != frameFlagsFiltered )
-      s_uPacketsSentUsingCurrent_RadioFlags = 0;
-
-   sRadioFrameFlags = frameFlagsFiltered;
-
-   if ( (sRadioFrameFlags & RADIO_FLAGS_MCS_MASK) || (sRadioDataRate_bps < 0) )
+   if ( uFrameFlagsToSet & RADIO_FLAGS_USE_MCS_DATARATES )
    {
       u8 mcs_flags = 0;
       u8 mcs_known = (IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_BW | IEEE80211_RADIOTAP_MCS_HAVE_GI | IEEE80211_RADIOTAP_MCS_HAVE_STBC);
@@ -476,36 +472,80 @@ void radio_set_frames_flags(u32 frameFlags)
 
       if ( hardware_is_station() )
       {
-         if ( sRadioFrameFlags & RADIO_FLAG_HT40_CONTROLLER )
+         if ( uFrameFlagsToSet & RADIO_FLAG_HT40_CONTROLLER )
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_40;
          else
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_20;
 
-         if ( sRadioFrameFlags & RADIO_FLAG_LDPC_CONTROLLER )
+         if ( uFrameFlagsToSet & RADIO_FLAG_LDPC_CONTROLLER )
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_FEC_LDPC; 
-         if ( sRadioFrameFlags & RADIO_FLAG_SGI_CONTROLLER )
+         if ( uFrameFlagsToSet & RADIO_FLAG_SGI_CONTROLLER )
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_SGI;
-         if ( sRadioFrameFlags & RADIO_FLAG_STBC_CONTROLLER )
+         if ( uFrameFlagsToSet & RADIO_FLAG_STBC_CONTROLLER )
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_STBC_1 << IEEE80211_RADIOTAP_MCS_STBC_SHIFT;
       }
       else
       {
-         if ( sRadioFrameFlags & RADIO_FLAG_HT40_VEHICLE )
+         if ( uFrameFlagsToSet & RADIO_FLAG_HT40_VEHICLE )
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_40;
          else
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_20;
 
-         if ( sRadioFrameFlags & RADIO_FLAG_LDPC_VEHICLE )
+         if ( uFrameFlagsToSet & RADIO_FLAG_LDPC_VEHICLE )
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_FEC_LDPC; 
-         if ( sRadioFrameFlags & RADIO_FLAG_SGI_VEHICLE )
+         if ( uFrameFlagsToSet & RADIO_FLAG_SGI_VEHICLE )
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_SGI;
-         if ( sRadioFrameFlags & RADIO_FLAG_STBC_VEHICLE )
+         if ( uFrameFlagsToSet & RADIO_FLAG_STBC_VEHICLE )
             mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_STBC_1 << IEEE80211_RADIOTAP_MCS_STBC_SHIFT;       
       }
       s_uRadiotapHeaderMCS[10] = mcs_known;
       s_uRadiotapHeaderMCS[11] = mcs_flags;
       s_uRadiotapHeaderMCS[12] = (uint8_t)mcsRate;
-    }
+   }
+
+   if ( (sRadioFrameFlags != uFrameFlagsToSet) || (s_iLogCount_RadioFlags == 0) )
+   if ( s_iLogCount_RadioFlags < 10 || (s_uLastTimeLog_RadioFlags + 20000) < get_current_timestamp_ms() )
+   {
+      if ( s_iLogCount_RadioFlags == 10 )
+         s_iLogCount_RadioFlags = 0;
+      char szBuff[128];
+      char szBuff2[128];
+      str_get_radio_frame_flags_description(uFrameFlagsToSet, szBuff);
+      str_get_radio_frame_flags_description(sRadioFrameFlags, szBuff2);
+      log_line("Radio: Set radio frames flags to 0x%04X: %s (previous was: %s, %u packets sent on it)",
+         uFrameFlagsToSet, szBuff, szBuff2, s_uPacketsSentUsingCurrent_RadioFlags);
+      if ( s_iLogCount_RadioFlags == 9 )
+         log_line("Radio: Too many radio flags changes, pausing log.");
+      s_iLogCount_RadioFlags++;
+      if ( get_current_timestamp_ms() > s_uLastTimeLog_RadioFlags + 1000 )
+         s_iLogCount_RadioFlags = 0;
+      s_uLastTimeLog_RadioFlags = get_current_timestamp_ms();
+   }
+
+   if ( ! s_iUseTemporaryRadioFrameFlags )
+   {
+      if ( sRadioFrameFlags != frameFlags )
+         s_uPacketsSentUsingCurrent_RadioFlags = 0;
+      sRadioFrameFlags = frameFlags;
+   }
+}
+
+void radio_set_temporary_frames_flags(u32 uFrameFlags)
+{
+   s_uTemporaryRadioFrameFlags = uFrameFlags;
+   s_iUseTemporaryRadioFrameFlags = 1;
+   log_line("Radio: Set temporary radio flags to: %s", str_get_radio_frame_flags_description2(s_uTemporaryRadioFrameFlags));
+   log_line("Radio: Current radio flags where: %s", str_get_radio_frame_flags_description2(sRadioFrameFlags));
+   radio_set_frames_flags(sRadioFrameFlags);
+}
+
+void radio_remove_temporary_frames_flags()
+{
+   log_line("Radio: Remove temporary radio flags: %s", str_get_radio_frame_flags_description2(s_uTemporaryRadioFrameFlags));
+   log_line("Radio: Current radio flags are now: %s", str_get_radio_frame_flags_description2(sRadioFrameFlags));
+   s_uTemporaryRadioFrameFlags = 0;
+   s_iUseTemporaryRadioFrameFlags = 0;
+   radio_set_frames_flags(sRadioFrameFlags);
 }
 
 
@@ -564,7 +604,10 @@ int _radio_open_interface_for_read_with_filter(int interfaceIndex, char* szFilte
       log_softerror_and_alarm("Unable to open [%s]: %s", pRadioHWInfo->szName, szErrbuf);
       return -1;
    }
-   int iLen = 4096;
+
+   log_line("pcap snapshot length: %d bytes", pcap_snapshot(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap));
+   //int iLen = 4096;
+   int iLen = MAX_PACKET_TOTAL_SIZE*10;
    if ( pcap_set_snaplen(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap, iLen) !=0 )
       log_softerror_and_alarm("Error setting [%s] snap buffer length: %s", pRadioHWInfo->szName, pcap_geterr(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap));
    else
@@ -586,6 +629,8 @@ int _radio_open_interface_for_read_with_filter(int interfaceIndex, char* szFilte
         
    //if ( pcap_setdirection(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap, PCAP_D_IN) < 0 )
    //   log_softerror_and_alarm("Error setting [%s] direction", pRadioHWInfo->szName);
+
+   log_line("pcap snapshot length: %d bytes", pcap_snapshot(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap));
 
    int nLinkEncap = pcap_datalink(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap);
 
@@ -928,7 +973,6 @@ u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength)
    pRadioPayload = (u8*) pcap_next(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap, ppcapPacketHeader); 
    if ( NULL == pRadioPayload )
       return NULL;
-   //memcpy(sPayloadBufferRead, pRadioPayload, ppcapPacketHeader->caplen);
    #ifdef DEBUG_PACKET_RECEIVED
    log_line("RX Buffer: caplen: %d bytes, len: %d", ppcapPacketHeader->caplen, ppcapPacketHeader->len);
    #endif
@@ -1061,20 +1105,6 @@ u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength)
       }
    }
 
-   /*
-   char szBuff[256];
-   sprintf(szBuff, "Ant%d: f: %d ", iAntennaCount, pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nFreq);
-   for( int i=0; i<iAntennaCount; i++ )
-   {
-      char szTmp[64];
-      sprintf(szTmp, "dbm[%d]=%d (%d %d), dbnoise[%d]=%d (%d %d) ",
-         i, pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbm[i], pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmAvg[i], pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmMin[i],
-         i, pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoise[i], pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseAvg[i], pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseMax[i]);
-      strcat(szBuff, szTmp);
-   }
-   log_line(szBuff);
-   */
-
    if ( iAntennaCount > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount )
       pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount = iAntennaCount;
 
@@ -1111,7 +1141,9 @@ u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength)
    }
    #endif
 
-   return pRadioPayload;
+   //return pRadioPayload;
+   memcpy(sPayloadBufferRead, pRadioPayload, payloadLength);
+   return sPayloadBufferRead;
 }
 
 // returns 0 for failure, total length of packet for success
@@ -1131,6 +1163,8 @@ int packet_process_and_check(int interfaceNb, u8* pPacketBuffer, int iBufferLeng
       return 0;
    }
 
+   t_packet_header* pPH = (t_packet_header*)pPacketBuffer;
+   
    if ( iBufferLength < (int)sizeof(t_packet_header) )
    {
       s_iLastProcessingErrorCode = RADIO_PROCESSING_ERROR_CODE_PACKET_RECEIVED_TOO_SMALL;
@@ -1142,27 +1176,28 @@ int packet_process_and_check(int interfaceNb, u8* pPacketBuffer, int iBufferLeng
       return 0;
    }
 
-   t_packet_header* pPH = (t_packet_header*)pPacketBuffer;
-   int packetLength = pPH->total_length;
 
-   if ( packetLength > iBufferLength )
+   int iPacketLength = pPH->total_length;
+   u8 uPacketFlags = pPH->packet_flags;
+
+   if ( iPacketLength > iBufferLength )
    {
       s_iLastProcessingErrorCode = RADIO_PROCESSING_ERROR_CODE_PACKET_RECEIVED_TOO_SMALL;
 
       #ifdef DEBUG_PACKET_RECEIVED
-      printf("Received packet to small: packet length: %d bytes, buffer length is: %d\n", packetLength, iBufferLength);
-      log_line("Received packet to small: packet length: %d bytes, buffer length is: %d", packetLength, iBufferLength);
+      printf("Received packet to small: packet length: %d bytes, buffer length is: %d\n", iPacketLength, iBufferLength);
+      log_line("Received packet to small: packet length: %d bytes, buffer length is: %d", iPacketLength, iBufferLength);
       #endif
       return 0;
    }
 
-   if ( pPH->packet_flags & PACKET_FLAGS_BIT_HAS_ENCRYPTION )
+   if ( uPacketFlags & PACKET_FLAGS_BIT_HAS_ENCRYPTION )
    {
       #ifdef DEBUG_PACKET_RECEIVED
       log_line("enc detected");
       #endif
-      int dx = sizeof(t_packet_header) - sizeof(u32) - sizeof(u32);
-      int l = packetLength-dx;
+      int dx = sizeof(t_packet_header);
+      int l = iPacketLength-dx;
       dpp(pPacketBuffer + dx, l);
    }
 
@@ -1176,9 +1211,9 @@ int packet_process_and_check(int interfaceNb, u8* pPacketBuffer, int iBufferLeng
    {
       s_iLastProcessingErrorCode = RADIO_PROCESSING_ERROR_CODE_INVALID_CRC_RECEIVED;
       #ifdef DEBUG_PACKET_RECEIVED
-      log_line("Received packet bad headers, CRC headers: %u, computed CRC(%s): %u, packet length: %d bytes", pPH->uCRC, (pPH->packet_flags & PACKET_FLAGS_BIT_HEADERS_ONLY_CRC)?"headers only":"full", uCRC, packetLength);
+      log_line("Received packet bad headers, CRC headers: %u, computed CRC(%s): %u, packet length: %d bytes", pPH->uCRC, (pPH->packet_flags & PACKET_FLAGS_BIT_HEADERS_ONLY_CRC)?"headers only":"full", uCRC, iPacketLength);
       if ( packetLength <= 48 )
-         log_buffer(pPacketBuffer, packetLength);
+         log_buffer(pPacketBuffer, iPacketLength);
       #endif
       if ( NULL != pbCRCOk )
          *pbCRCOk = 0;
@@ -1194,7 +1229,7 @@ int packet_process_and_check(int interfaceNb, u8* pPacketBuffer, int iBufferLeng
    //#endif
 
    s_iLastProcessingErrorCode = RADIO_PROCESSING_ERROR_NO_ERROR;
-   return packetLength;     
+   return iPacketLength;     
 }
 
 int get_last_processing_error_code()
@@ -1212,7 +1247,7 @@ u32 radio_get_next_radio_link_packet_index(int iLocalRadioLinkId)
    return uRadioLinkPacketIndex;
 }
 
-int radio_build_new_raw_packet(int iLocalRadioLinkId, u8* pRawPacket, u8* pPacketData, int nInputLength, int portNb, int bEncrypt)
+int radio_build_new_raw_ieee_packet(int iLocalRadioLinkId, u8* pRawPacket, u8* pPacketData, int nInputLength, int portNb, int bEncrypt)
 {
    int totalRadioLength = 0;
 
@@ -1223,7 +1258,7 @@ int radio_build_new_raw_packet(int iLocalRadioLinkId, u8* pRawPacket, u8* pPacke
    s_uIEEEHeaderData[23] = (uIEEEE80211SeqNb >> 8) & 0xff;
    uIEEEE80211SeqNb += 16;
    
-   if ( (sRadioFrameFlags & RADIO_FLAGS_MCS_MASK) || (sRadioDataRate_bps < 0) )
+   if ( (sRadioFrameFlags & RADIO_FLAGS_USE_MCS_DATARATES) || (sRadioDataRate_bps < 0) )
    {
       memcpy(pRawPacket, s_uRadiotapHeaderMCS, sizeof(s_uRadiotapHeaderMCS));
       pRawPacket += sizeof(s_uRadiotapHeaderMCS);
@@ -1238,13 +1273,14 @@ int radio_build_new_raw_packet(int iLocalRadioLinkId, u8* pRawPacket, u8* pPacke
       s_uLastPacketSentRadioTapHeaderLength = sizeof(s_uRadiotapHeaderLegacy);
    }
 
-   if ( sRadioFrameFlags & RADIO_FLAGS_FRAME_TYPE_DATA )
+   //if ( sRadioFrameFlags & RADIO_FLAGS_FRAME_TYPE_DATA )
    {
       memcpy(pRawPacket, s_uIEEEHeaderData, sizeof (s_uIEEEHeaderData));
       pRawPacket += sizeof(s_uIEEEHeaderData);
       totalRadioLength += sizeof(s_uIEEEHeaderData);
       s_uLastPacketSentIEEEHeaderLength = sizeof(s_uIEEEHeaderData);
    }
+   /*
    else if ( sRadioFrameFlags & RADIO_FLAGS_FRAME_TYPE_RTS )
    {   
       memcpy(pRawPacket, s_uIEEEHeaderRTS, sizeof (s_uIEEEHeaderRTS));
@@ -1266,16 +1302,14 @@ int radio_build_new_raw_packet(int iLocalRadioLinkId, u8* pRawPacket, u8* pPacke
       totalRadioLength += sizeof(s_uIEEEHeaderData);
       s_uLastPacketSentIEEEHeaderLength = sizeof(s_uIEEEHeaderData);
    }
-   
+   */
+
    memcpy(pRawPacket, pPacketData, nInputLength);
    totalRadioLength += nInputLength;
 
-   memset(s_uLastPacketBuilt, 0, MAX_PACKET_TOTAL_SIZE);
-   // To fix, only on debug
-   if ( 1 )
-   //if ( s_bRadioDebugFlag )
+   if ( s_bRadioDebugFlag )
       memcpy(s_uLastPacketBuilt, pPacketData, nInputLength);
-
+   
    #ifdef DEBUG_PACKET_SENT
    log_line("Building a composed packet of total size: %d, extra data: %d", nInputLength + iExtraData, iExtraData);
    #endif
@@ -1284,48 +1318,28 @@ int radio_build_new_raw_packet(int iLocalRadioLinkId, u8* pRawPacket, u8* pPacke
       iLocalRadioLinkId = 0;
    u16 uRadioLinkPacketIndex = radio_get_next_radio_link_packet_index(iLocalRadioLinkId);
 
-   // Compute CRC/encrypt all packets in this buffer
+   // Compute CRC/encrypt packet
+  
+   t_packet_header* pPH = (t_packet_header*)pRawPacket;
+   pPH->radio_link_packet_index = uRadioLinkPacketIndex;
+   if ( bEncrypt )
+      pPH->packet_flags |= PACKET_FLAGS_BIT_HAS_ENCRYPTION;
 
-   int nLength = nInputLength;
-   u8* pData = pRawPacket;
+   if ( pPH->packet_flags & PACKET_FLAGS_BIT_HEADERS_ONLY_CRC )
+      radio_packet_compute_crc((u8*)pPH, sizeof(t_packet_header));
+   else
+      radio_packet_compute_crc((u8*)pPH, pPH->total_length);
 
-   int nPCount = 0;
-   while ( nLength > 0 )
+   if ( bEncrypt )
    {
-      nPCount++;
-      t_packet_header* pPH = (t_packet_header*)pData;
-      int nPacketLength = pPH->total_length;
-    
-      pPH->radio_link_packet_index = uRadioLinkPacketIndex;
-      if ( bEncrypt )
-         pPH->packet_flags |= PACKET_FLAGS_BIT_HAS_ENCRYPTION;
-
-
-      if ( pPH->packet_flags & PACKET_FLAGS_BIT_HEADERS_ONLY_CRC )
-         radio_packet_compute_crc((u8*)pPH, sizeof(t_packet_header));
-      else
-         radio_packet_compute_crc((u8*)pPH, pPH->total_length);
-
-      #ifdef DEBUG_PACKET_SENT
-      log_line("Packet %d in composed packet: enc: %d, crc (%s): %u, len: %d", nPCount, bEncrypt, (pPH->packet_flags & PACKET_FLAGS_BIT_HEADERS_ONLY_CRC)?"headers only":"full", pPH->uCRC, pPH->total_length);
-      if ( pPH->total_length <= 125 )
-         log_buffer3(pData, pPH->total_length, 10,6,8);
-      #endif
-
-      if ( bEncrypt )
-      {
-         int dx = sizeof(t_packet_header) - sizeof(u32) - sizeof(u32);
-         epp(pData+dx, pPH->total_length-dx);
-      }
-      nLength -= nPacketLength;
-      pData += nPacketLength;
+      int dx = sizeof(t_packet_header);
+      epp(pRawPacket+dx, pPH->total_length-dx);
    }
-
    return totalRadioLength;
 }
 
 
-int radio_write_raw_packet(int interfaceIndex, u8* pData, int dataLength)
+int radio_write_raw_ieee_packet(int interfaceIndex, u8* pData, int dataLength, int iRepeatCount)
 {
    radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(interfaceIndex);
    if ( NULL == pRadioHWInfo || ( 0 == pRadioHWInfo->openedForWrite) || (pRadioHWInfo->runtimeInterfaceInfoTx.selectable_fd < 0 ) )
@@ -1350,6 +1364,15 @@ int radio_write_raw_packet(int interfaceIndex, u8* pData, int dataLength)
       }
    }
 
+   // Extract packet header based on ieee headers
+   t_packet_header* pPH = NULL;
+   if ( pData[2] == 0x0C )
+     pPH = (t_packet_header*)(pData + sizeof(s_uRadiotapHeaderLegacy) + sizeof(s_uIEEEHeaderData));
+   else if ( pData[2] == 0x0D )
+     pPH = (t_packet_header*)(pData + sizeof(s_uRadiotapHeaderMCS) + sizeof(s_uIEEEHeaderData));
+   else
+     pPH = NULL;
+
    #ifdef FEATURE_RADIO_SYNCHRONIZE_RXTX_THREADS
    if ( 1 == s_iMutexRadioSyncRxTxThreadsInitialized )
       pthread_mutex_lock(&s_pMutexRadioSyncRxTxThreads);
@@ -1360,40 +1383,45 @@ int radio_write_raw_packet(int interfaceIndex, u8* pData, int dataLength)
 
    int len = 0;
 
-   if ( s_iUsePCAPForTx )
+   for( int k=0; k<=iRepeatCount; k++ )
    {
-      len = pcap_inject(pRadioHWInfo->runtimeInterfaceInfoTx.ppcap, pData, dataLength);
-      if ( len < dataLength )
+      if ( s_iUsePCAPForTx )
       {
-         log_softerror_and_alarm("RadioError: tx ppcap failed to send radio message (%d bytes sent of %d bytes).", len, dataLength);
-         pRadioHWInfo->runtimeInterfaceInfoTx.iErrorCount++;
-         #ifdef FEATURE_RADIO_SYNCHRONIZE_RXTX_THREADS
-         if ( 1 == s_iMutexRadioSyncRxTxThreadsInitialized )
-            pthread_mutex_unlock(&s_pMutexRadioSyncRxTxThreads);
-         #endif
-         return 0;
+         len = pcap_inject(pRadioHWInfo->runtimeInterfaceInfoTx.ppcap, pData, dataLength);
+         if ( len < dataLength )
+         {
+            log_softerror_and_alarm("RadioError: tx ppcap failed to send radio message (%d bytes sent of %d bytes).", len, dataLength);
+            pRadioHWInfo->runtimeInterfaceInfoTx.iErrorCount++;
+            #ifdef FEATURE_RADIO_SYNCHRONIZE_RXTX_THREADS
+            if ( 1 == s_iMutexRadioSyncRxTxThreadsInitialized )
+               pthread_mutex_unlock(&s_pMutexRadioSyncRxTxThreads);
+            #endif
+            return 0;
+         }
+         else
+            pRadioHWInfo->runtimeInterfaceInfoTx.iErrorCount = 0;
       }
       else
-         pRadioHWInfo->runtimeInterfaceInfoTx.iErrorCount = 0;
-   }
-   else
-   {
-      len = write(pRadioHWInfo->runtimeInterfaceInfoTx.selectable_fd, pData, dataLength);
-      if ( len < dataLength )
       {
-         log_softerror_and_alarm("RadioError: Failed to send radio message on radio interface %d, fd=%d (%d bytes sent of %d bytes).",
-           interfaceIndex+1, pRadioHWInfo->runtimeInterfaceInfoTx.selectable_fd, len, dataLength);
-         pRadioHWInfo->runtimeInterfaceInfoTx.iErrorCount++;
-         #ifdef FEATURE_RADIO_SYNCHRONIZE_RXTX_THREADS
-         if ( 1 == s_iMutexRadioSyncRxTxThreadsInitialized )
-            pthread_mutex_unlock(&s_pMutexRadioSyncRxTxThreads);
-         #endif
-         return 0;
+         len = write(pRadioHWInfo->runtimeInterfaceInfoTx.selectable_fd, pData, dataLength);
+         if ( len < dataLength )
+         {
+            log_softerror_and_alarm("RadioError: Failed to send radio message on radio interface %d, fd=%d (%d bytes sent of %d bytes).",
+              interfaceIndex+1, pRadioHWInfo->runtimeInterfaceInfoTx.selectable_fd, len, dataLength);
+            pRadioHWInfo->runtimeInterfaceInfoTx.iErrorCount++;
+            #ifdef FEATURE_RADIO_SYNCHRONIZE_RXTX_THREADS
+            if ( 1 == s_iMutexRadioSyncRxTxThreadsInitialized )
+               pthread_mutex_unlock(&s_pMutexRadioSyncRxTxThreads);
+            #endif
+            return 0;
+         }
+         else
+            pRadioHWInfo->runtimeInterfaceInfoTx.iErrorCount = 0;
       }
-      else
-         pRadioHWInfo->runtimeInterfaceInfoTx.iErrorCount = 0;
+      if ( k < iRepeatCount )
+         hardware_sleep_ms(1);
    }
-
+   
    #ifdef FEATURE_RADIO_SYNCHRONIZE_RXTX_THREADS
    if ( 1 == s_iMutexRadioSyncRxTxThreadsInitialized )
       pthread_mutex_unlock(&s_pMutexRadioSyncRxTxThreads);

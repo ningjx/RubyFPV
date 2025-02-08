@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -72,12 +72,19 @@ void MenuControllerDevStatsConfig::addItems()
    m_pItemsSelect[0]->setIsEditable();
    m_IndexQAButton = addMenuItem(m_pItemsSelect[0]);
 
-   m_pItemsSelect[1] = new MenuItemSelect("Show RX Video & Data packets", "");
+   m_pItemsSelect[1] = new MenuItemSelect("Show RX/TX packets", "");
    m_pItemsSelect[1]->addSelection("No");
    m_pItemsSelect[1]->addSelection("Yes");
    m_pItemsSelect[1]->setUseMultiViewLayout();
-   m_pItemsSelect[1]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_DATA_PACKETS)?1:0);
-   m_IndexShowRXVideoDataPackets = addMenuItem(m_pItemsSelect[1]);
+   m_pItemsSelect[1]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_TX_PACKETS)?1:0);
+   m_IndexShowRXTXPackets = addMenuItem(m_pItemsSelect[1]);
+
+   m_pItemsSelect[13] = new MenuItemSelect("Show RX air gaps", "");
+   m_pItemsSelect[13]->addSelection("No");
+   m_pItemsSelect[13]->addSelection("Yes");
+   m_pItemsSelect[13]->setUseMultiViewLayout();
+   m_pItemsSelect[13]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_AIR_GAPS)?1:0);
+   m_IndexShowRXAirGaps = addMenuItem(m_pItemsSelect[13]);
 
    m_pItemsSelect[2] = new MenuItemSelect("Show RX H264/H265 frames", "");
    m_pItemsSelect[2]->addSelection("No");
@@ -114,6 +121,13 @@ void MenuControllerDevStatsConfig::addItems()
    m_pItemsSelect[6]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_CONSUMED_PACKETS)?1:0);
    m_IndexShowRxConsumedPackets = addMenuItem(m_pItemsSelect[6]);
 
+   m_pItemsSelect[14] = new MenuItemSelect("Show TX High/Reg priority packets", "");
+   m_pItemsSelect[14]->addSelection("No");
+   m_pItemsSelect[14]->addSelection("Yes");
+   m_pItemsSelect[14]->setUseMultiViewLayout();
+   m_pItemsSelect[14]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_TX_HIGH_REG_PACKETS)?1:0);
+   m_IndexShowTxHighRegPackets = addMenuItem(m_pItemsSelect[14]);
+  
    m_pItemsSelect[7] = new MenuItemSelect("Show Min/Max Ack time", "");
    m_pItemsSelect[7]->addSelection("No");
    m_pItemsSelect[7]->addSelection("Yes");
@@ -204,12 +218,20 @@ void MenuControllerDevStatsConfig::onSelectItem()
       pP->iDebugStatsQAButton = m_pItemsSelect[0]->getSelectedIndex();
    }
 
-   if ( m_IndexShowRXVideoDataPackets == m_SelectedIndex )
+   if ( m_IndexShowRXTXPackets == m_SelectedIndex )
    {
       if ( m_pItemsSelect[1]->getSelectedIndex() != 0 )
-         pP->uDebugStatsFlags |= CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_DATA_PACKETS;
+         pP->uDebugStatsFlags |= CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_TX_PACKETS;
       else
-         pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_DATA_PACKETS;
+         pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_TX_PACKETS;
+   }
+
+   if ( m_IndexShowRXAirGaps == m_SelectedIndex )
+   {
+      if ( m_pItemsSelect[13]->getSelectedIndex() != 0 )
+         pP->uDebugStatsFlags |= CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_AIR_GAPS;
+      else
+         pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_AIR_GAPS;
    }
 
    if ( m_IndexShowRxH264Frames == m_SelectedIndex )
@@ -251,6 +273,15 @@ void MenuControllerDevStatsConfig::onSelectItem()
       else
          pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_CONSUMED_PACKETS;
    }
+
+   if ( m_IndexShowTxHighRegPackets == m_SelectedIndex )
+   {
+      if ( m_pItemsSelect[14]->getSelectedIndex() != 0 )
+         pP->uDebugStatsFlags |= CTRL_RT_DEBUG_INFO_FLAG_SHOW_TX_HIGH_REG_PACKETS;
+      else
+         pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_TX_HIGH_REG_PACKETS;
+   }
+
 
    if ( m_IndexShowMinMaxAckTime == m_SelectedIndex )
    {

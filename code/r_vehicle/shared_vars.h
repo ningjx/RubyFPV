@@ -46,7 +46,6 @@ extern int s_fIPCRouterFromRC;
 extern int s_fInputVideoStream;
 
 extern bool g_bVideoPaused;
-extern int s_InputBufferVideoBytesRead;
 
 extern u16 s_countTXVideoPacketsOutTemp;
 extern u16 s_countTXDataPacketsOutTemp;
@@ -91,10 +90,10 @@ extern t_packet_data_controller_link_stats g_PD_LastRecvControllerLinksStats;
 extern shared_mem_video_link_graphs g_SM_VideoLinkGraphs;
 extern shared_mem_dev_video_bitrate_history g_SM_DevVideoBitrateHistory;
 
-extern shared_mem_video_info_stats g_VideoInfoStatsCameraOutput;
-extern shared_mem_video_info_stats g_VideoInfoStatsRadioOut;
-extern shared_mem_video_info_stats* g_pSM_VideoInfoStatsCameraOutput;
-extern shared_mem_video_info_stats* g_pSM_VideoInfoStatsRadioOut;
+//extern shared_mem_video_frames_stats g_VideoInfoStatsCameraOutput;
+//extern shared_mem_video_frames_stats* g_pSM_VideoInfoStatsCameraOutput;
+//extern shared_mem_video_frames_stats g_VideoInfoStatsRadioOut;
+//extern shared_mem_video_frames_stats* g_pSM_VideoInfoStatsRadioOut;
 
 extern int g_iDebugShowKeyFramesAfterRelaySwitch;
 

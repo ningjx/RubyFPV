@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga
+    Copyright (c) 2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -45,7 +45,7 @@
 
 static int s_bootCount = -1;
 static long long sStartTimeStamp_ms;
-static long long sStartTimeStamp;
+static long long sStartTimeStamp_micros;
 
 static char sszComponentName[64] = {0};
 
@@ -208,9 +208,13 @@ void _init_timestamp_for_process()
    if ( NULL == fd )
    {
       struct timespec t;
-      clock_gettime(CLOCK_MONOTONIC, &t);
-      sStartTimeStamp = t.tv_sec*1000LL*1000LL + t.tv_nsec/1000LL;
+      clock_gettime(RUBY_HW_CLOCK_ID, &t);
+      sStartTimeStamp_micros = t.tv_sec*1000LL*1000LL + t.tv_nsec/1000LL;
       sStartTimeStamp_ms = t.tv_sec*1000LL + t.tv_nsec/1000LL/1000LL;
+      //struct timeval t;
+      //gettimeofday(&t, NULL);
+      //sStartTimeStamp_micros = t.tv_sec*1000LL*1000LL + t.tv_usec;
+      //sStartTimeStamp_ms = t.tv_sec*1000LL + t.tv_usec/1000LL;
       int count = 0;
       while ( count<10 )
       {
@@ -219,14 +223,12 @@ void _init_timestamp_for_process()
          {
             fprintf(fd, "%lld\n", sStartTimeStamp_ms);
             fclose(fd);
-            //log_line("Initial timestamp: %lld", sStartTimeStamp_ms);
-            //log_line("Current timestamp: %lld", sStartTimeStamp_ms);
             return;
          }
          #ifdef HW_PLATFORM_RASPBERRY
          system("sudo mount -o remount,rw /");
          struct timespec to_sleep = { 0, (long int)(50*1000*1000) };
-         nanosleep(&to_sleep, NULL);
+         clock_nanosleep(RUBY_HW_CLOCK_ID, 0, &to_sleep, NULL);
          #endif
          count++;
       }
@@ -234,29 +236,45 @@ void _init_timestamp_for_process()
    }
    fscanf(fd, "%lld\n", &sStartTimeStamp_ms);
    fclose(fd);
-   sStartTimeStamp = sStartTimeStamp_ms * 1000;
+   sStartTimeStamp_micros = sStartTimeStamp_ms * 1000;
+}
 
-   struct timespec t;
-   clock_gettime(CLOCK_MONOTONIC, &t);
-   //long long lt = t.tv_sec*1000LL + t.tv_nsec/1000LL/1000LL;
+void hardware_sleep_sec(u32 uSeconds)
+{
+   sleep(uSeconds);
+}
 
-   //log_line("Initial timestamp: %lld", sStartTimeStamp_ms);
-   //log_line("Current timestamp: %lld", lt);
+void hardware_sleep_ms(u32 miliSeconds)
+{
+   struct timespec to_sleep = { 0, (long int)(miliSeconds*1000*1000) };
+   clock_nanosleep(RUBY_HW_CLOCK_ID, 0, &to_sleep, NULL);
+}
+
+void hardware_sleep_micros(u32 microSeconds)
+{
+   struct timespec to_sleep = { 0, (long int)(microSeconds*1000) };
+   clock_nanosleep(RUBY_HW_CLOCK_ID, 0, &to_sleep, NULL);
 }
 
 u32 get_current_timestamp_micros()
 {
    struct timespec t;
-   clock_gettime(CLOCK_MONOTONIC, &t);
+   clock_gettime(RUBY_HW_CLOCK_ID, &t);
    long long lt = t.tv_sec*1000LL*1000LL + t.tv_nsec/1000LL;
-   return (lt - sStartTimeStamp);
+   //struct timeval t;
+   //gettimeofday(&t, NULL);
+   //long long lt = t.tv_sec*1000LL*1000LL + t.tv_usec;
+   return (lt - sStartTimeStamp_micros);
 }
 
 u32 get_current_timestamp_ms()
 {
    struct timespec t;
-   clock_gettime(CLOCK_MONOTONIC, &t);
+   clock_gettime(RUBY_HW_CLOCK_ID, &t);
    long long lt = t.tv_sec*1000LL + t.tv_nsec/1000LL/1000LL;
+   //struct timeval t;
+   //gettimeofday(&t, NULL);
+   //long long lt = t.tv_sec*1000LL + t.tv_usec/1000LL;
    return (lt - sStartTimeStamp_ms);
 }
 
@@ -274,12 +292,12 @@ int is_first_boot()
 
 char* removeTrailingZero(char* szBuff)
 {
-   if ( NULL == szBuff )
-      return NULL;
+   if ( (NULL == szBuff) || (0 == szBuff[0]) )
+      return szBuff;
    int index = strlen(szBuff)-1;
    while ( index >= 0 )
    {
-      if ( szBuff[index] != '0' && szBuff[index] != '.' )
+      if ( (szBuff[index] != '0') && (szBuff[index] != '.') )
          break;
       if ( szBuff[index] == '.' )
       {
@@ -290,6 +308,58 @@ char* removeTrailingZero(char* szBuff)
       index--;
    }
    return szBuff;
+}
+
+char* removeNewLines(char* szBuff)
+{
+   if ( (NULL == szBuff) || (0 == szBuff[0]) )
+      return szBuff;
+
+   removeTrailingNewLines(szBuff);
+
+   int iLen = strlen(szBuff);
+   for( int i=0; i<iLen; i++ )
+   {
+      if ( (szBuff[i] >= 10) && (szBuff[i] <= 14) )
+         szBuff[i] = '*';
+   }
+   return szBuff;
+}
+
+char* removeTrailingNewLines(char* szBuff)
+{
+   if ( (NULL == szBuff) || (0 == szBuff[0]) )
+      return szBuff;
+   int iLen = strlen(szBuff);
+   iLen--;
+   while ( iLen >= 0 )
+   {
+      if ( (szBuff[iLen] >= 10) && (szBuff[iLen] <= 14) )
+         szBuff[iLen] = 0;
+      else
+         break;
+      iLen--;
+   }
+   return szBuff;
+}
+
+char* removeLeadingWhiteSpace(char* szBuff)
+{
+   if ( (NULL == szBuff) || (0 == szBuff[0]) )
+      return szBuff;
+   int iLen = strlen(szBuff);
+   int i = 0;
+   char* p = szBuff;
+   while ( i < iLen )
+   {
+      if ( *p <= 32 )
+         *p = ' ';
+      else
+         break;
+      i++;
+      p++;
+   }
+   return p;
 }
 
 int _log_check_for_service_log_access()
@@ -433,6 +503,9 @@ void log_init(const char* component_name)
    _log_check_for_service_log_access();
     
    log_line_forced_to_file("Starting...");
+   struct timespec ts;
+   clock_getres(RUBY_HW_CLOCK_ID, &ts);
+   log_line_forced_to_file("Current clock (id %d) resolution: %d sec, %d nanosec", RUBY_HW_CLOCK_ID, ts.tv_sec, ts.tv_nsec);
 }
 
 void log_arguments(int argc, char *argv[])

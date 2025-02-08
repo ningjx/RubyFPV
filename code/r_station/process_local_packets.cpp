@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -42,7 +42,6 @@
 #include "../base/hardware.h"
 #include "../base/hw_procs.h"
 #include "../base/ruby_ipc.h"
-#include "../base/controller_utils.h"
 #include "../common/string_utils.h"
 #include "../common/radio_stats.h"
 #include "../common/models_connect_frequencies.h"
@@ -52,9 +51,9 @@
 #include "../radio/radio_rx.h"
 #include "../radio/radio_tx.h"
 #include "../radio/radio_duplicate_det.h"
+#include "../utils/utils_controller.h"
 
 #include "shared_vars.h"
-#include "links_utils.h"
 #include "radio_links.h"
 #include "ruby_rt_station.h"
 #include "processor_rx_audio.h"
@@ -177,6 +176,11 @@ void _process_local_notification_model_changed(t_packet_header* pPH, u8 uChangeT
    rc_parameters_t oldRCParams;
    video_parameters_t oldVideoParams;
 
+   ControllerSettings* pCS = get_ControllerSettings();
+   ControllerInterfacesSettings* pCIS = get_ControllerInterfacesSettings();
+   ControllerInterfacesSettings oldCIS;
+   memcpy(&oldCIS, pCIS, sizeof(ControllerInterfacesSettings));
+
    memcpy(&oldRadioInterfacesParams, &(g_pCurrentModel->radioInterfacesParams), sizeof(type_radio_interfaces_parameters));
    memcpy(&oldRadioLinksParams, &(g_pCurrentModel->radioLinksParams), sizeof(type_radio_links_parameters));
    memcpy(&oldRCParams, &(g_pCurrentModel->rc_params), sizeof(rc_parameters_t));
@@ -185,50 +189,83 @@ void _process_local_notification_model_changed(t_packet_header* pPH, u8 uChangeT
    memcpy(&oldVideoParams, &(g_pCurrentModel->video_params), sizeof(video_parameters_t));
             
    u32 oldEFlags = g_pCurrentModel->enc_flags;
-   ControllerSettings* pCS = get_ControllerSettings();
-   int iOldTxPowerSiK = pCS->iTXPowerSiK;
 
    if ( uChangeType == MODEL_CHANGED_RADIO_POWERS )
    {
       log_line("Received local notification that radio powers have changed.");
       load_ControllerSettings();
-      if ( iOldTxPowerSiK == pCS->iTXPowerSiK )
+      load_ControllerInterfacesSettings();
+      
+      apply_controller_radio_tx_powers(g_pCurrentModel, pCS->iFixedTxPower, false);
+
+      int iSikRadioIndexToUpdate = -1;
+      int iSikOldPower = -1;
+      int iSikNewPower = -1;
+      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
       {
-         log_line("SiK Tx power is unchanged. Ignoring this notification.");
+         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+         if ( ! pRadioHWInfo->isConfigurable )
+            continue;
+         if ( !hardware_radio_index_is_sik_radio(i) )
+            continue;
+
+         t_ControllerRadioInterfaceInfo* pCRII = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
+         if ( NULL == pCRII )
+            continue;
+
+         for( int k=0; k<oldCIS.radioInterfacesCount; k++ )
+         {
+            if ( 0 == strncmp(pRadioHWInfo->szMAC, oldCIS.listRadioInterfaces[k].szMAC, MAX_MAC_LENGTH) )
+            if ( pCRII->iRawPowerLevel != oldCIS.listRadioInterfaces[k].iRawPowerLevel )
+            {
+               iSikOldPower = oldCIS.listRadioInterfaces[k].iRawPowerLevel;
+               iSikRadioIndexToUpdate = i;
+               break;
+            }
+         }
+      }
+
+      if ( iSikRadioIndexToUpdate != -1 )
+      {
+         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(iSikRadioIndexToUpdate);
+         t_ControllerRadioInterfaceInfo* pCRII = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
+         iSikNewPower = pCRII->iRawPowerLevel;
+         if ( (iSikNewPower < 0) || (iSikNewPower > 20) )
+            iSikNewPower = 20;
+         log_line("SiK Tx power changed on radio interface %d from %d to %d. Updating SiK radio interface params...",
+            iSikRadioIndexToUpdate, iSikOldPower, iSikNewPower);
+         if ( g_SiKRadiosState.bConfiguringToolInProgress )
+         {
+            log_softerror_and_alarm("Another SiK configuration is in progress. Ignoring this one.");
+            return;
+         }
+
+         if ( g_SiKRadiosState.bConfiguringSiKThreadWorking )
+         {
+            log_softerror_and_alarm("SiK reinitialization thread is in progress. Ignoring this notification.");
+            return;
+         }
+
+         if ( g_SiKRadiosState.bMustReinitSiKInterfaces )
+         {
+            log_softerror_and_alarm("SiK reinitialization is already flagged. Ignoring this notification.");
+            return;
+         }
+
+         radio_links_close_and_mark_sik_interfaces_to_reopen();
+         g_SiKRadiosState.bConfiguringToolInProgress = true;
+         g_SiKRadiosState.uTimeStartConfiguring = g_TimeNow;
+            
+         char szCommand[128];
+         sprintf(szCommand, "rm -rf %s%s", FOLDER_RUBY_TEMP, FILE_TEMP_SIK_CONFIG_FINISHED);
+         hw_execute_bash_command(szCommand, NULL);
+
+         sprintf(szCommand, "./ruby_sik_config none 0 -power %d &", iSikNewPower);
+         hw_execute_bash_command(szCommand, NULL);
+
+         // Do not need to notify other components. Just return.
          return;
       }
-      log_line("SiK Tx power changed from %d to %d. Updating SiK radio interfaces params...", iOldTxPowerSiK, pCS->iTXPowerSiK);
-      if ( g_SiKRadiosState.bConfiguringToolInProgress )
-      {
-         log_softerror_and_alarm("Another SiK configuration is in progress. Ignoring this one.");
-         return;
-      }
-
-      if ( g_SiKRadiosState.bConfiguringSiKThreadWorking )
-      {
-         log_softerror_and_alarm("SiK reinitialization thread is in progress. Ignoring this notification.");
-         return;
-      }
-
-      if ( g_SiKRadiosState.bMustReinitSiKInterfaces )
-      {
-         log_softerror_and_alarm("SiK reinitialization is already flagged. Ignoring this notification.");
-         return;
-      }
-
-      radio_links_close_and_mark_sik_interfaces_to_reopen();
-      g_SiKRadiosState.bConfiguringToolInProgress = true;
-      g_SiKRadiosState.uTimeStartConfiguring = g_TimeNow;
-         
-      char szCommand[128];
-      sprintf(szCommand, "rm -rf %s%s", FOLDER_RUBY_TEMP, FILE_TEMP_SIK_CONFIG_FINISHED);
-      hw_execute_bash_command(szCommand, NULL);
-
-      sprintf(szCommand, "./ruby_sik_config none 0 -power %d &", pCS->iTXPowerSiK);
-      hw_execute_bash_command(szCommand, NULL);
-
-      // Do not need to notify other components. Just return.
-      return;
    }
 
    // Reload new model state
@@ -359,6 +396,8 @@ void _process_local_notification_model_changed(t_packet_header* pPH, u8 uChangeT
          int nRateTx = DEFAULT_RADIO_DATARATE_LOWEST;
          if ( g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_LOWEST )
             nRateTx = DEFAULT_RADIO_DATARATE_LOWEST;
+         if ( g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO )
+            nRateTx = DEFAULT_RADIO_DATARATE_LOWEST;
          if ( g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_FIXED )
             nRateTx = g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[iRadioLink];
          if ( g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO)
@@ -426,6 +465,28 @@ void _process_local_notification_model_changed(t_packet_header* pPH, u8 uChangeT
       return;
    }
 
+   if ( (uChangeType == MODEL_CHANGED_VIDEO_PROFILES) || 
+        (uChangeType == MODEL_CHANGED_VIDEO_KEYFRAME) )
+   {
+      if ( uChangeType == MODEL_CHANGED_VIDEO_PROFILES )
+         log_line("Received notification from central that only keyframe changed on current vehicle video stream.");
+      else
+         log_line("Received notification from central that video profiles have changed.");
+      int iRuntimeIndex = -1;
+      for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
+      {
+         if ( g_State.vehiclesRuntimeInfo[i].uVehicleId == g_pCurrentModel->uVehicleId )
+         {
+            iRuntimeIndex = i;
+            break;
+         }
+      }
+      if ( -1 == iRuntimeIndex )
+         log_softerror_and_alarm("Failed to find vehicle runtime info for VID %u while processing video profile changed notif from central.", g_pCurrentModel->uVehicleId);
+      else
+         adaptive_video_on_new_vehicle(iRuntimeIndex);
+      return;
+   }
    if ( uChangeType == MODEL_CHANGED_OSD_PARAMS )
    {
       log_line("Received notification from central that current model OSD params have changed.");
@@ -435,7 +496,7 @@ void _process_local_notification_model_changed(t_packet_header* pPH, u8 uChangeT
    if ( uChangeType == MODEL_CHANGED_VIDEO_CODEC )
    {
       log_line("Received notification that video codec changed. New codec: %s", (g_pCurrentModel->video_params.uVideoExtraFlags & VIDEO_FLAG_GENERATE_H265)?"H265":"H264");
-      rx_video_output_signal_restart_player();
+      rx_video_output_signal_restart_streamer();
       // Reset local info so that we show the "Waiting for video feed" message
       log_line("Reset received video stream flag");
       for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
@@ -443,9 +504,25 @@ void _process_local_notification_model_changed(t_packet_header* pPH, u8 uChangeT
       return;
    }
 
+   if ( uChangeType == MODEL_CHANGED_RESET_TO_DEFAULTS )
+   {
+      log_line("Received local notification that current model was reset to defaults or factory reseted.");
+      for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
+      {
+         if ( g_State.vehiclesRuntimeInfo[i].uVehicleId == g_pCurrentModel->uVehicleId )
+         {
+            g_State.vehiclesRuntimeInfo[i].bIsPairingDone = false;
+            g_State.vehiclesRuntimeInfo[i].uPairingRequestTime = g_TimeNow + 5000;
+         }
+      }
+   }
+
    // Signal other components about the model change if it's not from central or if settings where synchronised from vehicle
    // Signal other components too if the RC parameters where changed
    bool bNotify = false;
+
+   if ( uChangeType == MODEL_CHANGED_RESET_TO_DEFAULTS )
+      bNotify = true;
    if ( (pPH->vehicle_id_src == PACKET_COMPONENT_COMMANDS) ||
         (uChangeType == MODEL_CHANGED_SYNCHRONISED_SETTINGS_FROM_VEHICLE) )
       bNotify = true;
@@ -499,6 +576,21 @@ void process_local_control_packet(t_packet_header* pPH)
       log_line("Router received a local message to reload core plugins.");
       refresh_CorePlugins(0);
       log_line("Router finished reloading core plugins.");
+      return;
+   }
+
+   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_PAUSE_LOCAL_VIDEO_DISPLAY )
+   {
+      log_line("Router received local message to %s local video display", (0 == pPH->vehicle_id_dest)?"resume":"pause");
+      if ( 0 == pPH->vehicle_id_dest )
+      {
+         rx_video_output_enable_streamer_output();
+      }
+      else
+      {
+         rx_video_output_disable_streamer_output();
+         rx_video_output_stop_video_streamer();
+      }
       return;
    }
 
@@ -664,8 +756,7 @@ void process_local_control_packet(t_packet_header* pPH)
                break;
             if ( g_pVideoProcessorRxList[i]->m_uVehicleId == pPH->vehicle_id_src )
             {
-               // To fix?
-               //g_pVideoProcessorRxList[i]->resetRetransmissionsStats();
+               g_pVideoProcessorRxList[i]->discardRetransmissionsInfo();
                break;
             }
          }
@@ -762,7 +853,6 @@ void process_local_control_packet(t_packet_header* pPH)
    if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED )
    {
       log_line("Received control packet to reload controller settings.");
-
       g_pControllerSettings = get_ControllerSettings();
       int iOldTxMode = g_pControllerSettings->iRadioTxUsesPPCAP;
       int iOldSocketBuffers = g_pControllerSettings->iRadioBypassSocketBuffers;
@@ -850,15 +940,20 @@ void process_local_control_packet(t_packet_header* pPH)
          }
       }
 
+      g_TimeNow = get_current_timestamp_ms();
+
       if ( NULL != g_pControllerSettings )
          radio_stats_set_graph_refresh_interval(&g_SM_RadioStats, g_pControllerSettings->nGraphRadioRefreshInterval);
       radio_stats_interfaces_rx_graph_reset(&g_SM_RadioStatsInterfacesRxGraph, 10);
 
       if ( NULL != g_pControllerSettings )
       {
-         log_line("Set new radio rx/tx threads priorities: %d/%d", g_pControllerSettings->iRadioRxThreadPriority, g_pControllerSettings->iRadioTxThreadPriority);
-         radio_rx_set_custom_thread_priority(g_pControllerSettings->iRadioRxThreadPriority);
-         radio_tx_set_custom_thread_priority(g_pControllerSettings->iRadioTxThreadPriority);
+         log_line("Set new radio rx/tx threads priorities: %d/%d (adjustments enabled: %d)", g_pControllerSettings->iRadioRxThreadPriority, g_pControllerSettings->iRadioTxThreadPriority, g_pControllerSettings->iPrioritiesAdjustment);
+         if ( g_pControllerSettings->iPrioritiesAdjustment )
+         {
+           radio_rx_set_custom_thread_priority(g_pControllerSettings->iRadioRxThreadPriority);
+           radio_tx_set_custom_thread_priority(g_pControllerSettings->iRadioTxThreadPriority);
+         }
       }
 
       if ( NULL != g_pSM_RadioStats )
@@ -882,6 +977,9 @@ void process_local_control_packet(t_packet_header* pPH)
          if ( -1 != g_fIPCToRC )
             ruby_ipc_channel_send_message(g_fIPCToRC, (u8*)pPH, pPH->total_length);
       }
+
+      g_TimeNow = get_current_timestamp_ms();
+      g_TimeLastVideoParametersOrProfileChanged = g_TimeNow;
       return;
    }
 
@@ -900,36 +998,5 @@ void process_local_control_packet(t_packet_header* pPH)
            pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_UPDATE_FINISHED )
          g_bUpdateInProgress = false;
       return;
-   }
-
-   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_START )
-   {
-      log_line("Starting debug router packets history graph");
-      g_bDebugIsPacketsHistoryGraphOn = true;
-      g_bDebugIsPacketsHistoryGraphPaused = false;
-      g_pDebug_SM_RouterPacketsStatsHistory = shared_mem_router_packets_stats_history_open_write();
-      if ( NULL == g_pDebug_SM_RouterPacketsStatsHistory )
-      {
-         log_softerror_and_alarm("Failed to open shared mem for write for router packets stats history.");
-         g_bDebugIsPacketsHistoryGraphOn = false;
-         g_bDebugIsPacketsHistoryGraphPaused = true;
-      }
-      return;
-   }
-
-   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_STOP )
-   {
-      g_bDebugIsPacketsHistoryGraphOn = false;
-      g_bDebugIsPacketsHistoryGraphPaused = true;
-      shared_mem_router_packets_stats_history_close(g_pDebug_SM_RouterPacketsStatsHistory);
-      return;
-   }
-   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_PAUSE )
-   {
-      g_bDebugIsPacketsHistoryGraphPaused = true;
-   }
-   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_RESUME )
-   {
-      g_bDebugIsPacketsHistoryGraphPaused = false;
    }
 }

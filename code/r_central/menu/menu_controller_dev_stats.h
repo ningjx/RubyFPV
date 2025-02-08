@@ -19,12 +19,14 @@ class MenuControllerDevStatsConfig: public Menu
       MenuItemSlider* m_pItemsSlider[15];
 
       int m_IndexQAButton;
-      int m_IndexShowRXVideoDataPackets;  
+      int m_IndexShowRXTXPackets;
+      int m_IndexShowRXAirGaps;
       int m_IndexShowRxH264Frames;
       int m_IndexShowRxDBM;
       int m_IndexShowRxMissingPackets;
       int m_IndexShowRxMissingPacketsMaxGap;
       int m_IndexShowRxConsumedPackets;
+      int m_IndexShowTxHighRegPackets;
       int m_IndexShowMinMaxAckTime;
       int m_IndexShowAckTimeHist;
       int m_IndexShowRxMaxECUsed;

@@ -27,12 +27,15 @@ typedef u32 __le32;
 #define MAX_VEHICLE_NAME_LENGTH 16
 #define MAX_SERVICE_LOG_ENTRY_LENGTH 300
 #define LOGGER_MESSAGE_QUEUE_ID 123
+#define SM_STREAMER_SIZE 512000
+#define SM_STREAMER_NAME "/SSMRVideo"
+#define RUBY_HW_CLOCK_ID CLOCK_MONOTONIC
 
 #define SYSTEM_NAME "Ruby"
-// dword: BB.BB.MM.mm  (BB.BB: build number, MM: major ver, mm: minor ver) 
+// dword[3...0]: BB.BB.MM.mm  (BB.BB: build number (highest bytes), MM: major ver, mm: minor ver (lowest byte)) 
 #define SYSTEM_SW_VERSION_MAJOR 10
-#define SYSTEM_SW_VERSION_MINOR 0
-#define SYSTEM_SW_BUILD_NUMBER  245
+#define SYSTEM_SW_VERSION_MINOR 30
+#define SYSTEM_SW_BUILD_NUMBER  266
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define le16_to_cpu(x) (x)
@@ -77,12 +80,19 @@ u32 base_compute_crc32(u8 *buf, int length);
 u8 base_compute_crc8(u8* pBuffer, int iLength);
 int base_check_crc32(u8* pBuffer, int iLength);
 
+void hardware_sleep_sec(u32 uSeconds);
+void hardware_sleep_ms(u32 miliSeconds);
+void hardware_sleep_micros(u32 microSeconds);
+
 u32 get_current_timestamp_micros();
 u32 get_current_timestamp_ms();
 u32 get_boot_timestamp_ms();
 int is_first_boot();
 
 char* removeTrailingZero(char* szBuff);
+char* removeNewLines(char* szBuff);
+char* removeTrailingNewLines(char* szBuff);
+char* removeLeadingWhiteSpace(char* szBuff);
 
 void log_init_local_only(const char* component_name);
 void log_init(const char* component_name);

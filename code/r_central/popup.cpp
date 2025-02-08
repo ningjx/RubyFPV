@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -306,8 +306,15 @@ Popup::Popup(const char* title, float x, float y, float timeoutSec)
    m_bTopmost = false;
    m_idFont = g_idFontMenu;
    m_idIcon = 0;
-   m_ColorIcon[0] = m_ColorIcon[1] = m_ColorIcon[2] = m_ColorIcon[3] = 0.0;
-   m_fIconSize = 0;
+   m_idIcon2 = 0;
+   m_ColorIcon[0] = m_ColorIcon[1] = m_ColorIcon[2] = 0.0;
+   m_ColorIcon[3] = 1.0;
+   m_ColorIcon2[0] = m_ColorIcon2[1] = m_ColorIcon2[2] = 0.0;
+   m_ColorIcon2[3] = 1.0;
+   m_fIconWidth = 0;
+   m_fIconWidth2 = 0;
+   m_fIconHeight = 0;
+   m_fIconHeight2 = 0;
    m_bCentered = false;
    m_bCenterTexts = false;
    m_bBottomAlign = false;
@@ -317,6 +324,7 @@ Popup::Popup(const char* title, float x, float y, float timeoutSec)
    m_fPadding = 0.0;
    m_fPaddingX = 0.0;
    m_fPaddingY = 0.0;
+   m_uCreatedTime = g_TimeNow;
 }
 
 Popup::Popup(const char* title, float x, float y, float maxWidth, float timeoutSec)
@@ -351,7 +359,15 @@ Popup::Popup(const char* title, float x, float y, float maxWidth, float timeoutS
    m_bTopmost = false;
    m_idFont = g_idFontMenu;
    m_idIcon = 0;
-   m_ColorIcon[0] = m_ColorIcon[1] = m_ColorIcon[2] = m_ColorIcon[3] = 0.0;
+   m_idIcon2 = 0;
+   m_ColorIcon[0] = m_ColorIcon[1] = m_ColorIcon[2] = 0.0;
+   m_ColorIcon[3] = 1.0;
+   m_ColorIcon2[0] = m_ColorIcon2[1] = m_ColorIcon2[2] = 0.0;
+   m_ColorIcon2[3] = 1.0;
+   m_fIconWidth = 0;
+   m_fIconWidth2 = 0;
+   m_fIconHeight = 0;
+   m_fIconHeight2 = 0;
    m_bCentered = false;
    m_bCenterTexts = false;
    m_bBottomAlign = false;
@@ -361,6 +377,7 @@ Popup::Popup(const char* title, float x, float y, float maxWidth, float timeoutS
    m_fPadding = 0.0;
    m_fPaddingX = 0.0;
    m_fPaddingY = 0.0;
+   m_uCreatedTime = g_TimeNow;
 }
 
 
@@ -390,7 +407,15 @@ Popup::Popup(bool bCentered, const char* title, float timeoutSec)
    m_bTopmost = false;
    m_idFont = g_idFontMenu;
    m_idIcon = 0;
-   m_ColorIcon[0] = m_ColorIcon[1] = m_ColorIcon[2] = m_ColorIcon[3] = 0.0;
+   m_idIcon2 = 0;
+   m_ColorIcon[0] = m_ColorIcon[1] = m_ColorIcon[2] = 0.0;
+   m_ColorIcon[3] = 1.0;
+   m_ColorIcon2[0] = m_ColorIcon2[1] = m_ColorIcon2[2] = 0.0;
+   m_ColorIcon2[3] = 1.0;
+   m_fIconWidth = 0;
+   m_fIconWidth2 = 0;
+   m_fIconHeight = 0;
+   m_fIconHeight2 = 0;
    m_bCentered = bCentered;
    m_bCenterTexts = false;
    m_bNoBackground = false;
@@ -402,6 +427,8 @@ Popup::Popup(bool bCentered, const char* title, float timeoutSec)
 
    if ( m_bCentered )
       m_bBottomAlign = false;
+
+   m_uCreatedTime = g_TimeNow;
 }
 
 
@@ -454,6 +481,12 @@ void Popup::setXPos(float xPos)
 {
    m_xPos = xPos;
    m_bInvalidated = true;
+}
+
+void Popup::setYPos(float yPos)
+{
+   m_yPos = yPos;
+   m_bInvalidated = true; 
 }
 
 void Popup::setBottomAlign(bool b)
@@ -537,16 +570,30 @@ float Popup::getTimeout()
 }
 
 
-void Popup::setIconId(u32 idIcon, double* pColor)
+void Popup::setIconId(u32 idIcon, const double* pColor)
 {
    m_idIcon = idIcon;
    if ( NULL != pColor )
       memcpy((u8*)&m_ColorIcon, pColor, 4*sizeof(double));
    else
    {
-      m_ColorIcon[0] = m_ColorIcon[1] = m_ColorIcon[2] = m_ColorIcon[3] = 0.0;
+      m_ColorIcon[0] = m_ColorIcon[1] = m_ColorIcon[2] = 0.0;
+      m_ColorIcon[3] = 1.0;
    }
    m_bInvalidated = true;
+}
+
+void Popup::setIconId2(u32 idIcon2, const double* pColor2)
+{
+   m_idIcon2 = idIcon2;
+   if ( NULL != pColor2 )
+      memcpy((u8*)&m_ColorIcon2, pColor2, 4*sizeof(double));
+   else
+   {
+      m_ColorIcon2[0] = m_ColorIcon2[1] = m_ColorIcon2[2] = 0.0;
+      m_ColorIcon2[3] = 1.0;
+   }
+   m_bInvalidated = true; 
 }
 
 void Popup::invalidate()
@@ -598,6 +645,11 @@ void Popup::addLine(const char* szLine)
       strcpy(m_szLines[MAX_POPUP_LINES-1], szLine);
    }
    m_bInvalidated = true;
+}
+
+u32 Popup::getCreationTime()
+{
+   return m_uCreatedTime;
 }
 
 bool Popup::hasDisabledAutoRemove()
@@ -673,6 +725,58 @@ void Popup::onShow()
    m_bInvalidated = true;
 }
 
+float Popup::computeIconsSizes()
+{
+   float height_text = g_pRenderEngine->textHeight(m_idFont);
+   m_fIconWidth = 0;
+   m_fIconWidth2 = 0;
+   m_fIconHeight = 0;
+   m_fIconHeight2 = 0;
+   float fDeltaWidthIcons = 0.0;
+   if ( 0 != m_idIcon )
+   {
+      m_fIconHeight = height_text*1.4;
+      if ( m_RenderHeight-2.0*m_fPaddingY > 2.0*height_text )
+         m_fIconHeight = height_text*2.2;
+      if ( m_RenderHeight-2.0*m_fPaddingY > 3.6*height_text )
+         m_fIconHeight = height_text*3.2;
+      if ( m_RenderHeight-2.0*m_fPaddingY >= 4.6*height_text )
+         m_fIconHeight = height_text*3.8;
+
+      if ( m_fIconHeight < height_text*1.8 )
+      if ( m_idIcon == g_idIconController )
+         m_fIconHeight = height_text*2.0;
+
+      m_fIconWidth = m_fIconHeight / g_pRenderEngine->getAspectRatio();
+      fDeltaWidthIcons += m_fIconWidth;
+   }
+
+   if ( 0 != m_idIcon2 )
+   {
+      m_fIconHeight2 = height_text*1.4;
+      if ( m_RenderHeight-2.0*m_fPaddingY > 2.0*height_text )
+         m_fIconHeight2 = height_text*2.2;
+      if ( m_RenderHeight-2.0*m_fPaddingY > 3.6*height_text )
+         m_fIconHeight2 = height_text*3.2;
+      if ( m_RenderHeight-2.0*m_fPaddingY >= 4.6*height_text )
+         m_fIconHeight2 = height_text*3.8;
+
+      if ( m_fIconHeight2 < height_text*1.8 )
+      if ( m_idIcon2 == g_idIconController )
+         m_fIconHeight2 = height_text*2.0;
+
+      m_fIconHeight *= 1.1;
+      m_fIconWidth2 = m_fIconHeight2 / g_pRenderEngine->getAspectRatio();
+      fDeltaWidthIcons += m_fIconWidth2;
+      if ( 0 != m_idIcon )
+         fDeltaWidthIcons += height_text*0.4;
+   }
+
+   if ( (0 != m_idIcon) || (0 != m_idIcon2) )
+      fDeltaWidthIcons += height_text*0.4;
+   return fDeltaWidthIcons;
+}
+
 void Popup::computeSize()
 {
    float height_text = g_pRenderEngine->textHeight(m_idFont);
@@ -725,29 +829,10 @@ void Popup::computeSize()
       m_RenderHeight += fHeight;
    }
 
-
-   m_fIconSize = 0.0;
-   float fDeltaWidthIcon = 0.0;
-   if ( 0 != m_idIcon )
-   {
-      m_fIconSize = height_text*1.4;
-      if ( m_RenderHeight-2.0*m_fPaddingY > 2.0*height_text )
-         m_fIconSize = height_text*2.2;
-      if ( m_RenderHeight-2.0*m_fPaddingY > 3.6*height_text )
-         m_fIconSize = height_text*3.2;
-      if ( m_RenderHeight-2.0*m_fPaddingY >= 4.6*height_text )
-         m_fIconSize = height_text*3.8;
-
-      if ( m_fIconSize < height_text*1.8 )
-      if ( m_idIcon == g_idIconController )
-         m_fIconSize = height_text*2.0;
-
-      fDeltaWidthIcon = m_fIconSize/g_pRenderEngine->getAspectRatio();
-   }
-
+   float fDeltaWidthIcons = computeIconsSizes();
    if ( m_bCentered )
    {
-      m_RenderXPos = (1.0-m_RenderWidth)/2.0 - fDeltaWidthIcon;
+      m_RenderXPos = (1.0-m_RenderWidth)/2.0 - fDeltaWidthIcons;
       m_RenderYPos = (1.0-m_RenderHeight)/2.0;
    }
    else
@@ -807,38 +892,36 @@ void Popup::Render()
       g_pRenderEngine->setStroke(get_Color_PopupBorder());
    }
    
-   m_fIconSize = 0.0;
-   float fDeltaWidthIcon = 0.0;
-   if ( 0 != m_idIcon )
-   {
-      m_fIconSize = height_text*1.4;
-      if ( m_RenderHeight-2.0*m_fPaddingY > 2.0*height_text )
-         m_fIconSize = height_text*2.2;
-      if ( m_RenderHeight-2.0*m_fPaddingY > 3.6*height_text )
-         m_fIconSize = height_text*3.2;
-      if ( m_RenderHeight-2.0*m_fPaddingY >= 4.6*height_text )
-         m_fIconSize = height_text*3.8;
-
-      if ( m_fIconSize < height_text*1.8 )
-      if ( m_idIcon == g_idIconController )
-         m_fIconSize = height_text*2.0;
-
-      fDeltaWidthIcon = m_fIconSize/g_pRenderEngine->getAspectRatio() + m_fPaddingX;
-   }
+   float fDeltaWidthIcons = computeIconsSizes();
    if ( ! m_bNoBackground )
-      g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos, m_RenderWidth + fDeltaWidthIcon, m_RenderHeight, POPUP_ROUND_MARGIN);
+      g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos, m_RenderWidth + fDeltaWidthIcons, m_RenderHeight, POPUP_ROUND_MARGIN);
 
    float xTextStart = m_RenderXPos+m_fPaddingX;
    float yTextStart = m_RenderYPos+m_fPaddingY;
    
+   if ( 0 != m_idIcon2 )
+   {
+      if ( m_ColorIcon2[3] > 0.0001 )
+         g_pRenderEngine->setColors(&m_ColorIcon2[0]);
+      float yIcon = m_RenderYPos + 0.5*(m_RenderHeight - m_fIconHeight2);
+      g_pRenderEngine->drawIcon(xTextStart, yIcon, m_fIconWidth2, m_fIconHeight2, m_idIcon2);  
+      xTextStart += m_fIconWidth2;
+   }
+
    if ( 0 != m_idIcon )
    {
+      if ( 0 != m_idIcon2 )
+         xTextStart += height_text * 0.4;
       if ( m_ColorIcon[3] > 0.0001 )
          g_pRenderEngine->setColors(&m_ColorIcon[0]);
-      float yIcon = m_RenderYPos + 0.5*(m_RenderHeight - m_fIconSize);
-      g_pRenderEngine->drawIcon(xTextStart, yIcon, m_fIconSize/g_pRenderEngine->getAspectRatio(), m_fIconSize, m_idIcon);  
-      xTextStart += fDeltaWidthIcon;
+      float yIcon = m_RenderYPos + 0.5*(m_RenderHeight - m_fIconHeight);
+      g_pRenderEngine->drawIcon(xTextStart, yIcon, m_fIconWidth, m_fIconHeight, m_idIcon);  
+      xTextStart += m_fIconWidth;
    }
+
+   if ( (0 != m_idIcon) || (0 != m_idIcon2) )
+      xTextStart += height_text*0.4;
+
    
    g_pRenderEngine->setColors(get_Color_PopupText());
    

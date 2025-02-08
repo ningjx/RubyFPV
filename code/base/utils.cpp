@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga
+    Copyright (c) 2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -744,9 +744,14 @@ int utils_get_video_profile_mq_radio_datarate(Model* pModel)
    }
 
    // For MCS data rates, return a lower MCS data rate
+   //iDataRate = iMaxRadioDataRate;
+   //if ( iDataRate < -1 )
+   //   iDataRate++;
+
+   // MCS-1
    iDataRate = iMaxRadioDataRate;
-   if ( iDataRate < -1 )
-      iDataRate++;
+   if ( iDataRate <= -2 )
+      iDataRate = -2;
    return iDataRate;
 }
 
@@ -932,14 +937,6 @@ bool radio_utils_set_interface_frequency(Model* pModel, int iRadioIndex, int iAs
       iEndIndex = iRadioIndex;
    }
 
-   #if defined(HW_PLATFORM_RASPBERRY)
-   log_line("Setting frequency for Pi method");
-   #elif defined(HW_PLATFORM_RADXA_ZERO3)
-   log_line("Setting frequency for Radxa method");
-   #else
-   log_line("Setting frequency for OpenIPC/Radxa method");
-   #endif
-
    char cmd[128];
    char szOutput[512];
    bool failed = false;
@@ -1019,6 +1016,9 @@ bool radio_utils_set_interface_frequency(Model* pModel, int iRadioIndex, int iAs
          }
          hw_execute_bash_command_raw(cmd, szOutput);
 
+         if ( 5 < strlen(szOutput) )
+            log_softerror_and_alarm("Received a response from set freq command: [%s]", szOutput);
+           
          if ( NULL != strstr( szOutput, "Invalid argument" ) )
          if ( bUsedHT40 )
          if ( pRadioInfo->isHighCapacityInterface )
@@ -1039,7 +1039,13 @@ bool radio_utils_set_interface_frequency(Model* pModel, int iRadioIndex, int iAs
             hw_execute_bash_command_raw(cmd, szOutput);
          }
 
-         if ( NULL != strstr( szOutput, "failed" ) )
+         if ( (NULL != strstr(szOutput, "busy")) || (NULL != strstr(szOutput, "such device")) )
+         {
+             hardware_initialize_radio_interface(i, delayMs);
+             hardware_sleep_ms(delayMs);
+             hw_execute_bash_command_raw(cmd, szOutput);
+         }
+         if ( NULL != strstr(szOutput, "failed") )
          {
             pRadioInfo->lastFrequencySetFailed = 1;
             pRadioInfo->uFailedFrequencyKhz = uFrequencyKhz;

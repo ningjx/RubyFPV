@@ -19,7 +19,6 @@ int s_fIPCRouterFromRC = -1;
 int s_fInputVideoStream = -1;
 
 bool g_bVideoPaused = false;
-int s_InputBufferVideoBytesRead = 0;
 
 u16 s_countTXVideoPacketsOutTemp = 0;
 u16 s_countTXDataPacketsOutTemp = 0;
@@ -63,10 +62,10 @@ t_packet_data_controller_link_stats g_PD_LastRecvControllerLinksStats;
 shared_mem_video_link_graphs g_SM_VideoLinkGraphs;
 shared_mem_dev_video_bitrate_history g_SM_DevVideoBitrateHistory;
 
-shared_mem_video_info_stats g_VideoInfoStatsCameraOutput;
-shared_mem_video_info_stats g_VideoInfoStatsRadioOut;
-shared_mem_video_info_stats* g_pSM_VideoInfoStatsRadioOut = NULL;
-shared_mem_video_info_stats* g_pSM_VideoInfoStatsCameraOutput = NULL;
+//shared_mem_video_frames_stats g_VideoInfoStatsCameraOutput;
+//shared_mem_video_frames_stats* g_pSM_VideoInfoStatsRadioOut = NULL;
+//shared_mem_video_frames_stats g_VideoInfoStatsRadioOut;
+//shared_mem_video_frames_stats* g_pSM_VideoInfoStatsCameraOutput = NULL;
 
 int g_iDebugShowKeyFramesAfterRelaySwitch = 0;
 

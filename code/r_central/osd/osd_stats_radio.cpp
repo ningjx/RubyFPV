@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -313,7 +313,7 @@ float osd_render_stats_radio_interfaces_get_height(shared_mem_radio_stats* pStat
    float height_text = g_pRenderEngine->textHeight(s_idFontStats);
    float height_text_small = osd_getFontHeightSmall();
    float hGraph = height_text * 1.8;
-   float height = height_text * s_OSDStatsLineSpacing + 2.0 *s_fOSDStatsMargin*1.0;
+   float height = 2.0 *s_fOSDStatsMargin*1.0;
 
    Model* pActiveModel = osd_get_current_data_source_vehicle_model();
 
@@ -329,21 +329,26 @@ float osd_render_stats_radio_interfaces_get_height(shared_mem_radio_stats* pStat
 
    // Title   
    if ( (!bIsCompact) && (!bIsMinimal) )
-      height += height_text*s_OSDStatsLineSpacing + s_fOSDStatsMargin*0.3;
+      height += 2.0*height_text*s_OSDStatsLineSpacing + s_fOSDStatsMargin*0.6;
    
    float fHeightInterface = height_text*s_OSDStatsLineSpacing*2.0 + hGraph;
    if ( pActiveModel->bDeveloperMode || s_bDebugStatsShowAll )
       fHeightInterface += 3.0 * ( height_text_small*s_OSDStatsLineSpacing );
    
-   height += fHeightInterface * pStats->countLocalRadioInterfaces;
+   for (int i=0; i<pStats->countLocalRadioInterfaces; i++ )
+   {
+      height += fHeightInterface;
+      if ( pStats->radio_interfaces[i].assignedLocalRadioLinkId < 0 )
+         height = height - hGraph + height_text*s_OSDStatsLineSpacing;
+   }
    
    height += height_text* 1.0 * (pStats->countLocalRadioInterfaces-1);
 
-   if ( pActiveModel->osd_params.osd_flags2[g_pCurrentModel->osd_params.layout] & OSD_FLAG2_SHOW_VEHICLE_RADIO_INTERFACES_STATS )
+   if ( pActiveModel->osd_params.osd_flags2[g_pCurrentModel->osd_params.iCurrentOSDLayout] & OSD_FLAG2_SHOW_VEHICLE_RADIO_INTERFACES_STATS )
    {
-      height += height_text * s_OSDStatsLineSpacing;
+      height += 2.0*height_text * s_OSDStatsLineSpacing;
       if ( (!bIsCompact) && (!bIsMinimal) )
-         height += 2.0*(height_text*s_OSDStatsLineSpacing + height_text*0.6);
+         height += 1.0*(height_text*s_OSDStatsLineSpacing + height_text*0.6);
       height += ( height_text*s_OSDStatsLineSpacing*2.0 + hGraph ) * pActiveModel->radioInterfacesParams.interfaces_count;
       height += height_text*1.0 * (pActiveModel->radioInterfacesParams.interfaces_count-1);
    
@@ -377,7 +382,7 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
 
    if ( NULL == pActiveModel )
       return 0.0;
-   if ( ! (pActiveModel->osd_params.osd_flags2[pActiveModel->osd_params.layout] & OSD_FLAG2_SHOW_STATS_RADIO_INTERFACES) )
+   if ( ! (pActiveModel->osd_params.osd_flags2[pActiveModel->osd_params.iCurrentOSDLayout] & OSD_FLAG2_SHOW_STATS_RADIO_INTERFACES) )
       return 0.0;
    
    bool bIsMinimal = false;
@@ -392,7 +397,6 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
    float hGraph = height_text * 1.8;
    
    float width = osd_render_stats_radio_interfaces_get_width(pStats);
-   
    float height = osd_render_stats_radio_interfaces_get_height(pStats);
    
    char szBuff[128];
@@ -419,7 +423,7 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
    
    float marginH = 0.0;//0.04/g_pRenderEngine->getAspectRatio();
    float maxWidth = width - marginH - 0.001;
-
+   float fWidthPixel = g_pRenderEngine->getPixelWidth();
    float y = yPos;
 
    if ( (!bIsCompact) && (!bIsMinimal) )
@@ -442,9 +446,11 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
    }
 
    float hBar = 0.0;
-   float hBarLost = 0.0;
+   float hBarLostVideo = 0.0;
+   float hBarLostData = 0.0;
    float dxBarWidth = maxWidth/(float)MAX_HISTORY_RADIO_STATS_RECV_SLICES;
    float fStroke = OSD_STRIKE_WIDTH;
+   double colorRed[] = {255,0,0,1};
 
    g_pRenderEngine->setStrokeSize(OSD_STRIKE_WIDTH);
    char szName[128];
@@ -496,7 +502,7 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
       float ySt = y;
       bool bIsTxCard = false;
       
-      if ( 1 < pStats->countLocalRadioInterfaces )
+      //if ( 1 < pStats->countLocalRadioInterfaces )
       if ( (iLocalRadioLinkId >= 0) && (pStats->radio_links[iLocalRadioLinkId].lastTxInterfaceIndex == i) )
          bIsTxCard = true;
          
@@ -524,131 +530,158 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
 
       osd_set_colors();
 
-      double* pcBarRx = get_Color_OSDText();
-      //double* pcBarGreen = get_Color_IconSucces();
-      double colorGreen[4] = {120,200,130,1};
-      double* pcBarGreen = &colorGreen[0];
-      g_pRenderEngine->setFill(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphBottomLinesAlpha);
-      g_pRenderEngine->setStroke(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphBottomLinesAlpha);
-      g_pRenderEngine->setStrokeSize(fStroke);
-      g_pRenderEngine->drawLine(xPos+marginH,y+hGraph + g_pRenderEngine->getPixelHeight(), xPos+marginH + maxWidth, y+hGraph + g_pRenderEngine->getPixelHeight());
-
-      float maxRecv = 0;
-      u32 maxBadLost = 0;
-      u32 firstLostValue = 0;
       u8 uMaxGapMs = 0;
-      u32 uGapSum = 0;
+      u32 maxBadLost = 0;
+      u32 uGapAverage = 0;
+      
+      if ( iLocalRadioLinkId >= 0 )
+      { 
+         double pcBarRx[4];
+         memcpy(pcBarRx, get_Color_OSDText(), 4*sizeof(double));
+         //double* pcBarGreen = get_Color_IconSucces();
+         double colorGreen[4] = {120,200,130,1};
+         double* pcBarGreen = &colorGreen[0];
+         g_pRenderEngine->setFill(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphBottomLinesAlpha);
+         g_pRenderEngine->setStroke(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphBottomLinesAlpha);
+         g_pRenderEngine->setStrokeSize(fStroke);
+         g_pRenderEngine->drawLine(xPos+marginH,y+hGraph + g_pRenderEngine->getPixelHeight(), xPos+marginH + maxWidth, y+hGraph + g_pRenderEngine->getPixelHeight());
 
-      for( int k=0; k<MAX_HISTORY_RADIO_STATS_RECV_SLICES; k++ )
-      {
-          if ( pStats->radio_interfaces[i].hist_rxPacketsCount[k] > maxRecv )
-             maxRecv = pStats->radio_interfaces[i].hist_rxPacketsCount[k];
-          
-          if ( pStats->radio_interfaces[i].hist_rxPacketsBadCount[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCount[k] > maxBadLost )
-             maxBadLost = pStats->radio_interfaces[i].hist_rxPacketsBadCount[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCount[k];
+         float maxRecv = 0;
+         u32 firstLostValue = 0;
+         u32 uGapSum = 0;
 
-          if ( 0 == firstLostValue )
-          if ( pStats->radio_interfaces[i].hist_rxPacketsBadCount[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCount[k] > 0 )
-             firstLostValue = pStats->radio_interfaces[i].hist_rxPacketsBadCount[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCount[k];
-
-          if ( pStats->radio_interfaces[i].hist_rxGapMiliseconds[k] != 0xFF )
-          {
-             uGapSum += pStats->radio_interfaces[i].hist_rxGapMiliseconds[k];
-             if ( pStats->radio_interfaces[i].hist_rxGapMiliseconds[k] > uMaxGapMs )
-                uMaxGapMs = pStats->radio_interfaces[i].hist_rxGapMiliseconds[k];
-          }
-      }
-
-      u32 uGapAverage = (uGapSum - uMaxGapMs) / (MAX_HISTORY_RADIO_STATS_RECV_SLICES-1);
-
-      float xBar = xPos + marginH + maxWidth - dxBarWidth;
-
-      if ( maxRecv >= 0.1 )
-      for( int k=0; k<MAX_HISTORY_RADIO_STATS_RECV_SLICES; k++ )
-      {
-         int iCountSliceLost = pStats->radio_interfaces[i].hist_rxPacketsLostCount[k] + pStats->radio_interfaces[i].hist_rxPacketsBadCount[k];
-         hBar = hGraph * (float)(pStats->radio_interfaces[i].hist_rxPacketsCount[k]) / maxRecv;
-         hBarLost = hGraph * (float)(iCountSliceLost) / maxRecv;
-         
-         if ( hBar + hBarLost > hGraph )
+         for( int k=0; k<MAX_HISTORY_RADIO_STATS_RECV_SLICES; k++ )
          {
-            hBar = hBar * (hGraph / (hBar + hBarLost));
-            hBarLost = hBarLost * (hGraph / (hBar + hBarLost));
+             if ( pStats->radio_interfaces[i].hist_rxPacketsCount[k] > maxRecv )
+                maxRecv = pStats->radio_interfaces[i].hist_rxPacketsCount[k];
+             
+             if ( (u32)(pStats->radio_interfaces[i].hist_rxPacketsBadCount[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCountVideo[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCountData[k]) > maxBadLost )
+                maxBadLost = pStats->radio_interfaces[i].hist_rxPacketsBadCount[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCountVideo[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCountData[k];
+
+             if ( 0 == firstLostValue )
+             if ( pStats->radio_interfaces[i].hist_rxPacketsBadCount[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCountVideo[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCountData[k] > 0 )
+                firstLostValue = pStats->radio_interfaces[i].hist_rxPacketsBadCount[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCountVideo[k] + pStats->radio_interfaces[i].hist_rxPacketsLostCountData[k];
+
+             if ( pStats->radio_interfaces[i].hist_rxGapMiliseconds[k] != 0xFF )
+             {
+                uGapSum += pStats->radio_interfaces[i].hist_rxGapMiliseconds[k];
+                if ( pStats->radio_interfaces[i].hist_rxGapMiliseconds[k] > uMaxGapMs )
+                   uMaxGapMs = pStats->radio_interfaces[i].hist_rxGapMiliseconds[k];
+             }
          }
-         
-         if ( pStats->radio_interfaces[i].hist_rxPacketsCount[k] > 0 )
-         if ( hBar > 0.85 * hGraph )
-            hBar = 0.85 * hGraph;
 
-         if ( iCountSliceLost != 0 )
+         uGapAverage = (uGapSum - uMaxGapMs) / (MAX_HISTORY_RADIO_STATS_RECV_SLICES-1);
+
+         float xBar = xPos + marginH + maxWidth - dxBarWidth;
+
+         if ( maxRecv >= 0.1 )
+         for( int k=0; k<MAX_HISTORY_RADIO_STATS_RECV_SLICES; k++ )
          {
-            if ( hBarLost > hGraph )
-               hBarLost = hGraph;
-            if ( hBarLost < 0.1 * hGraph )
-               hBarLost = 0.1 * hGraph;
-            hBarLost = ((int)(hBarLost/g_pRenderEngine->getPixelHeight())) * g_pRenderEngine->getPixelHeight();
-            g_pRenderEngine->setStroke(255,0,50,0.9);
-            g_pRenderEngine->setFill(255,0,50,0.9);
-            g_pRenderEngine->setStrokeSize(fStroke);
-            g_pRenderEngine->drawRect(xBar, y+hGraph - hBarLost, dxBarWidth - g_pRenderEngine->getPixelWidth(), hBarLost);
-         }
-         else
-            hBarLost = 0.0;
+            int iCountSliceLostVideo = pStats->radio_interfaces[i].hist_rxPacketsLostCountVideo[k] + pStats->radio_interfaces[i].hist_rxPacketsBadCount[k];
+            int iCountSliceLostData = pStats->radio_interfaces[i].hist_rxPacketsLostCountData[k];
+            hBar = hGraph * (float)(pStats->radio_interfaces[i].hist_rxPacketsCount[k]) / maxRecv;
+            hBarLostVideo = hGraph * (float)(iCountSliceLostVideo) / maxRecv;
+            hBarLostData = hGraph * (float)(iCountSliceLostData) / maxRecv;
+            if ( hBarLostVideo < 0.1 * hGraph )
+               hBarLostVideo = 0.1 * hGraph;
+            if ( hBarLostData < 0.1 * hGraph )
+               hBarLostData = 0.1 * hGraph;
 
-         hBar = ((int)(hBar/g_pRenderEngine->getPixelHeight())) * g_pRenderEngine->getPixelHeight();
-
-         bool bShowGreen = false;
-         if ( iCountSliceLost == 0 )
-         {
-            for( int iInt = 0; iInt < pStats->countLocalRadioInterfaces; iInt++ )
+            if ( hBar + hBarLostVideo + hBarLostData > hGraph )
             {
-               if ( iInt != i )
-               if ( pStats->radio_interfaces[iInt].hist_rxPacketsLostCount[k] + pStats->radio_interfaces[iInt].hist_rxPacketsBadCount[k] > 0 )
+               float fScale =  hGraph / (hBar + hBarLostVideo + hBarLostData);
+               hBar = hBar * fScale;
+               hBarLostVideo = hBarLostVideo * fScale;
+               hBarLostData = hBarLostData * fScale;
+            }
+            
+            if ( pStats->radio_interfaces[i].hist_rxPacketsCount[k] > 0 )
+            if ( hBar > 0.85 * hGraph )
+               hBar = 0.85 * hGraph;
+
+            float yBottomBar = y + hGraph;
+            if ( iCountSliceLostVideo != 0 )
+            {
+               g_pRenderEngine->setStroke(255,0,50,0.9);
+               g_pRenderEngine->setFill(255,0,50,0.9);
+               g_pRenderEngine->setStrokeSize(fStroke);
+               g_pRenderEngine->drawRect(xBar, yBottomBar - hBarLostVideo, dxBarWidth - fWidthPixel, hBarLostVideo);
+               yBottomBar -= hBarLostVideo;
+            }
+            if ( iCountSliceLostData != 0 )
+            {
+               g_pRenderEngine->setStroke(50,100,250,0.9);
+               g_pRenderEngine->setFill(50,100,250,0.9);
+               g_pRenderEngine->setStrokeSize(fStroke);
+               g_pRenderEngine->drawRect(xBar, yBottomBar - hBarLostData, dxBarWidth - fWidthPixel, hBarLostData);
+               yBottomBar -= hBarLostData;
+            }
+            
+
+            hBar = ((int)(hBar/g_pRenderEngine->getPixelHeight())) * g_pRenderEngine->getPixelHeight();
+
+            bool bShowGreen = false;
+            if ( (0 == iCountSliceLostVideo) && ( 0 == iCountSliceLostData) )
+            {
+               for( int iInt = 0; iInt < pStats->countLocalRadioInterfaces; iInt++ )
                {
-                  bShowGreen = true;
-                  break;
+                  if ( iInt != i )
+                  //if ( (0 == pStats->radio_interfaces[iInt].hist_rxPacketsLostCountVideo[k]) && (0 == pStats->radio_interfaces[iInt].hist_rxPacketsLostCountData[k]) && (0 == pStats->radio_interfaces[iInt].hist_rxPacketsBadCount[k]) )
+                  if ( (pStats->radio_interfaces[iInt].hist_rxPacketsLostCountVideo[k] + pStats->radio_interfaces[iInt].hist_rxPacketsLostCountData[k] + pStats->radio_interfaces[iInt].hist_rxPacketsBadCount[k]) > 0 )
+                  {
+                     bShowGreen = true;
+                     break;
+                  }
                }
             }
+
+            if ( bShowGreen )
+            {
+               g_pRenderEngine->setFill(pcBarGreen[0], pcBarGreen[1], pcBarGreen[2], s_fOSDStatsGraphLinesAlpha);
+               g_pRenderEngine->setStroke(pcBarGreen[0], pcBarGreen[1], pcBarGreen[2], s_fOSDStatsGraphLinesAlpha);
+            }
+            else
+            {
+               g_pRenderEngine->setFill(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphLinesAlpha);
+               g_pRenderEngine->setStroke(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphLinesAlpha);
+            }
+            g_pRenderEngine->setStrokeSize(fStroke);
+            g_pRenderEngine->drawRect(xBar, yBottomBar - hBar, dxBarWidth - fWidthPixel, hBar);
+            if ( ((k - sl_iLastSecondSliceIndexInInterfacesGraph) % iCountSlicesInSecond) == 0 )
+            {
+               g_pRenderEngine->setStroke(blue, 2.0);
+               g_pRenderEngine->drawLine(xBar + dxBarWidth, y, xBar+dxBarWidth, y + hGraph);
+               g_pRenderEngine->drawLine(xBar + dxBarWidth + fWidthPixel, y, xBar + dxBarWidth + fWidthPixel, y + hGraph);
+            }
+            xBar -= dxBarWidth;
          }
 
-         if ( bShowGreen )
-         {
-            g_pRenderEngine->setFill(pcBarGreen[0], pcBarGreen[1], pcBarGreen[2], s_fOSDStatsGraphLinesAlpha);
-            g_pRenderEngine->setStroke(pcBarGreen[0], pcBarGreen[1], pcBarGreen[2], s_fOSDStatsGraphLinesAlpha);
-         }
-         else
-         {
-            g_pRenderEngine->setFill(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphLinesAlpha);
-            g_pRenderEngine->setStroke(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphLinesAlpha);
-         }
-         g_pRenderEngine->setStrokeSize(fStroke);
-         g_pRenderEngine->drawRect(xBar, y+hGraph - hBarLost - hBar, dxBarWidth - g_pRenderEngine->getPixelWidth(), hBar);
-         
-         if ( ((k - sl_iLastSecondSliceIndexInInterfacesGraph) % iCountSlicesInSecond) == 0 )
-         {
-            g_pRenderEngine->setStroke(blue, 2.0);
-            g_pRenderEngine->drawLine(xBar, y, xBar, y + hGraph);
-         }
-         xBar -= dxBarWidth;
+         osd_set_colors();
+
+         if ( bIsTxCard && (iCountInterfacesAssignedToCurrentLocalLink>1) && (1 < pStats->countLocalRadioInterfaces) )
+            g_pRenderEngine->drawIcon(xPos, y-height_text*0.2, hGraph*0.7/g_pRenderEngine->getAspectRatio() , hGraph*0.7, g_idIconUplink2);
+
+         y += hGraph;
+      }
+      else
+      {
+         g_pRenderEngine->setColors(colorRed);
+         g_pRenderEngine->drawText(xPos, y-0.2*height_text, s_idFontStats, "Interface is disabled");
+         y += height_text*s_OSDStatsLineSpacing;
+         osd_set_colors();
       }
 
-      osd_set_colors();
-
-      if ( bIsTxCard && (iCountInterfacesAssignedToCurrentLocalLink>1) )
-         g_pRenderEngine->drawIcon(xPos, y-height_text*0.2, hGraph*0.7/g_pRenderEngine->getAspectRatio() , hGraph*0.7, g_idIconUplink2);
-
-      y += hGraph;
-      
       y += height_text*0.2;
 
-      char szBuffD[64];
-      char szBuffU[64];
-      str_format_bitrate(pStats->radio_interfaces[i].rxBytesPerSec * 8, szBuffD);
-      str_format_bitrate(pStats->radio_interfaces[i].txBytesPerSec * 8, szBuffU);
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s / %s", szBuffU, szBuffD);
+      //char szBuffD[64];
+      //char szBuffU[64];
+      //str_format_bitrate(pStats->radio_interfaces[i].rxBytesPerSec * 8, szBuffD);
+      //str_format_bitrate(pStats->radio_interfaces[i].txBytesPerSec * 8, szBuffU);
+      //snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s / %s", szBuffU, szBuffD);
+      str_format_bitrate(pStats->radio_interfaces[i].rxBytesPerSec * 8, szBuff);
       g_pRenderEngine->drawTextLeft(rightMargin, y, s_idFontStats, szBuff);
       float fWT = g_pRenderEngine->textWidth(s_idFontStats, szBuff);
-      if ( bIsTxCard )
+      if ( bIsTxCard && (1 < pStats->countLocalRadioInterfaces) )
       {
          float fIconH = height_text*1.14;
          float fIconW = 0.6 * fIconH / g_pRenderEngine->getAspectRatio();
@@ -657,49 +690,59 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
 
       
       szName[0] = 0;
-      controllerGetCardUserDefinedNameOrType(pNICInfo, szName);
+      controllerGetCardUserDefinedNameOrShortType(pNICInfo, szName);
       strcpy(szBuff,szName);
 
       sprintf(szName, "%s%s", pNICInfo->szUSBPort, (controllerIsCardInternal(pNICInfo->szMAC)?"":"(Ext)"));
+      if ( iLocalRadioLinkId < 0 )
+         g_pRenderEngine->setColors(colorRed);
       g_pRenderEngine->drawText(xPos, y, s_idFontStats, szName);
       float fW = g_pRenderEngine->textWidth(s_idFontStats, szName);
+      fW += height_text_small*0.3;
       if ( 0 != szBuff[0] )
       {
          snprintf(szName, sizeof(szName)/sizeof(szName[0]), "(%s)", szBuff);
-         g_pRenderEngine->drawText(xPos + fW + height_text_small*0.2, y + 0.5*(height_text-height_text_small), s_idFontStatsSmall, szName);
-         fW += height_text_small*0.2 + g_pRenderEngine->textWidth(s_idFontStatsSmall, szName);
-      }    
+         g_pRenderEngine->drawText(xPos + fW, y + 0.5*(height_text-height_text_small), s_idFontStatsSmall, szName);
+         fW += height_text_small*0.3 + g_pRenderEngine->textWidth(s_idFontStatsSmall, szName);
+      } 
       
-      y += height_text*s_OSDStatsLineSpacing;
-
-      szName[0] = 0;
+      szBuff[0] = 0;
       if ( pStats->radio_interfaces[i].openedForWrite && pStats->radio_interfaces[i].openedForRead )
       {
          if ( bIsTxCard )
-            strcpy(szName, "RX/TX");
+            strcpy(szBuff, "RX/TX");
          else
-            strcpy(szName,"RX");
+            strcpy(szBuff,"RX");
       }   
       else if ( pStats->radio_interfaces[i].openedForWrite )
-         strcpy(szName,"TX Only");
+         strcpy(szBuff,"TX Only");
       else if ( pStats->radio_interfaces[i].openedForRead )
-         strcpy(szName,"RX Only");
+         strcpy(szBuff,"RX Only");
       else
-         strcpy(szName,"NOT USED");
+         strcpy(szBuff,"NOT USED");
+      g_pRenderEngine->drawText(xPos + fW, y + 0.5*(height_text-height_text_small), s_idFontStatsSmall, szBuff);
+      fW += height_text_small*0.3 + g_pRenderEngine->textWidth(s_idFontStatsSmall, szBuff);
+      osd_set_colors();
+      y += height_text*s_OSDStatsLineSpacing;
 
+      // Line 2
+      szName[0] = 0;
+      szBuff[0] = 0;
       char szLinePrefix[128];
       //sprintf(szLinePrefix, "Link %d", iLocalRadioLinkId+1);
       sprintf(szLinePrefix, "%s", str_format_frequency(pStats->radio_interfaces[i].uCurrentFrequencyKhz));
 
       if ( ! hardware_radio_index_is_sik_radio(i) )
-         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s, %s, %d dbm", szLinePrefix, szName, (int)g_fOSDDbm[i] );
+         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d dbm", szLinePrefix, (int)g_fOSDDbm[i] );
       else
-         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s, %s", szLinePrefix, szName);
+         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s", szLinePrefix);
          
       if ( controllerIsCardDisabled(pNICInfo->szMAC) )
          snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "DISABLED");
       else if ( iLocalRadioLinkId < 0 || iLocalRadioLinkId >= MAX_RADIO_INTERFACES )
          snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "No Radio Link");
+
+      if ( ! controllerIsCardDisabled(pNICInfo->szMAC) )
       if ( pNICInfo->lastFrequencySetFailed || 0 == pStats->radio_interfaces[i].uCurrentFrequencyKhz )
          snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "Set Freq Failed");
 
@@ -719,14 +762,18 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
          szDRV[0] = 0;
          szDRD[0] = 0;
          str_getDataRateDescriptionNoSufix(pStats->radio_interfaces[i].lastRecvDataRateVideo, szDRV);
-         str_getDataRateDescription(pStats->radio_interfaces[i].lastRecvDataRateData, 0, szDRD);
-         snprintf(szDR, sizeof(szDR)/sizeof(szDR[0]), " V/D: %s/%s", szDRV, szDRD);
+         if ( pStats->radio_interfaces[i].lastRecvDataRateData < 0 )
+            str_getDataRateDescriptionNoSufix(pStats->radio_interfaces[i].lastRecvDataRateData, szDRD);
+         else
+            str_getDataRateDescription(pStats->radio_interfaces[i].lastRecvDataRateData, 0, szDRD);
+         snprintf(szDR, sizeof(szDR)/sizeof(szDR[0]), " %s/%s", szDRV, szDRD);
          strcat(szBuff, szDR);
       }
       g_pRenderEngine->drawText(xPos, y, s_idFontStats, szBuff);
 
       y += height_text*s_OSDStatsLineSpacing;
 
+      // Line 3
       if ( pActiveModel->bDeveloperMode || s_bDebugStatsShowAll )
       {
          g_pRenderEngine->setColors(get_Color_Dev());
@@ -743,7 +790,8 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
          for( int k=0; k<MAX_HISTORY_RADIO_STATS_RECV_SLICES; k++ )
          {
             iTotalRecv += pStats->radio_interfaces[i].hist_rxPacketsCount[k];
-            iTotalLost += pStats->radio_interfaces[i].hist_rxPacketsLostCount[k];
+            iTotalLost += pStats->radio_interfaces[i].hist_rxPacketsLostCountVideo[k];
+            iTotalLost += pStats->radio_interfaces[i].hist_rxPacketsLostCountData[k];
             iTotalBad += pStats->radio_interfaces[i].hist_rxPacketsBadCount[k];
             iSlicesCount++;
          }
@@ -767,7 +815,7 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
    // End - render controller radio interfaces graphs
    
 
-   if ( ! (pActiveModel->osd_params.osd_flags2[pActiveModel->osd_params.layout] & OSD_FLAG2_SHOW_VEHICLE_RADIO_INTERFACES_STATS ) )
+   if ( ! (pActiveModel->osd_params.osd_flags2[pActiveModel->osd_params.iCurrentOSDLayout] & OSD_FLAG2_SHOW_VEHICLE_RADIO_INTERFACES_STATS ) )
    {
       osd_set_colors();
       return height;
@@ -818,7 +866,8 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
 
       osd_set_colors();
 
-      double* pc = get_Color_OSDText();
+      double pc[4];
+      memcpy(pc, get_Color_OSDText(), 4*sizeof(double));
       g_pRenderEngine->setFill(pc[0], pc[1], pc[2], s_fOSDStatsGraphBottomLinesAlpha);
       g_pRenderEngine->setStroke(pc[0], pc[1], pc[2], s_fOSDStatsGraphBottomLinesAlpha);
       g_pRenderEngine->setStrokeSize(fStroke);
@@ -834,12 +883,12 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
           if ( pVehicleInterfaceRadioStats->hist_rxPacketsCount[k] > maxRecv )
              maxRecv = pVehicleInterfaceRadioStats->hist_rxPacketsCount[k];
 
-          if ( pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k] > maxBadLost )
-             maxBadLost = pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k];
+          if ( (u32)(pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k]) > maxBadLost )
+             maxBadLost = pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k];
 
           if ( 0 == firstLostValue )
-          if ( pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k] > 0 )
-             firstLostValue = pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k];
+          if ( pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k] > 0 )
+             firstLostValue = pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k] + pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k];
 
           if ( pVehicleInterfaceRadioStats->hist_rxGapMiliseconds[k] != 0xFF )
           {
@@ -865,54 +914,78 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
          g_pRenderEngine->setStrokeSize(fStroke);
          
          hBar = hGraph * (float)(pVehicleInterfaceRadioStats->hist_rxPacketsCount[k]) / maxRecv;
-         hBarLost = hGraph * (float)(pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k]) / maxRecv;
+         hBarLostVideo = hGraph * (float)(pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k] + pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k]) / maxRecv;
+         hBarLostData = hGraph * (float)(pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k]) / maxRecv;
 
          if ( k < MAX_HISTORY_RADIO_STATS_RECV_SLICES-1 )
          {
-            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k+1] == 0 )
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k+1] == 0 )
             if ( pVehicleInterfaceRadioStats->hist_rxPacketsCount[k] > 0 )
-            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k] > 0 )
-               hBarLost = 0.0;
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k] > 0 )
+               hBarLostData = 0.0;
+         }
+         if ( k < MAX_HISTORY_RADIO_STATS_RECV_SLICES-1 )
+         {
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k+1] == 0 )
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsCount[k] > 0 )
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k] > 0 )
+               hBarLostData = 0.0;
          }
          if ( k > 0 )
          {
-            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k] == 0 )
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k] == 0 )
             if ( pVehicleInterfaceRadioStats->hist_rxPacketsCount[k-1] > 0 )
-            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k-1] > 0 )
-               hBarLost = hGraph * (float)(pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k-1] + pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k-1]) / maxRecv;
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k-1] > 0 )
+               hBarLostVideo = hGraph * (float)(pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k-1] + pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k-1]) / maxRecv;
+         }
+         if ( k > 0 )
+         {
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k] == 0 )
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsCount[k-1] > 0 )
+            if ( pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k-1] > 0 )
+               hBarLostData = hGraph * (float)(pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k-1]) / maxRecv;
          }
          
 
-         if ( hBar + hBarLost > hGraph )
+         if ( hBar + hBarLostVideo + hBarLostData > hGraph )
          {
-            hBar *= hGraph / (hBar + hBarLost);
-            hBarLost *= hGraph / (hBar + hBarLost);
+            float fScale = hGraph/(hBar + hBarLostVideo + hBarLostData);
+            hBar *= fScale;
+            hBarLostVideo *= fScale;
+            hBarLostData *= fScale;
          }
 
-         if ( (pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k] + pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k]) != 0 ||
-              hBarLost > 0.001 )
+         float yBottomBar = y + hGraph;
+         if ( hBarLostVideo > 0.001 )
          {
-            if ( pVehicleInterfaceRadioStats->hist_rxPacketsCount[k] > 0 )
-            if ( hBar > 0.75 * hGraph )
-               hBar = 0.75 * hGraph;
-
-            hBarLost = ((int)(hBarLost/g_pRenderEngine->getPixelHeight())) * g_pRenderEngine->getPixelHeight();
+            hBarLostVideo = ((int)(hBarLostVideo/g_pRenderEngine->getPixelHeight())) * g_pRenderEngine->getPixelHeight();
             g_pRenderEngine->setStroke(255,0,50,0.9);
             g_pRenderEngine->setFill(255,0,50,0.9);
             g_pRenderEngine->setStrokeSize(fStroke);
-            g_pRenderEngine->drawRect(xBar, y+hGraph - hBarLost, dxBarWidth - g_pRenderEngine->getPixelWidth(), hBarLost);
-         
+            g_pRenderEngine->drawRect(xBar, yBottomBar - hBarLostVideo, dxBarWidth - g_pRenderEngine->getPixelWidth(), hBarLostVideo);
+            yBottomBar -= hBarLostVideo;         
             g_pRenderEngine->setFill(pc[0], pc[1], pc[2], s_fOSDStatsGraphLinesAlpha);
             g_pRenderEngine->setStroke(pc[0], pc[1], pc[2], s_fOSDStatsGraphLinesAlpha);
             g_pRenderEngine->setStrokeSize(fStroke);
-         
+         }
+         if ( hBarLostData > 0.001 )
+         {
+            hBarLostData = ((int)(hBarLostData/g_pRenderEngine->getPixelHeight())) * g_pRenderEngine->getPixelHeight();
+            g_pRenderEngine->setStroke(50,100,250,0.9);
+            g_pRenderEngine->setFill(50,100,250,0.9);
+            g_pRenderEngine->setStrokeSize(fStroke);
+            g_pRenderEngine->drawRect(xBar, yBottomBar - hBarLostData, dxBarWidth - g_pRenderEngine->getPixelWidth(), hBarLostData);
+            yBottomBar -= hBarLostData;         
+            g_pRenderEngine->setFill(pc[0], pc[1], pc[2], s_fOSDStatsGraphLinesAlpha);
+            g_pRenderEngine->setStroke(pc[0], pc[1], pc[2], s_fOSDStatsGraphLinesAlpha);
+            g_pRenderEngine->setStrokeSize(fStroke);
          }
          
-         if ( pVehicleInterfaceRadioStats->hist_rxPacketsCount[k] > 0 ||
-              hBar > 0.001 )
+         if ( hBar > 0.001 )
          {
             hBar = ((int)(hBar/g_pRenderEngine->getPixelHeight())) * g_pRenderEngine->getPixelHeight();
-            g_pRenderEngine->drawRect(xBar, y+hGraph - hBarLost - hBar, dxBarWidth - g_pRenderEngine->getPixelWidth(), hBar);
+            g_pRenderEngine->drawRect(xBar, yBottomBar - hBar, dxBarWidth - g_pRenderEngine->getPixelWidth(), hBar);
+            yBottomBar -= hBar;
          }
 
          if ( ((k - sl_iLastSecondSliceIndexInVehicleInterfacesGraph[i]) % iCountSlicesInSecond) == 0 )
@@ -1013,7 +1086,8 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
          for( int k=0; k<MAX_HISTORY_RADIO_STATS_RECV_SLICES; k++ )
          {
             iTotalRecv += pVehicleInterfaceRadioStats->hist_rxPacketsCount[k];
-            iTotalLost += pVehicleInterfaceRadioStats->hist_rxPacketsLostCount[k];
+            iTotalLost += pVehicleInterfaceRadioStats->hist_rxPacketsLostCountVideo[k];
+            iTotalLost += pVehicleInterfaceRadioStats->hist_rxPacketsLostCountData[k];
             iTotalBad += pVehicleInterfaceRadioStats->hist_rxPacketsBadCount[k];
             iSlicesCount++;
          }
@@ -1172,7 +1246,8 @@ float osd_render_stats_local_radio_links( float xPos, float yPos, const char* sz
       iLocalRadioLinkIdForVehicleRadioLinks[iVehicleRadioLinkId] = iLocalRadioLinkId;
    }
 
-   double* pc = get_Color_OSDText();
+   double pc[4];
+   memcpy(pc, get_Color_OSDText(), 4*sizeof(double));
    bool bWarning = false;
    bool bCritical = false;
    for( int i=0; i<pRadioStats->countLocalRadioLinks; i++ )
@@ -1183,9 +1258,9 @@ float osd_render_stats_local_radio_links( float xPos, float yPos, const char* sz
          bCritical = true;
    }
    if ( bWarning )
-      pc = get_Color_IconWarning();
+      memcpy(pc, get_Color_IconWarning(), 4*sizeof(double));
    if ( bCritical )
-      pc = get_Color_IconError();
+      memcpy(pc, get_Color_IconError(), 4*sizeof(double));
    g_pRenderEngine->setColors(pc);
 
    szBuff[0] = 0;
@@ -1432,10 +1507,7 @@ float osd_render_stats_local_radio_links( float xPos, float yPos, const char* sz
       osd_set_colors();
 
       szBuff[0] = 0;
-      int cst = 0;
-      // To fix or remove
-      //cst = pVDS->iCurrentRxTxSyncType;
-      
+      int cst = pActiveModel->rxtx_sync_type;
       if ( cst == RXTX_SYNC_TYPE_NONE )
          strcat(szBuff, "None");
       if ( cst == RXTX_SYNC_TYPE_BASIC )
@@ -1479,7 +1551,8 @@ float osd_render_stats_local_radio_links( float xPos, float yPos, const char* sz
 
    if ( pActiveModel->bDeveloperMode || s_bDebugStatsShowAll )
    {
-      double* pColorDev = get_Color_Dev();
+      double pColorDev[4];
+      memcpy(pColorDev, get_Color_Dev(), 4*sizeof(double));
 
       g_pRenderEngine->setColors(pColorDev);
       if ( g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].bGotRubyTelemetryInfo )
@@ -1542,7 +1615,8 @@ float osd_render_stats_local_radio_links( float xPos, float yPos, const char* sz
       float dxBarWidth = maxWidth/(float)MAX_RADIO_RX_QUEUE_INFO_VALUES;
       float fStroke = OSD_STRIKE_WIDTH;
 
-      double* pColorDev = get_Color_Dev();
+      double pColorDev[4];
+      memcpy(pColorDev, get_Color_Dev(), 4*sizeof(double));
       g_pRenderEngine->setColors(pColorDev);
 
       g_pRenderEngine->drawText(xPos, y, s_idFontStatsSmall, "Radio Rx Queue size:");
@@ -1563,7 +1637,8 @@ float osd_render_stats_local_radio_links( float xPos, float yPos, const char* sz
       g_pRenderEngine->drawText(xPos, y+hGraph-0.5*height_text_small, s_idFontStatsSmall, "0");
       
       osd_set_colors();
-      double* pcBarRx = get_Color_OSDText();
+      double pcBarRx[4];
+      memcpy(pcBarRx, get_Color_OSDText(), 4*sizeof(double));
       g_pRenderEngine->setFill(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphBottomLinesAlpha);
       g_pRenderEngine->setStroke(pcBarRx[0], pcBarRx[1], pcBarRx[2], s_fOSDStatsGraphBottomLinesAlpha);
       g_pRenderEngine->setStrokeSize(fStroke);
@@ -1803,7 +1878,8 @@ float osd_render_stats_radio_interfaces_graph( float xPos, float yPos, shared_me
 
    g_pRenderEngine->setStrokeSize(OSD_STRIKE_WIDTH);
 
-   double* pc = get_Color_OSDText();
+   double pc[4];
+   memcpy(pc, get_Color_OSDText(), 4*sizeof(double));
       
    yPos = yTop;
    xPos = xLeft;

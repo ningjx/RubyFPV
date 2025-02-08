@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -33,7 +33,6 @@
 #include "menu_objects.h"
 #include "menu_controller_radio_interfaces.h"
 #include "menu_text.h"
-#include "menu_txinfo.h"
 #include "menu_confirmation.h"
 #include "menu_item_section.h"
 #include "menu_item_text.h"

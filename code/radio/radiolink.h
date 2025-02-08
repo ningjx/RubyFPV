@@ -1,12 +1,32 @@
 /*
-You can use this C/C++ code however you wish (for example, but not limited to:
-     as is, or by modifying it, or by adding new code, or by removing parts of the code;
-     in public or private projects, in new free or commercial products) 
-     only if you get a priori written consent from Petru Soroaga (petrusoroaga@yahoo.com) for your specific use
-     and only if this copyright terms are preserved in the code.
-     This code is public for learning and academic purposes.
-Also, check the licences folder for additional licences terms.
-Code written by: Petru Soroaga, 2021-2023
+    Ruby Licence
+    Copyright (c) 2025 Petru Soroaga
+    All rights reserved.
+
+    Redistribution and use in source and/or binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+        * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+        * Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in the
+        documentation and/or other materials provided with the distribution.
+        * Copyright info and developer info must be preserved as is in the user
+        interface, additions could be made to that info.
+        * Neither the name of the organization nor the
+        names of its contributors may be used to endorse or promote products
+        derived from this software without specific prior written permission.
+        * Military use is not permited.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+    ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    DISCLAIMED. IN NO EVENT SHALL THE AUTHOR (PETRU SOROAGA) BE LIABLE FOR ANY
+    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #pragma once
@@ -19,7 +39,7 @@ Code written by: Petru Soroaga, 2021-2023
 #include <time.h>
 #include <sys/resource.h>
 
-#define MAX_PACKET_LENGTH_PCAP 2048
+#define MAX_PACKET_LENGTH_PCAP 4096
 
 #define RADIO_PROCESSING_ERROR_NO_ERROR 0x00
 #define RADIO_PROCESSING_ERROR_CODE_INVALID_CRC_RECEIVED 0x01
@@ -45,8 +65,10 @@ void radio_set_link_clock_delta(int iVehicleBehindMilisec);
 int  radio_get_link_clock_delta();
 void radio_set_use_pcap_for_tx(int iEnablePCAPTx);
 void radio_set_bypass_socket_buffers(int iBypass);
-int radio_set_out_datarate(int rate_bps); // positive: classic in bps, negative: MCS; returns 1 if it was changed
+int  radio_set_out_datarate(int rate_bps); // positive: classic in bps, negative: MCS; returns 1 if it was changed
 void radio_set_frames_flags(u32 frameFlags); // frame type, MSC Flags
+void radio_set_temporary_frames_flags(u32 uFrameFlags);
+void radio_remove_temporary_frames_flags();
 u32 radio_get_received_frames_type();
 
 void radio_reset_packets_default_frequencies(int iRCEnabled);
@@ -71,8 +93,8 @@ int packet_process_and_check(int interfaceNb, u8* pPacketBuffer, int iBufferLeng
 int get_last_processing_error_code();
 
 u32 radio_get_next_radio_link_packet_index(int iLocalRadioLinkId);
-int radio_build_new_raw_packet(int iLocalRadioLinkId, u8* pRawPacket, u8* pPacketData, int nInputLength, int portNb, int bEncrypt);
-int radio_write_raw_packet(int interfaceIndex, u8* pData, int dataLength);
+int radio_build_new_raw_ieee_packet(int iLocalRadioLinkId, u8* pRawPacket, u8* pPacketData, int nInputLength, int portNb, int bEncrypt);
+int radio_write_raw_ieee_packet(int interfaceIndex, u8* pData, int dataLength, int iRepeatCount);
 int radio_write_serial_packet(int interfaceIndex, u8* pData, int dataLength, u32 uTimeNow);
 int radio_write_sik_packet(int interfaceIndex, u8* pData, int dataLength, u32 uTimeNow);
 

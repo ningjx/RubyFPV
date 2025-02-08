@@ -44,12 +44,9 @@ void process_packet_summary( int iInterfaceIndex, u8* pBuffer, int iBufferLength
    int bCRCOk = 0;   
    int nPacketLength = packet_process_and_check(iInterfaceIndex, pBuffer, iBufferLength, &bCRCOk); 
    
-   bool bVideoData = false;
    t_packet_header* pPH = (t_packet_header*)pBuffer;
-   if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_VIDEO )
-      bVideoData = true;
 
-   radio_stats_update_on_new_radio_packet_received(&g_SM_RadioStats, NULL, g_TimeNow, iInterfaceIndex, pBuffer, nPacketLength, 0, (int)bVideoData, 1);
+   radio_stats_update_on_new_radio_packet_received(&g_SM_RadioStats, NULL, g_TimeNow, iInterfaceIndex, pBuffer, nPacketLength, 0, 1);
        
    u32 packetIndex = (pPH->stream_packet_idx & PACKET_FLAGS_MASK_STREAM_PACKET_IDX);
    u32 uStreamId = pPH->stream_packet_idx >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
@@ -69,6 +66,7 @@ void process_packet_summary( int iInterfaceIndex, u8* pBuffer, int iBufferLength
       return;
 
    uSummaryLastUpdateTime = get_current_timestamp_ms();
+   log_line("---------------------------------");
    log_line("Total recv pckts: %u/sec; ", g_uTotalRecvPackets );
    for( int i=0; i<MAX_RADIO_STREAMS; i++ )
    {
@@ -104,7 +102,8 @@ void process_packet_summary( int iInterfaceIndex, u8* pBuffer, int iBufferLength
    for( int k=0; k<MAX_HISTORY_RADIO_STATS_RECV_SLICES; k++ )
    {
       iTotalRecv += g_SM_RadioStats.radio_interfaces[0].hist_rxPacketsCount[k];
-      iTotalLostBad += g_SM_RadioStats.radio_interfaces[0].hist_rxPacketsLostCount[k];
+      iTotalLostBad += g_SM_RadioStats.radio_interfaces[0].hist_rxPacketsLostCountVideo[k];
+      iTotalLostBad += g_SM_RadioStats.radio_interfaces[0].hist_rxPacketsLostCountData[k];
       iTotalLostBad += g_SM_RadioStats.radio_interfaces[0].hist_rxPacketsBadCount[k];
       iSlices++;
       uMs += g_SM_RadioStats.graphRefreshIntervalMs;
@@ -117,6 +116,7 @@ void process_packet_summary( int iInterfaceIndex, u8* pBuffer, int iBufferLength
    else
       sprintf(szBuff, "Recv/Lost (last sec, %d slices):  %d/%d", iSlices, iTotalRecv, iTotalLostBad);
    log_line(szBuff);
+   log_line("");
    fflush(stdout);
 }
 
@@ -125,17 +125,14 @@ int process_packet_errors( int iInterfaceIndex, u8* pBuffer, int iBufferLength)
    int iResult = 0;
    //radio_hw_info_t* pNICInfo = hardware_get_radio_info(iInterfaceIndex);
 
-   bool bVideoData = false;
    t_packet_header* pPH = (t_packet_header*)pBuffer;
-   if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_VIDEO )
-      bVideoData = true;
    int bCRCOk = 0;   
    int nPacketLength = packet_process_and_check(iInterfaceIndex, pBuffer, iBufferLength, &bCRCOk);
-   radio_stats_update_on_new_radio_packet_received(&g_SM_RadioStats, NULL, g_TimeNow, iInterfaceIndex, pBuffer, nPacketLength, 0, (int)bVideoData, 1);
+   radio_stats_update_on_new_radio_packet_received(&g_SM_RadioStats, NULL, g_TimeNow, iInterfaceIndex, pBuffer, nPacketLength, 0, 1);
 
-   t_packet_header_video_full_98* pPHVF = NULL;
-   if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA_98 )
-      pPHVF = (t_packet_header_video_full_98*) (pBuffer+sizeof(t_packet_header));
+   t_packet_header_video_segment* pPHVS = NULL;
+   if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA )
+      pPHVS = (t_packet_header_video_segment*) (pBuffer+sizeof(t_packet_header));
    
    u32 packetIndex = (pPH->stream_packet_idx & PACKET_FLAGS_MASK_STREAM_PACKET_IDX);
    u32 uStreamId = pPH->stream_packet_idx >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
@@ -153,19 +150,19 @@ int process_packet_errors( int iInterfaceIndex, u8* pBuffer, int iBufferLength)
    }
 
    u32 videogap = 0;
-   if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA_98 )
-   if ( pPHVF->uCurrentBlockIndex > g_uLastVideoBlock )
+   if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA )
+   if ( pPHVS->uCurrentBlockIndex > g_uLastVideoBlock )
    {
-      videogap = pPHVF->uCurrentBlockIndex - g_uLastVideoBlock;
+      videogap = pPHVS->uCurrentBlockIndex - g_uLastVideoBlock;
       if ( videogap > 1 )
       {
-         log_line("Missing video packets: %u [%u to %u], video gap: %d [%u jump to %u]", gap-1, g_uStreamsLastPacketIndex[uStreamId], packetIndex, videogap-1, g_uLastVideoBlock, pPHVF->uCurrentBlockIndex );
+         log_line("Missing video packets: %u [%u to %u], video gap: %d [%u jump to %u]", gap-1, g_uStreamsLastPacketIndex[uStreamId], packetIndex, videogap-1, g_uLastVideoBlock, pPHVS->uCurrentBlockIndex );
       }
    }
 
    g_uStreamsLastPacketIndex[uStreamId] = packetIndex;
-   if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA_98 )
-      g_uLastVideoBlock = pPHVF->uCurrentBlockIndex;
+   if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA )
+      g_uLastVideoBlock = pPHVS->uCurrentBlockIndex;
 
    return iResult;
 }
@@ -189,7 +186,19 @@ void process_packet(int iInterfaceIndex )
       if ( bOnlyErrors )
          iMissingPackets = process_packet_errors(iInterfaceIndex, pBuffer, nLength);
 
+      int bCRCOk = 0;   
+      int nPacketLength = packet_process_and_check(iInterfaceIndex, pBuffer, nLength, &bCRCOk);
+      if ( bCRCOk == 0 )
+         log_softerror_and_alarm("Received packet with invalid CRC.");
+      if ( (nPacketLength != nLength) || (nPacketLength < (int)sizeof(t_packet_header)) )
+         log_softerror_and_alarm("Received invalid packet size: %d, (total buffer: %d)", nPacketLength, nLength);
+
       t_packet_header* pPH = (t_packet_header*)pBuffer;
+      if ( ((pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == 0 ) || ((pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == 7 ) )
+         log_softerror_and_alarm("Received invalid packet module: %d", (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE));
+      if ( (pPH->total_length != nLength) || (pPH->total_length < sizeof(t_packet_header)) )
+         log_softerror_and_alarm("Received invalid packet size: %d, (total buffer: %d)", pPH->total_length, nLength);
+      
       u32 uStreamId = pPH->stream_packet_idx >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
       g_uTotalRecvPackets++;
       g_uTotalRecvPacketsTypes[pPH->packet_type]++;

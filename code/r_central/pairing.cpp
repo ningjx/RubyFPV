@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -63,8 +63,10 @@
 
 extern bool s_bDebugOSDShowAll;
 
+u32 s_uPairingStartTime = 0;
 bool s_isRXStarted = false;
 bool s_isVideoReceiving = false;
+bool s_bPairingIsRouterReady = false;
 
 u32 s_uTimeToSetAffinities = 0;
 
@@ -118,6 +120,7 @@ bool _pairing_start()
  
    s_isRXStarted = true;
    s_isVideoReceiving = false;
+   s_uPairingStartTime = g_TimeNow;
    
    link_reset_reconfiguring_radiolink();
 
@@ -135,7 +138,7 @@ bool _pairing_start()
 
    g_bMenuPopupUpdateVehicleShown = false;
 
-   s_uTimeToSetAffinities = g_TimeNow + 3000;
+   s_uTimeToSetAffinities = g_TimeNow + 4000;
    
    log_line("-----------------------------------------");
    log_line("Started pairing processes successfully.");
@@ -155,6 +158,8 @@ bool pairing_start_normal()
    g_iSearchSiKLBT = -1;
    g_iSearchSiKMCSTR = -1;
    g_bDidAnUpdate = false;
+   g_bMustNegociateRadioLinksFlag = false;
+   g_bAskedForNegociateRadioLink = false;
    
    onEventBeforePairing();
 
@@ -213,8 +218,9 @@ bool pairing_stop()
    log_line("Stopping pairing processes...");
 
    s_uTimeToSetAffinities = 0;
-
+   s_uPairingStartTime = 0;
    onEventBeforePairingStop();
+   s_bPairingIsRouterReady = false;
 
    forward_streams_on_pairing_stop();
    hardware_recording_led_set_off();
@@ -266,69 +272,71 @@ void pairing_on_router_ready()
    log_line("Pairing: received event that router is ready. Open shared mem objects...");
    _pairing_open_shared_mem();
    log_line("Pairing: received event that router is ready. Open shared mem objects complete.");
+   s_bPairingIsRouterReady = true;
 }
 
 void _pairing_open_shared_mem()
 {
-   hardware_sleep_ms(50);
+   hardware_sleep_ms(20);
 
+   int iRetryCount = 20;
    int iAnyNewOpen = 0;
    int iAnyFailed = 0;
 
-   for(int i=0; i<10; i++ )
+   for(int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSMControllerRTInfo )
          break;
       g_pSMControllerRTInfo = controller_rt_info_open_for_read();
       
-      hardware_sleep_ms(5);
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
    if ( NULL == g_pSMControllerRTInfo )
       iAnyFailed++;
 
-   for(int i=0; i<10; i++ )
+   for(int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSMVehicleRTInfo )
          break;
       g_pSMVehicleRTInfo = vehicle_rt_info_open_for_read();
       
-      hardware_sleep_ms(5);
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
    if ( NULL == g_pSMVehicleRTInfo )
       iAnyFailed++;
 
-   for( int i=0; i<10; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSM_RCIn )
          break;
       g_pSM_RCIn = shared_mem_i2c_controller_rc_in_open_for_read();
-      hardware_sleep_ms(5);
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
    if ( NULL == g_pSM_RCIn )
       iAnyFailed++;
 
    ruby_signal_alive();
-   for( int i=0; i<20; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSM_RadioStats )
          break;
       g_pSM_RadioStats = shared_mem_radio_stats_open_for_read();
-      hardware_sleep_ms(5);
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
    if ( NULL == g_pSM_RadioStats )
       iAnyFailed++;
 
     ruby_signal_alive();
-   for( int i=0; i<20; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSM_RadioStatsInterfaceRxGraph )
          break;
       g_pSM_RadioStatsInterfaceRxGraph = shared_mem_controller_radio_stats_interfaces_rx_graphs_open_for_read();
-      hardware_sleep_ms(5);
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
    if ( NULL == g_pSM_RadioStatsInterfaceRxGraph )
@@ -337,7 +345,7 @@ void _pairing_open_shared_mem()
 // To fix
      /*
    ruby_signal_alive();
-   for( int i=0; i<20; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSM_VideoLinkStats )
          break;
@@ -347,33 +355,36 @@ void _pairing_open_shared_mem()
    }
    if ( NULL == g_pSM_VideoLinkStats )
       iAnyFailed++;
-*/
+   */
+     
    ruby_signal_alive();
-   for( int i=0; i<20; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
-      if ( NULL != g_pSM_VideoInfoStatsOutput )
+      if ( NULL != g_pSM_VideoFramesStatsOutput )
          break;
-      g_pSM_VideoInfoStatsOutput = shared_mem_video_info_stats_open_for_read();
-      hardware_sleep_ms(5);
+      g_pSM_VideoFramesStatsOutput = shared_mem_video_frames_stats_open_for_read();
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
-   if ( NULL == g_pSM_VideoInfoStatsOutput )
+   if ( NULL == g_pSM_VideoFramesStatsOutput )
       iAnyFailed++;
 
+   /*
    ruby_signal_alive();
-   for( int i=0; i<20; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSM_VideoInfoStatsRadioIn )
          break;
-      g_pSM_VideoInfoStatsRadioIn = shared_mem_video_info_stats_radio_in_open_for_read();
-      hardware_sleep_ms(5);
+      g_pSM_VideoInfoStatsRadioIn = shared_mem_video_frames_stats_radio_in_open_for_read();
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
    if ( NULL == g_pSM_VideoInfoStatsRadioIn )
       iAnyFailed++;
+   */
 
    ruby_signal_alive();
-   for( int i=0; i<20; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSM_VideoLinkGraphs )
          break;
@@ -385,52 +396,39 @@ void _pairing_open_shared_mem()
       iAnyFailed++;
 
    ruby_signal_alive();
-   for( int i=0; i<20; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSM_VideoDecodeStats )
          break;
       g_pSM_VideoDecodeStats = shared_mem_video_stream_stats_rx_processors_open_for_read();
-      hardware_sleep_ms(5);
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
    if ( NULL == g_pSM_VideoDecodeStats )
       iAnyFailed++;
 
    ruby_signal_alive();
-   for( int i=0; i<20; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSM_RadioRxQueueInfo )
          break;
       g_pSM_RadioRxQueueInfo = shared_mem_radio_rx_queue_info_open_for_read();
-      hardware_sleep_ms(5);
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
    if ( NULL == g_pSM_RadioRxQueueInfo )
-      iAnyFailed++;
-
-
-   ruby_signal_alive();
-   for( int i=0; i<20; i++ )
-   {
-      if ( NULL != g_pSM_VDS_history )
-         break;
-      g_pSM_VDS_history = shared_mem_video_stream_stats_history_rx_processors_open(true);
-      hardware_sleep_ms(5);
-      iAnyNewOpen++;
-   }
-   if ( NULL == g_pSM_VDS_history )
       iAnyFailed++;
 
    ruby_signal_alive();
 
    if ( (NULL != g_pCurrentModel) && (!g_bSearching) )
    {
-      for( int i=0; i<20; i++ )
+      for( int i=0; i<iRetryCount; i++ )
       {
          if ( NULL != g_pSM_DownstreamInfoRC )
             break;
          g_pSM_DownstreamInfoRC = shared_mem_rc_downstream_info_open_read();
-         hardware_sleep_ms(10);
+         hardware_sleep_ms(2);
          iAnyNewOpen++;
       }
       if ( NULL == g_pSM_DownstreamInfoRC )
@@ -438,12 +436,12 @@ void _pairing_open_shared_mem()
    }
 
    ruby_signal_alive();
-   for( int i=0; i<20; i++ )
+   for( int i=0; i<iRetryCount; i++ )
    {
       if ( NULL != g_pSM_RouterVehiclesRuntimeInfo )
          break;
       g_pSM_RouterVehiclesRuntimeInfo = shared_mem_router_vehicles_runtime_info_open_for_read();
-      hardware_sleep_ms(5);
+      hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
    if ( NULL == g_pSM_RouterVehiclesRuntimeInfo )
@@ -488,20 +486,17 @@ void _pairing_close_shared_mem()
    //shared_mem_video_link_stats_close(g_pSM_VideoLinkStats);
    //g_pSM_VideoLinkStats = NULL;
 
-   shared_mem_video_info_stats_close(g_pSM_VideoInfoStatsOutput);
-   g_pSM_VideoInfoStatsOutput = NULL;
+   shared_mem_video_frames_stats_close(g_pSM_VideoFramesStatsOutput);
+   g_pSM_VideoFramesStatsOutput = NULL;
 
-   shared_mem_video_info_stats_radio_in_close(g_pSM_VideoInfoStatsRadioIn);
-   g_pSM_VideoInfoStatsRadioIn = NULL;
+   //shared_mem_video_frames_stats_radio_in_close(g_pSM_VideoInfoStatsRadioIn);
+   //g_pSM_VideoInfoStatsRadioIn = NULL;
 
    shared_mem_video_link_graphs_close(g_pSM_VideoLinkGraphs);
    g_pSM_VideoLinkGraphs = NULL;
 
    shared_mem_video_stream_stats_rx_processors_close(g_pSM_VideoDecodeStats);
    g_pSM_VideoDecodeStats = NULL;
-
-   shared_mem_video_stream_stats_history_rx_processors_close(g_pSM_VDS_history);
-   g_pSM_VDS_history = NULL;
 
    shared_mem_radio_rx_queue_info_close(g_pSM_RadioRxQueueInfo);
    g_pSM_RadioRxQueueInfo = NULL;
@@ -517,6 +512,16 @@ void _pairing_close_shared_mem()
 bool pairing_isStarted()
 {
    return s_isRXStarted;
+}
+
+u32 pairing_getStartTime()
+{
+   return s_uPairingStartTime;
+}
+
+bool pairing_isRouterReady()
+{
+   return s_bPairingIsRouterReady;
 }
 
 void pairing_loop()

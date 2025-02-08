@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -221,7 +221,7 @@ char* MenuItem::getTooltip()
    return m_pszTooltip;
 }
 
-void MenuItem::setTextColor(double* pColor)
+void MenuItem::setTextColor(const double* pColor)
 {
    if ( NULL == pColor )
       return;

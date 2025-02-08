@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -34,7 +34,7 @@
 #include "menu_item_select.h"
 #include "menu_item_section.h"
 #include "../../base/utils.h"
-#include "../../base/controller_utils.h"
+#include "../../utils/utils_controller.h"
 
 const char* s_szWarningBitrate = "Warning: The current radio datarate is to small for the current video encoding settings.\n You will experience delays in the video stream.\n Increase the radio datarate, or decrease the video bitrate, decrease the encoding params.";
 
@@ -43,7 +43,7 @@ MenuVehicleVideoEncodings::MenuVehicleVideoEncodings(void)
 {
    m_Width = 0.37;
    m_xPos = menu_get_XStartPos(m_Width); m_yPos = 0.18;
-   m_ShowBitrateWarning = false;
+   //m_ShowBitrateWarning = false;
    float fSliderWidth = 0.12;
    char szBuff[256];
    setSubTitle("Change advanced vehicle encoding settings (for expert users)");
@@ -66,8 +66,20 @@ MenuVehicleVideoEncodings::MenuVehicleVideoEncodings(void)
    m_pItemsSelect[1]->setIsEditable();
    m_IndexHDMIOutput = addMenuItem(m_pItemsSelect[1]);
 
+   m_IndexNoise = -1;
+   if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
+   {
+      m_pItemsSelect[20] = new MenuItemSelect(L("Noise Level"), L("Sets the video noise level. Lower values means better performance but more noise in the live video."));  
+      m_pItemsSelect[20]->addSelection(L("0"));
+      m_pItemsSelect[20]->addSelection(L("1"));
+      m_pItemsSelect[20]->addSelection(L("Auto"));
+      m_pItemsSelect[20]->setIsEditable();
+      m_IndexNoise = addMenuItem(m_pItemsSelect[20]);
+   }
+
    addMenuItem(new MenuItemSection("Data & Error Correction Settings"));
 
+   /*
    m_pItemsSelect[16] = new MenuItemSelect("Radio Data Rate for Video", "Actual radio data rate to use for this video profile for video data transmission.");
    m_pItemsSelect[16]->addSelection("Auto (Use Radio Link)");
    for( int i=0; i<getDataRatesCount(); i++ )
@@ -85,9 +97,10 @@ MenuVehicleVideoEncodings::MenuVehicleVideoEncodings(void)
    }
    m_pItemsSelect[16]->setIsEditable();
    m_IndexDataRate = addMenuItem(m_pItemsSelect[16]);
+   */
 
    Preferences* p = get_Preferences();
-   int iMaxSize = p->iDebugMaxPacketSize-sizeof(t_packet_header)-sizeof(t_packet_header_video_full_98);
+   int iMaxSize = p->iDebugMaxPacketSize-sizeof(t_packet_header)-sizeof(t_packet_header_video_segment);
    iMaxSize = (iMaxSize/10)*10;
    m_pItemsSlider[0] = new MenuItemSlider("Packet size", "How big is each indivisible video packet over the air link. No major impact in link quality. Smaller packets and more EC packets increase the chance of error correction but also increase the CPU usage.", 100,iMaxSize,iMaxSize/2, fSliderWidth);
    m_pItemsSlider[0]->setStep(10);
@@ -114,28 +127,35 @@ MenuVehicleVideoEncodings::MenuVehicleVideoEncodings(void)
 
    addMenuItem(new MenuItemSection("H264 Encoder Settings"));
 
-   m_pItemsSelect[4] = new MenuItemSelect("H264 Profile", "The higher the H264 profile, the higher the CPU usage on encode and decode and higher the end to end video latencey. Higher profiles can have lower video quality as more compression algorithms are used.");
-   m_pItemsSelect[4]->addSelection("Baseline");
-   m_pItemsSelect[4]->addSelection("Main");
-   //m_pItemsSelect[4]->addSelection("Extended");
-   m_pItemsSelect[4]->addSelection("High");
-   m_pItemsSelect[4]->setIsEditable();
-   m_IndexH264Profile = addMenuItem(m_pItemsSelect[4]);
+   m_IndexH264Profile = -1;
+   m_IndexH264Level = -1;
+   m_IndexH264Refresh = -1;
 
-   m_pItemsSelect[5] = new MenuItemSelect("H264 Level", "");  
-   m_pItemsSelect[5]->addSelection("4");
-   m_pItemsSelect[5]->addSelection("4.1");
-   m_pItemsSelect[5]->addSelection("4.2");
-   m_pItemsSelect[5]->setIsEditable();
-   m_IndexH264Level = addMenuItem(m_pItemsSelect[5]);
+   if ( ! g_pCurrentModel->isRunningOnOpenIPCHardware() )
+   {
+      m_pItemsSelect[4] = new MenuItemSelect("H264 Profile", "The higher the H264 profile, the higher the CPU usage on encode and decode and higher the end to end video latencey. Higher profiles can have lower video quality as more compression algorithms are used.");
+      m_pItemsSelect[4]->addSelection("Baseline");
+      m_pItemsSelect[4]->addSelection("Main");
+      m_pItemsSelect[4]->addSelection("High");
+      m_pItemsSelect[4]->addSelection("Extended");
+      m_pItemsSelect[4]->setIsEditable();
+      m_IndexH264Profile = addMenuItem(m_pItemsSelect[4]);
 
-   m_pItemsSelect[6] = new MenuItemSelect("H264 Inter Refresh", "");  
-   m_pItemsSelect[6]->addSelection("Cyclic");
-   m_pItemsSelect[6]->addSelection("Adaptive");
-   m_pItemsSelect[6]->addSelection("Both");
-   m_pItemsSelect[6]->addSelection("Cyclic Rows");
-   m_pItemsSelect[6]->setIsEditable();
-   m_IndexH264Refresh = addMenuItem(m_pItemsSelect[6]);
+      m_pItemsSelect[5] = new MenuItemSelect("H264 Level", "");  
+      m_pItemsSelect[5]->addSelection("4");
+      m_pItemsSelect[5]->addSelection("4.1");
+      m_pItemsSelect[5]->addSelection("4.2");
+      m_pItemsSelect[5]->setIsEditable();
+      m_IndexH264Level = addMenuItem(m_pItemsSelect[5]);
+
+      m_pItemsSelect[6] = new MenuItemSelect("H264 Inter Refresh", "");  
+      m_pItemsSelect[6]->addSelection("Cyclic");
+      m_pItemsSelect[6]->addSelection("Adaptive");
+      m_pItemsSelect[6]->addSelection("Both");
+      m_pItemsSelect[6]->addSelection("Cyclic Rows");
+      m_pItemsSelect[6]->setIsEditable();
+      m_IndexH264Refresh = addMenuItem(m_pItemsSelect[6]);
+   }
 
    m_pItemsSelect[12] = new MenuItemSelect("H264 Slices", "Split video frames into multiple smaller parts. When having heavy radio interference there is a chance that not the entire video is corrupted if video is sliced up. But is uses more processing power.");
    for( int i=1; i<=16; i++ )
@@ -146,27 +166,51 @@ MenuVehicleVideoEncodings::MenuVehicleVideoEncodings(void)
    m_pItemsSelect[12]->setIsEditable();
    m_IndexH264Slices = addMenuItem(m_pItemsSelect[12]);
 
-   m_pItemsSelect[7] = new MenuItemSelect("H264 Insert PPS Headers", "");  
-   m_pItemsSelect[7]->addSelection("No");
-   m_pItemsSelect[7]->addSelection("Yes");
-   m_pItemsSelect[7]->setIsEditable();
-   m_IndexH264Headers = addMenuItem(m_pItemsSelect[7]);
+   m_pItemsSelect[17] = new MenuItemSelect("Remove extra H264/H265 frames", "Removes frames not needed for video decoding.");  
+   m_pItemsSelect[17]->addSelection("No");
+   m_pItemsSelect[17]->addSelection("Yes");
+   m_pItemsSelect[17]->setIsEditable();
+   m_IndexRemoveH264PPS = addMenuItem(m_pItemsSelect[17]);
 
-   m_pItemsSelect[11] = new MenuItemSelect("H264 Fill SPS Timings", "");  
-   m_pItemsSelect[11]->addSelection("No");
-   m_pItemsSelect[11]->addSelection("Yes");
-   m_pItemsSelect[11]->setIsEditable();
-   m_IndexH264SPSTimings = addMenuItem(m_pItemsSelect[11]);
+   m_IndexInsertH264PPS = -1;
+   m_IndexInsertH264SPSTimings = -1;
+   if ( ! g_pCurrentModel->isRunningOnOpenIPCHardware() )
+   {
+      m_pItemsSelect[7] = new MenuItemSelect("Insert H264 PPS Headers", "");  
+      m_pItemsSelect[7]->addSelection("No");
+      m_pItemsSelect[7]->addSelection("Yes");
+      m_pItemsSelect[7]->setIsEditable();
+      m_IndexInsertH264PPS = addMenuItem(m_pItemsSelect[7]);
 
-   m_pItemsSelect[8] = new MenuItemSelect("Auto H264 quantization", "Use default quantization for the H264 video encoding, or set a custom value.");  
-   m_pItemsSelect[8]->addSelection("No");
-   m_pItemsSelect[8]->addSelection("Yes");
-   m_pItemsSelect[8]->setIsEditable();
-   m_IndexCustomQuant = addMenuItem(m_pItemsSelect[8]);
+      m_pItemsSelect[11] = new MenuItemSelect("Fill H264 SPS Timings", "");  
+      m_pItemsSelect[11]->addSelection("No");
+      m_pItemsSelect[11]->addSelection("Yes");
+      m_pItemsSelect[11]->setIsEditable();
+      m_IndexInsertH264SPSTimings = addMenuItem(m_pItemsSelect[11]);
+   }
 
-   m_pItemsSlider[4] = new MenuItemSlider("Manual video quantization", 0,40,20,fSliderWidth);
-   m_pItemsSlider[4]->setTooltip("Sets a fixed H264 quantization parameter for the video stream. Higher values reduces quality but decreases bitrate requirements and latency. The default is about 16");
-   m_IndexQuantValue = addMenuItem(m_pItemsSlider[4]);
+   m_IndexIPQuantizationDelta = -1;
+   m_IndexCustomQuant = -1;
+   m_IndexQuantValue = -1;
+
+   if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
+   {
+      m_pItemsSlider[18] = new MenuItemSlider("I-P Frames Quantization Delta", -12,12,-2,fSliderWidth);
+      m_pItemsSlider[18]->setTooltip("Sets a relative quantization difference between P and I frames. Higher values increase the quality of I frames compared to P frames.");
+      m_IndexIPQuantizationDelta = addMenuItem(m_pItemsSlider[18]);
+   }
+   else
+   {
+      m_pItemsSelect[8] = new MenuItemSelect("Auto H264 quantization", "Use default quantization for the H264 video encoding, or set a custom value.");  
+      m_pItemsSelect[8]->addSelection("No");
+      m_pItemsSelect[8]->addSelection("Yes");
+      m_pItemsSelect[8]->setIsEditable();
+      m_IndexCustomQuant = addMenuItem(m_pItemsSelect[8]);
+
+      m_pItemsSlider[4] = new MenuItemSlider("Manual video quantization", 0,40,20,fSliderWidth);
+      m_pItemsSlider[4]->setTooltip("Sets a fixed H264 quantization parameter for the video stream. Higher values reduces quality but decreases bitrate requirements and latency. The default is about 16");
+      m_IndexQuantValue = addMenuItem(m_pItemsSlider[4]);
+   }
 
    m_pItemsSelect[14] = new MenuItemSelect("Enable adaptive H264 quantization", "Enable algorithm that auto adjusts the H264 quantization to match the desired video bitrate in realtime.");  
    m_pItemsSelect[14]->addSelection("No");
@@ -185,6 +229,7 @@ MenuVehicleVideoEncodings::MenuVehicleVideoEncodings(void)
 
 void MenuVehicleVideoEncodings::valuesToUI()
 {
+   int iVideoProfile = g_pCurrentModel->video_params.user_selected_video_link_profile;
    m_pItemsSlider[0]->setCurrentValue(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].video_data_length);
 
    m_pItemsSlider[1]->setCurrentValue(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].block_packets);
@@ -198,8 +243,13 @@ void MenuVehicleVideoEncodings::valuesToUI()
 
    m_pItemsSelect[19]->setSelectedIndex((int) uECSpread);
 
-   m_pItemsSelect[4]->setSelectedIndex((g_pCurrentModel->video_params.uVideoExtraFlags & VIDEO_FLAG_ENABLE_LOCAL_HDMI_OUTPUT)?1:0);
+   if ( -1 != m_IndexNoise )
+      m_pItemsSelect[20]->setSelectedIndex(g_pCurrentModel->video_link_profiles[iVideoProfile].uProfileFlags & 0x03);
 
+   if ( -1 != m_IndexH264Profile )
+      m_pItemsSelect[4]->setSelectedIndex((g_pCurrentModel->video_params.uVideoExtraFlags & VIDEO_FLAG_ENABLE_LOCAL_HDMI_OUTPUT)?1:0);
+
+   /*
    log_line("MenuVideoEncodings: Current video profile: %d, %s, current video datarate: %u",
       g_pCurrentModel->video_params.user_selected_video_link_profile,
       str_get_video_profile_name(g_pCurrentModel->video_params.user_selected_video_link_profile),
@@ -221,12 +271,16 @@ void MenuVehicleVideoEncodings::valuesToUI()
          selectedIndex = i+getDataRatesCount()+1 - iLowRatesToSkip;
    }
    m_pItemsSelect[16]->setSelection(selectedIndex);
+   */
 
-
-   m_pItemsSelect[4]->setSelection(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264profile);
-   m_pItemsSelect[5]->setSelection(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264level);
-   m_pItemsSelect[6]->setSelection(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264refresh);
-   m_pItemsSelect[7]->setSelection((int)(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].insertPPS));
+   if ( -1 != m_IndexH264Profile )
+      m_pItemsSelect[4]->setSelection(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264profile);
+   if ( -1 != m_IndexH264Level )
+      m_pItemsSelect[5]->setSelection(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264level);
+   if ( -1 != m_IndexH264Refresh )
+      m_pItemsSelect[6]->setSelection(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264refresh);
+   if ( -1 != m_IndexInsertH264PPS )
+      m_pItemsSelect[7]->setSelection(g_pCurrentModel->video_params.iInsertPPSVideoFrames);
    
    if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH )
       m_pItemsSelect[15]->setSelectedIndex(1);
@@ -244,31 +298,47 @@ void MenuVehicleVideoEncodings::valuesToUI()
       m_pItemsSelect[15]->setEnabled(false);    
    }
 
+   if ( -1 != m_IndexIPQuantizationDelta )
+      m_pItemsSlider[18]->setCurrentValue(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].iIPQuantizationDelta);
 
    if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264quantization > 0 )
    {
-      m_pItemsSelect[8]->setSelection(0);
-      m_pItemsSlider[4]->setCurrentValue(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264quantization);
-      m_pItemsSlider[4]->setEnabled(true);
+      if ( -1 != m_IndexCustomQuant )
+         m_pItemsSelect[8]->setSelection(0);
+      if ( -1 != m_IndexQuantValue )
+      {
+         m_pItemsSlider[4]->setCurrentValue(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264quantization);
+         m_pItemsSlider[4]->setEnabled(true);
+      }
       m_pItemsSelect[14]->setEnabled(false);
       m_pItemsSelect[15]->setEnabled(false);
    }
    else
    {
-      m_pItemsSelect[8]->setSelection(1);
-      m_pItemsSlider[4]->setCurrentValue(-g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264quantization);
-      m_pItemsSlider[4]->setEnabled(false);
+      if ( -1 != m_IndexCustomQuant )
+         m_pItemsSelect[8]->setSelection(1);
+      if ( -1 != m_IndexQuantValue )
+      {
+         m_pItemsSlider[4]->setCurrentValue(-g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264quantization);
+         m_pItemsSlider[4]->setEnabled(false);
+      }
       m_pItemsSelect[14]->setEnabled(true);
       //m_pItemsSelect[15]->setEnabled(true);
    }
 
-   m_pItemsSelect[11]->setSelectedIndex((g_pCurrentModel->video_params.uVideoExtraFlags & VIDEO_FLAG_FILL_H264_SPT_TIMINGS)?1:0);
+   if ( -1 != m_IndexInsertH264SPSTimings )
+      m_pItemsSelect[11]->setSelectedIndex(g_pCurrentModel->video_params.iInsertSPTVideoFramesTimings);
+   if ( -1 != m_IndexRemoveH264PPS )
+      m_pItemsSelect[17]->setSelectedIndex(g_pCurrentModel->video_params.iRemovePPSVideoFrames);
+   
    m_pItemsSelect[12]->setSelectedIndex(g_pCurrentModel->video_params.iH264Slices-1);
-   if ( hardware_board_is_openipc(g_pCurrentModel->hwCapabilities.uBoardType) )
-   {
-      m_pItemsSelect[12]->setSelectedIndex(0);
-      m_pItemsSelect[12]->setEnabled(false);
-   }
+   //if ( hardware_board_is_openipc(g_pCurrentModel->hwCapabilities.uBoardType) )
+   //{
+   //   m_pItemsSelect[12]->setSelectedIndex(0);
+   //   m_pItemsSelect[12]->setEnabled(false);
+   //}
+
+   /*
    m_ShowBitrateWarning = false;
 
    u32 uRealDataRate = g_pCurrentModel->getLinkRealDataRate(0);
@@ -290,6 +360,7 @@ void MenuVehicleVideoEncodings::valuesToUI()
       pm->m_fAlfaWhenInBackground = 1.0;
       add_menu_to_stack(pm);
    }
+   */
 }
 
 void MenuVehicleVideoEncodings::onShow()
@@ -326,6 +397,13 @@ void MenuVehicleVideoEncodings::sendVideoLinkProfile()
       memcpy(&profiles[i], &(g_pCurrentModel->video_link_profiles[i]), sizeof(type_video_link_profile));
 
    type_video_link_profile* pProfile = &(profiles[g_pCurrentModel->video_params.user_selected_video_link_profile]);
+   int iVideoProfile = g_pCurrentModel->video_params.user_selected_video_link_profile;
+   if ( -1 != m_IndexNoise )
+   {
+      int iNoise = m_pItemsSelect[20]->getSelectedIndex();
+      pProfile->uProfileFlags &= ~ (u32)0x03;
+      pProfile->uProfileFlags |= (iNoise) & 0x03;
+   }
 
    pProfile->video_data_length = m_pItemsSlider[0]->getCurrentValue();
    pProfile->block_packets = m_pItemsSlider[1]->getCurrentValue();
@@ -356,23 +434,33 @@ void MenuVehicleVideoEncodings::sendVideoLinkProfile()
     (pProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION)?"On":"ROff",
     (pProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH)?"Strength: High":"Strength: Low");
 
-   pProfile->h264profile = m_pItemsSelect[4]->getSelectedIndex();
-   pProfile->h264level = m_pItemsSelect[5]->getSelectedIndex();
-   pProfile->h264refresh = m_pItemsSelect[6]->getSelectedIndex();
-   pProfile->insertPPS = m_pItemsSelect[7]->getSelectedIndex()?1:0;
-   if ( 0 == m_pItemsSelect[8]->getSelectedIndex() )
+   if ( -1 != m_IndexH264Profile )
+      pProfile->h264profile = m_pItemsSelect[4]->getSelectedIndex();
+   if ( -1 != m_IndexH264Level )
+      pProfile->h264level = m_pItemsSelect[5]->getSelectedIndex();
+   if ( -1 != m_IndexH264Refresh )
+      pProfile->h264refresh = m_pItemsSelect[6]->getSelectedIndex();
+
+   if ( (-1 != m_IndexCustomQuant) && (-1 != m_IndexQuantValue) )
    {
-      pProfile->h264quantization = m_pItemsSlider[4]->getCurrentValue();
-      if ( pProfile->h264quantization < 5 )
-         pProfile->h264quantization = 5;
-   }
-   else
-   {
-      if ( pProfile->h264quantization > 0 )
-         pProfile->h264quantization = - pProfile->h264quantization;
+      if ( 0 == m_pItemsSelect[8]->getSelectedIndex() )
+      {
+         pProfile->h264quantization = m_pItemsSlider[4]->getCurrentValue();
+         if ( pProfile->h264quantization < 5 )
+            pProfile->h264quantization = 5;
+      }
+      else
+      {
+         if ( pProfile->h264quantization > 0 )
+            pProfile->h264quantization = - pProfile->h264quantization;
+      }
    }
    log_line("H264 quantization: %d", pProfile->h264quantization);
 
+   if ( -1 != m_IndexIPQuantizationDelta )
+      pProfile->iIPQuantizationDelta = m_pItemsSlider[18]->getCurrentValue();
+
+   /*
    int index = m_pItemsSelect[16]->getSelectedIndex();
    if ( index == 0 )
       pProfile->radio_datarate_video_bps = 0;
@@ -389,22 +477,24 @@ void MenuVehicleVideoEncodings::sendVideoLinkProfile()
       else
          pProfile->radio_datarate_video_bps = -1-(index + iLowRatesToSkip - getDataRatesCount());
    }
+   */
 
-   if ( pProfile->radio_datarate_video_bps == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].radio_datarate_video_bps )
-   if ( pProfile->video_data_length == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].video_data_length )
-   if ( pProfile->block_packets == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].block_packets )
-   if ( pProfile->block_fecs == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].block_fecs )
-   if ( pProfile->uProfileEncodingFlags == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags )
-   if ( pProfile->h264level == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264level )
-   if ( pProfile->h264profile == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264profile )
-   if ( pProfile->h264refresh == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264refresh )
-   if ( pProfile->insertPPS == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].insertPPS )
-   if ( pProfile->h264quantization == g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264quantization )
+   if ( pProfile->uProfileFlags == g_pCurrentModel->video_link_profiles[iVideoProfile].uProfileFlags )
+   if ( pProfile->radio_datarate_video_bps == g_pCurrentModel->video_link_profiles[iVideoProfile].radio_datarate_video_bps )
+   if ( pProfile->video_data_length == g_pCurrentModel->video_link_profiles[iVideoProfile].video_data_length )
+   if ( pProfile->block_packets == g_pCurrentModel->video_link_profiles[iVideoProfile].block_packets )
+   if ( pProfile->block_fecs == g_pCurrentModel->video_link_profiles[iVideoProfile].block_fecs )
+   if ( pProfile->uProfileEncodingFlags == g_pCurrentModel->video_link_profiles[iVideoProfile].uProfileEncodingFlags )
+   if ( pProfile->h264level == g_pCurrentModel->video_link_profiles[iVideoProfile].h264level )
+   if ( pProfile->h264profile == g_pCurrentModel->video_link_profiles[iVideoProfile].h264profile )
+   if ( pProfile->h264refresh == g_pCurrentModel->video_link_profiles[iVideoProfile].h264refresh )
+   if ( pProfile->h264quantization == g_pCurrentModel->video_link_profiles[iVideoProfile].h264quantization )
+   if ( pProfile->iIPQuantizationDelta == g_pCurrentModel->video_link_profiles[iVideoProfile].iIPQuantizationDelta )
       return;
 
    // Propagate changes to lower video profiles
 
-   propagate_video_profile_changes( &g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile], pProfile, &(profiles[0]));
+   propagate_video_profile_changes( &g_pCurrentModel->video_link_profiles[iVideoProfile], pProfile, &(profiles[0]));
 
    log_line("Sending video encoding flags: %s", str_format_video_encoding_flags(pProfile->uProfileEncodingFlags));
 
@@ -416,6 +506,21 @@ void MenuVehicleVideoEncodings::sendVideoLinkProfile()
       valuesToUI();
 }
 
+void MenuVehicleVideoEncodings::sendVideoParams()
+{
+   video_parameters_t params;
+   memcpy(&params, &g_pCurrentModel->video_params, sizeof(video_parameters_t));
+   
+   if ( -1 != m_IndexInsertH264PPS )
+      params.iInsertPPSVideoFrames = m_pItemsSelect[7]->getSelectedIndex();
+   if ( -1 != m_IndexInsertH264SPSTimings )
+      params.iInsertSPTVideoFramesTimings = m_pItemsSelect[11]->getSelectedIndex();
+   if ( -1 != m_IndexRemoveH264PPS )
+      params.iRemovePPSVideoFrames = m_pItemsSelect[17]->getSelectedIndex();
+  
+   if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMS, 0, (u8*)&params, sizeof(video_parameters_t)) )
+      valuesToUI();
+}
 
 void MenuVehicleVideoEncodings::onSelectItem()
 {
@@ -432,7 +537,6 @@ void MenuVehicleVideoEncodings::onSelectItem()
 
    if ( hardware_board_is_openipc(g_pCurrentModel->hwCapabilities.uBoardType) )
    if ( (m_IndexHDMIOutput == m_SelectedIndex) ||
-        (m_IndexH264Slices == m_SelectedIndex) ||
         (m_IndexCustomQuant == m_SelectedIndex) ||
         (m_IndexQuantValue == m_SelectedIndex) ||
         (m_IndexEnableAdaptiveQuantization == m_SelectedIndex) ||
@@ -449,8 +553,8 @@ void MenuVehicleVideoEncodings::onSelectItem()
         m_IndexECSchemeSpread == m_SelectedIndex )
       sendVideoLinkProfile();
 
-   if ( m_IndexDataRate == m_SelectedIndex )
-      sendVideoLinkProfile();
+   //if ( m_IndexDataRate == m_SelectedIndex )
+   //   sendVideoLinkProfile();
 
    if ( m_IndexHDMIOutput == m_SelectedIndex )
    {
@@ -476,31 +580,29 @@ void MenuVehicleVideoEncodings::onSelectItem()
       return;
    }
 
-   if ( m_IndexH264Profile == m_SelectedIndex )
-      sendVideoLinkProfile();
-   if ( m_IndexH264Level == m_SelectedIndex )
-      sendVideoLinkProfile();
-   if ( m_IndexH264Refresh == m_SelectedIndex )
-      sendVideoLinkProfile();
-   if ( m_IndexH264Headers == m_SelectedIndex )
+   if ( (-1 != m_IndexNoise) && (m_IndexNoise == m_SelectedIndex) )
       sendVideoLinkProfile();
 
-   if ( m_IndexH264SPSTimings == m_SelectedIndex )
+   if ( (-1 != m_IndexH264Profile) && (m_IndexH264Profile == m_SelectedIndex) )
+      sendVideoLinkProfile();
+   if ( (-1 != m_IndexH264Level) && (m_IndexH264Level == m_SelectedIndex) )
+      sendVideoLinkProfile();
+   if ( (-1 != m_IndexH264Refresh) && (m_IndexH264Refresh == m_SelectedIndex) )
+      sendVideoLinkProfile();
+
+   if ( (-1 != m_IndexRemoveH264PPS) && (m_IndexRemoveH264PPS == m_SelectedIndex) )
    {
-      video_parameters_t paramsOld;
-      memcpy(&paramsOld, &g_pCurrentModel->video_params, sizeof(video_parameters_t));
-      int index = m_pItemsSelect[11]->getSelectedIndex();
-      if ( index == 0 )
-         g_pCurrentModel->video_params.uVideoExtraFlags &= ~(VIDEO_FLAG_FILL_H264_SPT_TIMINGS);
-      else
-         g_pCurrentModel->video_params.uVideoExtraFlags |= VIDEO_FLAG_FILL_H264_SPT_TIMINGS;
-
-      video_parameters_t paramsNew;
-      memcpy(&paramsNew, &g_pCurrentModel->video_params, sizeof(video_parameters_t));
-      memcpy(&g_pCurrentModel->video_params, &paramsOld, sizeof(video_parameters_t));
-
-      if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMS, 0, (u8*)&paramsNew, sizeof(video_parameters_t)) )
-         valuesToUI();
+      sendVideoParams();
+      return;
+   }
+   if ( (-1 != m_IndexInsertH264PPS) && (m_IndexInsertH264PPS == m_SelectedIndex) )
+   {
+      sendVideoParams();
+      return;
+   }
+   if ( (-1 != m_IndexInsertH264SPSTimings) && (m_IndexInsertH264SPSTimings == m_SelectedIndex) )
+   {
+      sendVideoParams();
       return;
    }
 
@@ -516,10 +618,19 @@ void MenuVehicleVideoEncodings::onSelectItem()
 
       if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMS, 0, (u8*)&paramsNew, sizeof(video_parameters_t)) )
          valuesToUI();
+      else
+      {
+         #if defined HW_PLATFORM_RASPBERRY
+         if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
+            addMessage("Slice units might not work properly when a Raspberry Pi controller is paired with a vehicle running on OpenIPC hardware.");
+         #endif
+      }
       return;
    }
 
-   if ( (m_IndexCustomQuant == m_SelectedIndex || m_IndexQuantValue == m_SelectedIndex) && menu_check_current_model_ok_for_edit() )
+   if ( (-1 != m_IndexCustomQuant) && (-1 != m_IndexQuantValue) )
+   if ( (m_IndexCustomQuant == m_SelectedIndex) || (m_IndexQuantValue == m_SelectedIndex) )
+   if ( menu_check_current_model_ok_for_edit() )
    {
       u32 uParam = 0;
       if ( 0 == m_pItemsSelect[8]->getSelectedIndex() )
@@ -537,13 +648,19 @@ void MenuVehicleVideoEncodings::onSelectItem()
       return;    
    }
 
-   if ( m_IndexEnableAdaptiveQuantization == m_SelectedIndex ||
-        m_IndexAdaptiveH264QuantizationStrength == m_SelectedIndex )
+   if ( (-1 != m_IndexIPQuantizationDelta) && (m_IndexIPQuantizationDelta == m_SelectedIndex) )
    {
       sendVideoLinkProfile();
+      return;
+   }
+   if ( (m_IndexEnableAdaptiveQuantization == m_SelectedIndex) ||
+        (m_IndexAdaptiveH264QuantizationStrength == m_SelectedIndex) )
+   {
+      sendVideoLinkProfile();
+      return;
    }
 
-   if ( m_IndexResetParams == m_SelectedIndex && menu_check_current_model_ok_for_edit() )
+   if ( (m_IndexResetParams == m_SelectedIndex) && menu_check_current_model_ok_for_edit() )
    {
       // Reset expert params
       if ( ! handle_commands_send_to_vehicle(COMMAND_ID_RESET_VIDEO_LINK_PROFILE, 0, NULL, 0) )

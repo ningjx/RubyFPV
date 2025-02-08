@@ -160,7 +160,6 @@ extern bool g_bUpdateInProgress;
 extern int g_nFailedOTAUpdates;
 extern int g_nSucceededOTAUpdates;
 
-extern bool g_bIsVehicleLinkToControllerLost;
 extern bool g_bSyncModelSettingsOnLinkRecover;
 
 extern int g_nTotalControllerCPUSpikes;
@@ -169,8 +168,6 @@ extern bool g_bGotStatsVideoBitrate;
 extern bool g_bGotStatsVehicleTx;
 
 extern bool g_bHasVideoDecodeStatsSnapshot;
-
-extern int g_iDeltaVideoInfoBetweenVehicleController;
 
 extern u32 g_uLastControllerAlarmIOFlags;
 

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -69,6 +69,7 @@ u32 s_uSWPacketsMaxSize = 0;
 
 pthread_t s_pThreadProcessUpload;
 bool s_bUpdateInProgress = false;
+bool s_bProcessUploadInProgress = false;
 pthread_t s_pThreadProcessArchive;
 bool s_bThreadProcessArchiveFinished = true;
 char s_szProcessUploadArchiveCommand[256];
@@ -117,6 +118,7 @@ void _sw_update_close_remove_temp_files()
    sprintf(szComm, "rm -rf %s%s", FOLDER_RUBY_TEMP, FILE_TEMP_UPDATE_IN_PROGRESS_APPLY);
    hw_execute_bash_command_silent(szComm, NULL);
 
+   s_bProcessUploadInProgress = false;
    if ( s_bSoftwareUpdateStoppedVideoPipeline )
    if ( ! s_bUpdateAppliedRebooting )
    {
@@ -178,7 +180,8 @@ static void * _thread_process_archive(void *argument)
 static void * _thread_process_upload(void *argument)
 {
    log_line("[ProcessUploadTh] Started update thread...");
-
+   s_bProcessUploadInProgress = true;
+   
    char szFile[MAX_FILE_PATH_SIZE];
    char szComm[512];
 
@@ -279,26 +282,6 @@ static void * _thread_process_upload(void *argument)
    hw_execute_ruby_process_wait(NULL, "ruby_update_vehicle", "-ver", szOutput, 1);
    log_line("ruby_update_vehicle: [%s]", szOutput);
 
-   // Begin Check and update drivers
-
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-   char szDriver[MAX_FILE_PATH_SIZE];
-   strcpy(szDriver, FOLDER_BINARIES);
-   strcat(szDriver, "drivers/8812eu.ko");
-   
-   if ( access(szDriver, R_OK) != -1 )
-   {
-      sprintf(szComm, "mv -f %s /lib/modules/$(uname -r)/extra/", szDriver);
-      hw_execute_bash_command(szComm, NULL);
-      hw_execute_bash_command("modprobe cfg80211", NULL);
-      hw_execute_bash_command("insmod /lib/modules/$(uname -r)/extra/8812eu.ko rtw_tx_pwr_by_rate=0 rtw_tx_pwr_lmt_enable=0", NULL);
-   }
-   else
-      log_line("No new driver in file [%s]", szDriver);
-
-   #endif
-   // End check and update drivers
-
    #ifdef HW_PLATFORM_RASPBERRY
    if ( access( "ruby_capture_raspi", R_OK ) != -1 )
       hw_execute_bash_command("cp -rf ruby_capture_raspi /opt/vc/bin/raspivid", NULL);
@@ -395,6 +378,48 @@ static void * _thread_process_upload(void *argument)
    _sw_update_close_remove_temp_files();
 
    _process_upload_send_status_to_controller(OTA_UPDATE_STATUS_COMPLETED, 50);
+
+
+   // Begin Check and update drivers
+
+   /*
+   #ifdef HW_PLATFORM_OPENIPC_CAMERA
+   char szDriver[MAX_FILE_PATH_SIZE];
+   strcpy(szDriver, FOLDER_BINARIES);
+   strcat(szDriver, "drivers/8812eu-oipc.ko");
+   
+   if ( access(szDriver, R_OK) != -1 )
+   {
+      sprintf(szComm, "mv -f %s /lib/modules/$(uname -r)/extra/", szDriver);
+      hw_execute_bash_command(szComm, NULL);
+      hw_execute_bash_command("modprobe cfg80211", NULL);
+      hw_execute_bash_command("rmmod 8812eu 2>&1 1>/dev/null", NULL);
+      hw_execute_bash_command("insmod /lib/modules/$(uname -r)/extra/8812eu-oipc.ko rtw_tx_pwr_by_rate=0 rtw_tx_pwr_lmt_enable=0", NULL);
+   }
+   else
+      log_line("No new RTL8812EU driver in file [%s]", szDriver);
+
+   strcpy(szDriver, FOLDER_BINARIES);
+   strcat(szDriver, "drivers/88XXau-oipc.ko");
+   
+   if ( access(szDriver, R_OK) != -1 )
+   {
+      sprintf(szComm, "mv -f %s /lib/modules/$(uname -r)/extra/", szDriver);
+      hw_execute_bash_command(szComm, NULL);
+      hw_execute_bash_command("modprobe cfg80211", NULL);
+      hw_execute_bash_command("rmmod 88XXau 2>&1 1>/dev/null", NULL);
+      hw_execute_bash_command("insmod /lib/modules/$(uname -r)/extra/88XXau-oipc.ko rtw_tx_pwr_idx_override=1", NULL);
+   }
+   else
+      log_line("No new RTL8812AU driver in file [%s]", szDriver);
+   #endif
+   */
+   
+   // Drivers are installed after reboot, by the presence of ruby_update_vehicle
+   //hardware_install_drivers(0);
+   // End check and update drivers
+
+   s_bProcessUploadInProgress = false;
    signalReboot();
    return NULL;
 }
@@ -434,7 +459,7 @@ void process_sw_upload_new(u32 command_param, u8* pBuffer, int length)
       return;
    }
 
-   if ( (params->total_size <= 0) || (params->block_length <= 0) || (params->total_size > 50000000) || (params->block_length < 50) )
+   if ( (params->total_size <= 0) || (params->block_length <= 0) || (params->total_size > 50000000) )
    {
       log_softerror_and_alarm("Received SW Upload packet of invalid size: %d bytes, total length: %d bytes.", params->block_length, params->total_size);
       _sw_update_close_remove_temp_files();
@@ -490,7 +515,7 @@ void process_sw_upload_new(u32 command_param, u8* pBuffer, int length)
       }
    }
 
-   if ( (params->file_block_index < 0) || (params->file_block_index >= s_uSWPacketsCount) )
+   if ( (params->file_block_index < 0) || (params->file_block_index > s_uSWPacketsCount) )
    {
       log_softerror_and_alarm("Received SW Upload packet index %d out of bounds (%u)", params->file_block_index, s_uSWPacketsCount);
       _sw_update_close_remove_temp_files();
@@ -630,6 +655,7 @@ void process_sw_upload_new(u32 command_param, u8* pBuffer, int length)
    {
       log_softerror_and_alarm("Failed to create worker thread to process upload.");
       s_bUpdateInProgress = false;
+      s_bProcessUploadInProgress = false;
       _process_upload_send_status_to_controller(OTA_UPDATE_STATUS_FAILED, 10);
       return;
    }
@@ -642,7 +668,7 @@ bool process_sw_upload_is_started()
 
 void process_sw_upload_check_timeout(u32 uTimeNow)
 {
-   if ( ! s_bSoftwareUpdateStoppedVideoPipeline )
+   if ( (! s_bSoftwareUpdateStoppedVideoPipeline) || s_bProcessUploadInProgress )
       return;
 
    if ( uTimeNow > s_uLastTimeReceivedAnySoftwareBlock + 5000 )

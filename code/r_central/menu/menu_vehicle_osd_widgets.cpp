@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -114,7 +114,7 @@ MenuVehicleOSDWidgets::~MenuVehicleOSDWidgets()
 
 void MenuVehicleOSDWidgets::valuesToUI()
 {
-   int layoutIndex = g_pCurrentModel->osd_params.layout;
+   int layoutIndex = g_pCurrentModel->osd_params.iCurrentOSDLayout;
 
    //log_dword("start: osd flags", g_pCurrentModel->osd_params.osd_flags[layoutIndex]);
    //log_dword("start: instruments flags", g_pCurrentModel->osd_params.instruments_flags[layoutIndex]);
@@ -222,7 +222,7 @@ void MenuVehicleOSDWidgets::onSelectItem()
    osd_parameters_t params;
    memcpy(&params, &(g_pCurrentModel->osd_params), sizeof(osd_parameters_t));
    bool sendToVehicle = false;
-   int layoutIndex = g_pCurrentModel->osd_params.layout;
+   int layoutIndex = g_pCurrentModel->osd_params.iCurrentOSDLayout;
 
    if ( m_IndexShowSpeedAlt == m_SelectedIndex )
    {

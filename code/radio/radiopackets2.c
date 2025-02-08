@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -45,14 +45,15 @@ void radio_packet_init(t_packet_header* pPH, u8 component, u8 packet_type, u32 u
    pPH->vehicle_id_dest = 0;
    pPH->radio_link_packet_index = 0;
    pPH->stream_packet_idx = uStreamId << PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX;
-   pPH->packet_flags = component;
+   pPH->packet_flags = component & PACKET_FLAGS_MASK_MODULE;
    pPH->packet_type = packet_type;
-
+   pPH->total_length = sizeof(t_packet_header);
    if ( SYSTEM_SW_VERSION_MINOR < 10 )
       pPH->packet_flags_extended = 0xFF & ((SYSTEM_SW_VERSION_MAJOR << 4) | SYSTEM_SW_VERSION_MINOR);
    else
       pPH->packet_flags_extended = 0xFF & ((SYSTEM_SW_VERSION_MAJOR << 4) | (SYSTEM_SW_VERSION_MINOR/10));
 }
+
 
 void radio_packet_compute_crc(u8* pBuffer, int length)
 {
@@ -60,6 +61,7 @@ void radio_packet_compute_crc(u8* pBuffer, int length)
    u32* p = (u32*)pBuffer;
    *p = crc;
 }
+
 
 int radio_packet_check_crc(u8* pBuffer, int length)
 {
@@ -70,13 +72,15 @@ int radio_packet_check_crc(u8* pBuffer, int length)
    return 1;
 }
 
-int radio_packet_type_is_high_priority(u8 uPacketType)
+int radio_packet_type_is_high_priority(u8 uPacketFlags, u8 uPacketType)
 {
+   if ( uPacketFlags & PACKET_FLAGS_BIT_RETRANSMITED )
+      return 1;
    switch(uPacketType)
    {
       case PACKET_TYPE_RUBY_PING_CLOCK:
       case PACKET_TYPE_RUBY_PING_CLOCK_REPLY:
-      case PACKET_TYPE_VIDEO_DATA_98:
+      case PACKET_TYPE_VIDEO_ACK:
       case PACKET_TYPE_VIDEO_REQ_MULTIPLE_PACKETS:
       case PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL:
       case PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL_ACK:

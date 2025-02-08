@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -81,12 +81,12 @@ RenderEngineOVG::~RenderEngineOVG()
 }
 
 
-void RenderEngineOVG::setColors(double* color)
+void RenderEngineOVG::setColors(const double* color)
 {
    setColors(color, 1.0);
 }
 
-void RenderEngineOVG::setColors(double* color, float fAlfaScale)
+void RenderEngineOVG::setColors(const double* color, float fAlfaScale)
 {
    float fAlpha = color[3]*m_fGlobalAlfa*fAlfaScale;
    if ( fAlpha > 1.0 )
@@ -101,12 +101,12 @@ void RenderEngineOVG::setFill(float r, float g, float b, float a)
    Fill(r,g,b,a);
 }
 
-void RenderEngineOVG::setStroke(double* color)
+void RenderEngineOVG::setStroke(const double* color)
 {
    setStroke(color, 1.0);
 }
 
-void RenderEngineOVG::setStroke(double* color, float fStrokeWidth)
+void RenderEngineOVG::setStroke(const double* color, float fStrokeWidth)
 {
    float fAlpha = color[3]*m_fGlobalAlfa;
    if ( fAlpha > 1.0 )

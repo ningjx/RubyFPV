@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -919,6 +919,7 @@ void MenuVehicleRelay::onSelectItem()
       
       if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_RELAY_PARAMETERS, 0, (u8*)&params, sizeof(type_relay_parameters)) )
          valuesToUI();
+      return;
    }
 
    if ( m_IndexOSDMerge == m_SelectedIndex )
@@ -932,5 +933,6 @@ void MenuVehicleRelay::onSelectItem()
       
       if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_RELAY_PARAMETERS, 0, (u8*)&params, sizeof(type_relay_parameters)) )
          valuesToUI();
+      return;
    }
 }

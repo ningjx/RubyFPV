@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -35,7 +35,6 @@
 #include "../base/hw_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/camera_utils.h"
-#include "../base/parser_h264.h"
 #include "../base/utils.h"
 #include "../common/string_utils.h"
 
@@ -57,8 +56,6 @@
 
 #ifdef HW_PLATFORM_RASPBERRY
 
-ParserH264 s_ParserH264_CSICameraOutput;
-
 pthread_t s_pThreadWatchDogVideoCapture;
 bool s_bStopThreadWatchDogVideoCapture = false;
 bool s_bHasThreadWatchDogVideoCapture = false;
@@ -70,7 +67,7 @@ static type_video_link_profile s_LastAppliedVeyeVideoParams;
 int s_fInputVideoStreamCSIPipe = -1;
 char s_szInputVideoStreamCSIPipeName[128];
 bool s_bInputVideoStreamCSIPipeOpenFailed = false;
-u8 s_uInputVideoCSIPipeBuffer[64000];
+u8 s_uInputVideoCSIPipeBuffer[128000];
 
 bool s_bRequestedVideoCSICaptureRestart = false;
 bool s_bVideoCSICaptureProgramStarted = false;
@@ -78,12 +75,13 @@ u32  s_uTimeToRestartVideoCapture = 0;
 u32  s_uRaspiVidStartTimeMs = 0;
 int s_iMsgQueueCSICommands = -1;
 bool s_bDidSentRaspividBitrateRefresh = false;
+u32 s_uLastSetCSIVideoBitrateBPS = 0;
 
+ParserH264 s_ParserH264CSICamera;
 u32 s_uTotalCSICameraReadBytes = 0;
 u32 s_uDebugTimeLastCSIVideoInputCheck = 0;
 u32 s_uDebugCSIInputBytes = 0;
 u32 s_uDebugCSIInputReads = 0;
-
 
 static void * _thread_watchdog_video_capture(void *ignored_argument)
 {
@@ -205,8 +203,6 @@ int video_source_csi_open(const char* szPipeName)
       log_error_and_alarm("[VideoSourceCSI] Tried to open a video input source pipe with an empty name.");
       return s_fInputVideoStreamCSIPipe;
    }
-
-   s_ParserH264_CSICameraOutput.init();
    
    strcpy(s_szInputVideoStreamCSIPipeName, szPipeName);
    log_line("[VideoSourceCSI] Opening video input stream pipe: %s", s_szInputVideoStreamCSIPipeName);
@@ -257,7 +253,7 @@ void video_source_csi_flush_discard()
    for( int i=0; i<50; i++ )
    {
       int iReadSize = 0;
-      video_source_csi_read(&iReadSize, NULL);
+      video_source_csi_read(&iReadSize);
    }
    log_line("[VideoSourceCSI] Flushed video stream input buffer (pipe)");
 }
@@ -268,12 +264,10 @@ int video_source_csi_get_buffer_size()
 }
 
 // Returns the buffer and number of bytes read
-u8* video_source_csi_read(int* piReadSize, bool* pbIsInsideIFrame)
+u8* video_source_csi_read(int* piReadSize)
 {
    if ( (NULL == piReadSize) )
       return NULL;
-   if ( NULL != pbIsInsideIFrame )
-      *pbIsInsideIFrame = false;
 
    if ( s_bRequestedVideoCSICaptureRestart )
    {
@@ -352,9 +346,6 @@ u8* video_source_csi_read(int* piReadSize, bool* pbIsInsideIFrame)
    s_uDebugCSIInputReads++;
    *piReadSize = iRead;
 
-   s_ParserH264_CSICameraOutput.parseData(s_uInputVideoCSIPipeBuffer, iRead, g_TimeNow);
-   if ( NULL != pbIsInsideIFrame )
-      *pbIsInsideIFrame = s_ParserH264_CSICameraOutput.IsInsideIFrame();
    return s_uInputVideoCSIPipeBuffer;
 }
 
@@ -401,7 +392,7 @@ void video_source_csi_start_program()
        video_source_csi_open(FIFO_RUBY_CAMERA1);
 
    s_bVideoCSICaptureProgramStarted = true;
-
+   s_uLastSetCSIVideoBitrateBPS = 0;
    vehicle_launch_video_capture_csi(g_pCurrentModel);
    vehicle_check_update_processes_affinities(true, g_pCurrentModel->isActiveCameraVeye());
 
@@ -423,6 +414,7 @@ void video_source_csi_stop_program()
 {
    log_line("[VideoSourceCSI] Video capture program stop procedure started...");
    s_bVideoCSICaptureProgramStarted = false;
+   s_uLastSetCSIVideoBitrateBPS = 0;
    s_uRaspiVidStartTimeMs = 0;
 
    if ( s_bHasThreadWatchDogVideoCapture )
@@ -499,14 +491,12 @@ void video_source_csi_send_control_message(u8 parameter, u16 value1, u16 value2)
 
    if ( parameter == RASPIVID_COMMAND_ID_KEYFRAME )
    {
-      //log_line("DBG set keyframe to %d frames", value);
    }
 
    if ( parameter == RASPIVID_COMMAND_ID_VIDEO_BITRATE )
    {
-      //To fix g_SM_VideoLinkStats.overwrites.currentSetVideoBitrate = ((u32)value) * 100000;
+      s_uLastSetCSIVideoBitrateBPS = ((u32)value1) * 100000; 
       s_bDidSentRaspividBitrateRefresh = true;
-      //log_line("Setting video capture bitrate to: %u", g_SM_VideoLinkStats.overwrites.currentSetVideoBitrate );
    }
 
    _video_source_csi_open_commands_msg_queue();
@@ -568,6 +558,12 @@ void video_source_csi_send_control_message(u8 parameter, u16 value1, u16 value2)
    }
    #endif
 }
+
+u32 video_source_csi_get_last_set_videobitrate()
+{
+   return s_uLastSetCSIVideoBitrateBPS;
+}
+
 
 void video_source_csi_periodic_checks()
 {
@@ -641,6 +637,8 @@ bool vehicle_launch_video_capture_csi(Model* pModel)
       memset((u8*)&s_LastAppliedVeyeCameraParams, 0, sizeof(type_camera_parameters));
       memset((u8*)&s_LastAppliedVeyeVideoParams, 0, sizeof(video_parameters_t));
    }
+
+   s_ParserH264CSICamera.init();
 
    bool bResult = true;
 
@@ -733,7 +731,7 @@ bool vehicle_launch_video_capture_csi(Model* pModel)
    }
 
    //log_line("Executing video pipeline: [%s]", szBuff);
-   bResult = hw_execute_bash_command(szBuff, NULL);
+   bResult = hw_execute_bash_command_nonblock(szBuff, NULL);
 
    if ( pModel->isActiveCameraVeye() )
    {
@@ -1024,7 +1022,12 @@ void video_source_csi_close() {}
 int video_source_csi_open(const char* szPipeName) {return 0;}
 void video_source_csi_flush_discard() {}
 int video_source_csi_get_buffer_size() {return 0;}
-u8* video_source_csi_read(int* piReadSize, bool* pbIsInsideIFrame) {return NULL;}
+u8* video_source_csi_read(int* piReadSize)
+{
+   if ( NULL != piReadSize )
+      *piReadSize = 0;
+   return NULL;
+}
 void video_source_csi_start_program() {}
 void video_source_csi_stop_program() {}
 bool video_source_csi_is_program_started() {return false;}
@@ -1032,6 +1035,7 @@ u32 video_source_cs_get_program_start_time() { return 0;}
 void video_source_csi_request_restart_program() {}
 bool video_source_csi_is_restart_requested() { return false;}
 void video_source_csi_send_control_message(u8 parameter, u16 value1, u16 value2) {}
+u32 video_source_csi_get_last_set_videobitrate() { return 0; }
 void video_source_csi_periodic_checks() {}
 bool video_source_csi_read_any_data() { return false; }
 

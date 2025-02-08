@@ -48,21 +48,36 @@ typedef struct
    u32 uUpdateIntervalMs;
    u32 uCurrentSliceStartTime;
    int iCurrentIndex;
+   int iCurrentIndex2;
+   int iCurrentIndex3;
    int iDeltaIndexFromVehicle;
    u32 uSliceUpdateTime[SYSTEM_RT_INFO_INTERVALS];
    u8 uRxVideoPackets[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
    u8 uRxVideoECPackets[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
-   u8 uRxVideoRetrPackets[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
    u8 uRxDataPackets[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
+   u8 uRxHighPriorityPackets[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
    u8 uRxMissingPackets[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
    u8 uRxMissingPacketsMaxGap[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
    u8 uRxProcessedPackets[SYSTEM_RT_INFO_INTERVALS];
+   u8 uRxMaxAirgapSlots[SYSTEM_RT_INFO_INTERVALS];
+   u8 uRxMaxAirgapSlots2[SYSTEM_RT_INFO_INTERVALS];
+
+   u8 uTxPackets[SYSTEM_RT_INFO_INTERVALS];
+   u8 uTxHighPriorityPackets[SYSTEM_RT_INFO_INTERVALS];
 
    u8 uRecvVideoDataPackets[SYSTEM_RT_INFO_INTERVALS];
    u8 uRecvVideoECPackets[SYSTEM_RT_INFO_INTERVALS];
-   u8 uRecvEndOfFrame[SYSTEM_RT_INFO_INTERVALS];
+   u8 uRecvFramesInfo[SYSTEM_RT_INFO_INTERVALS];
+     // bit 0: is IFrame
+     // bit 1: is PFrame
+     // bit 2: end of IFrame
+     // bit 3: end of PFrame
+     // bit 4: parsed start output of IFrame
+     // bit 5: parsed start output of PFrame
+     // bit 6: parsed start output of other frames
    
    u8 uOutputedVideoPackets[SYSTEM_RT_INFO_INTERVALS];
+   u8 uOutputedVideoPacketsRetransmitted[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedVideoPacketsSingleECUsed[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedVideoPacketsTwoECUsed[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedVideoPacketsMultipleECUsed[SYSTEM_RT_INFO_INTERVALS];
@@ -74,6 +89,7 @@ typedef struct
    u8 uRadioLinkQuality[SYSTEM_RT_INFO_INTERVALS];
 
    u32 uFlagsAdaptiveVideo[SYSTEM_RT_INFO_INTERVALS];
+   u32 uTotalCountOutputSkippedBlocks;
 
    controller_runtime_info_vehicle vehicles[MAX_CONCURENT_VEHICLES];
 } ALIGN_STRUCT_SPEC_INFO controller_runtime_info;

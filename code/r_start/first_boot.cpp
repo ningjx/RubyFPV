@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -47,6 +47,21 @@ Model s_ModelFirstBoot;
 
 void do_first_boot_pre_initialization()
 {
+   log_line("---------------------------------------");
+   log_line("Do first time boot preinitialization...");
+
+   hardware_install_drivers(1);
+
+   #if defined HW_PLATFORM_RASPBERRY
+   printf("\nRuby doing first time ever initialization on Raspberry. Please wait...\n");
+   fflush(stdout);
+
+   hw_execute_bash_command("sync", NULL);
+   
+   printf("\nRuby done doing first time ever initialization on Raspberry.\n");
+   fflush(stdout);
+   #endif
+
    #if defined HW_PLATFORM_RADXA_ZERO3
 
    printf("\nRuby doing first time ever initialization on Radxa. Please wait...\n");
@@ -58,28 +73,6 @@ void do_first_boot_pre_initialization()
    //log_enable_stdout();
    log_add_file("/tmp/ruby/log_first_radxa.log");
    hw_execute_bash_command("echo \"\nRuby doing first time ever initialization on Radxa...\n\" > /tmp/ruby/log_first_radxa.log", NULL);
-   if ( access("/home/88XXau_wfb.ko", R_OK) != -1 )
-   {
-      hw_execute_bash_command("cp -rf /home/88XXau_wfb.ko /lib/modules/$(uname -r)/kernel/drivers/net/wireless/", NULL);
-      hw_execute_bash_command("rmmod 88XXau_wfb 2>&1 1>/dev/null", NULL);
-      hw_execute_bash_command("insmod /lib/modules/$(uname -r)/kernel/drivers/net/wireless/88XXau_wfb.ko 2>&1 1>/dev/null", NULL);
-   }
-   if ( access("/home/8812eu_radxa.ko", R_OK) != -1 )
-   {
-      hw_execute_bash_command("cp -rf /home/8812eu_radxa.ko /lib/modules/$(uname -r)/kernel/drivers/net/wireless/", NULL);
-      //Radxa EU driver will be loaded by hardware_radio_load_radio_modules()
-      //hw_execute_bash_command("sudo modprobe cfg80211", NULL);
-      //hw_execute_bash_command("insmod /lib/modules/$(uname -r)/kernel/drivers/net/wireless/8812eu_radxa.ko rtw_tx_pwr_by_rate=0 rtw_tx_pwr_lmt_enable=0", NULL);
-   }
-   hw_execute_bash_command("depmod -a", NULL);
-   hw_execute_bash_command("lsusb", NULL);
-   hw_execute_bash_command("sudo modprobe -f 88XXau_wfb 2>&1 1>/dev/null", NULL);
-   hw_execute_bash_command("sudo modprobe -f 8812eu_radxa.ko 2>&1 1>/dev/null", NULL);
-   hw_execute_bash_command("sudo modprobe -r aic8800_fdrv 2>&1 1>/dev/null", NULL);
-   hw_execute_bash_command("sudo modprobe -r aic8800_bsp 2>&1 1>/dev/null", NULL);
-   hw_execute_bash_command("lsusb", NULL);
-   hw_execute_bash_command("lsmod", NULL);
-   hw_execute_bash_command("ip link", NULL);
 
    char szComm[256];
    sprintf(szComm, "mkdir -p %s", FOLDER_CONFIG);
@@ -100,6 +93,9 @@ void do_first_boot_pre_initialization()
    hw_execute_bash_command("fw_setenv sensor", NULL); 
    hardware_set_default_sigmastar_cpu_freq();
    #endif
+
+   log_line("Done first time boot preinitialization.");
+   log_line("---------------------------------------");
 }
 
 
@@ -143,12 +139,31 @@ void do_first_boot_initialization_radxa(bool bIsVehicle, u32 uBoardType)
    hw_execute_bash_command("sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0", NULL);
    hw_execute_bash_command("sudo sysctl -p", NULL);
    hw_execute_bash_command("PATH=\"/usr/sbin:/usr/local/sbin:$PATH\"", NULL);
+
+   hw_execute_bash_command("rm -rf /usr/bin/pulseaudio", NULL);
+
+   hw_execute_bash_command("sudo systemctl stop systemd-timesyncd", NULL);
+   hw_execute_bash_command("sudo systemctl disable systemd-timesyncd", NULL);
+
+   hw_execute_bash_command("/etc/init.d/avahi-daemon stop", NULL);
+   hw_execute_bash_command("rm -rf /etc/init.d/avahi-daemon", NULL);
+   hw_execute_bash_command("rm -rf /usr/sbin/avahi-daemon", NULL);
 }
 
 
 void do_first_boot_initialization_openipc(bool bIsVehicle, u32 uBoardType)
 {
    log_line("Doing first time boot setup for OpenIPC platform...");
+   hw_execute_bash_command("cp -rf /etc/majestic.yaml /etc/majestic.yaml.org", NULL);
+
+   hw_execute_bash_command_raw("cli -s .watchdog.enabled false", NULL);
+   hw_execute_bash_command_raw("cli -s .system.logLevel info", NULL);
+   hw_execute_bash_command_raw("cli -s .rtsp.enabled false", NULL);
+   hw_execute_bash_command_raw("cli -s .video1.enabled false", NULL);
+   hw_execute_bash_command_raw("cli -s .video0.enabled true", NULL);
+   hw_execute_bash_command_raw("cli -s .video0.rcMode cbr", NULL);
+   hw_execute_bash_command_raw("cli -s .isp.slowShutter disabled", NULL);
+
    hw_execute_bash_command("ln -s /lib/firmware/ath9k_htc/htc_9271.fw.3 /lib/firmware/ath9k_htc/htc_9271-1.4.0.fw", NULL);
    hw_execute_bash_command("sed -i 's/console:/#console:/' /etc/inittab", NULL);
 }
@@ -179,47 +194,11 @@ void do_first_boot_initialization(bool bIsVehicle, u32 uBoardType)
    first_boot_create_default_model(bIsVehicle, uBoardType);
 
    if ( bIsVehicle )
-   if ( access( "config/reset_info.txt", R_OK ) != -1 )
-   {
-      log_line("Found info for reset to defaults. Using it.");
-      strcpy(szFile, FOLDER_CONFIG);
-      strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
-      if ( ! s_ModelFirstBoot.loadFromFile(szFile, true) )
-      {
-         s_ModelFirstBoot.resetToDefaults(true);
-         s_ModelFirstBoot.is_spectator = false;
-      }
-      FILE* fd = fopen("config/reset_info.txt", "rb");
-      if ( NULL != fd )
-      {
-         fscanf(fd, "%u %u %d %d %d %s",
-            &s_ModelFirstBoot.uVehicleId, &s_ModelFirstBoot.uControllerId,
-            &s_ModelFirstBoot.radioLinksParams.link_frequency_khz[0],
-            &s_ModelFirstBoot.radioLinksParams.link_frequency_khz[1],
-            &s_ModelFirstBoot.radioLinksParams.link_frequency_khz[2],
-            szBuff);
-         fclose(fd);
-      
-         if ( szBuff[0] == '*' && szBuff[1] == 0 )
-            szBuff[0] = 0;
-
-         for( int i=0; i<(int)strlen(szBuff); i++ )
-            if ( szBuff[i] == '_' )
-               szBuff[i] = ' ';
-
-         strcpy(s_ModelFirstBoot.vehicle_name, szBuff);
-      }
-      s_ModelFirstBoot.saveToFile(szFile, false);
-      
-      hw_execute_bash_command("rm -rf config/reset_info.txt", NULL);
-   }
-
-   if ( bIsVehicle )
    {
       #ifdef HW_PLATFORM_OPENIPC_CAMERA
-      hardware_camera_apply_all_majestic_settings(&s_ModelFirstBoot, &(s_ModelFirstBoot.camera_params[s_ModelFirstBoot.iCurrentCamera].profiles[s_ModelFirstBoot.camera_params[s_ModelFirstBoot.iCurrentCamera].iCurrentProfile]),
+      hardware_camera_maj_apply_all_settings(&s_ModelFirstBoot, &(s_ModelFirstBoot.camera_params[s_ModelFirstBoot.iCurrentCamera].profiles[s_ModelFirstBoot.camera_params[s_ModelFirstBoot.iCurrentCamera].iCurrentProfile]),
           s_ModelFirstBoot.video_params.user_selected_video_link_profile,
-          &(s_ModelFirstBoot.video_params));
+          &(s_ModelFirstBoot.video_params), false);
       #endif
    }
    else
@@ -267,10 +246,23 @@ void do_first_boot_initialization(bool bIsVehicle, u32 uBoardType)
    //   execute_bash_command("raspi-config --expand-rootfs > /dev/null 2>&1", NULL);   
 
 
-   hardware_radio_set_txpower_rtl8812au(DEFAULT_RADIO_TX_POWER);
-   hardware_radio_set_txpower_rtl8812eu(DEFAULT_RADIO_TX_POWER);
-   hardware_radio_set_txpower_atheros(DEFAULT_RADIO_TX_POWER);
+   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+   {
+      if ( ! hardware_radio_index_is_wifi_radio(i) )
+         continue;
+      if ( hardware_radio_index_is_sik_radio(i) )
+         continue;
+      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+      if ( ! pRadioHWInfo->isConfigurable )
+         continue;
 
+      if ( hardware_radio_driver_is_rtl8812au_card(pRadioHWInfo->iRadioDriver) )
+         hardware_radio_set_txpower_raw_rtl8812au(i, 10);
+      if ( hardware_radio_driver_is_rtl8812eu_card(pRadioHWInfo->iRadioDriver) )
+         hardware_radio_set_txpower_raw_rtl8812eu(i, 10);
+      if ( hardware_radio_driver_is_atheros_card(pRadioHWInfo->iRadioDriver) )
+         hardware_radio_set_txpower_raw_atheros(i, 10);
+   }
    log_line("First boot initialization completed.");
    log_line("---------------------------------------------------------");
 }
@@ -281,6 +273,8 @@ Model* first_boot_create_default_model(bool bIsVehicle, u32 uBoardType)
    log_line("Creating a default model.");
    s_ModelFirstBoot.resetToDefaults(true);
    s_ModelFirstBoot.find_and_validate_camera_settings();
+
+   char szFile[MAX_FILE_PATH_SIZE];
    
    if ( bIsVehicle )
    {
@@ -341,7 +335,6 @@ Model* first_boot_create_default_model(bool bIsVehicle, u32 uBoardType)
          }
          for( int i=0; i<s_ModelFirstBoot.radioInterfacesParams.interfaces_count; i++ )
          {
-            s_ModelFirstBoot.radioInterfacesParams.interface_dummy1[i] = 0;
             s_ModelFirstBoot.radioInterfacesParams.interface_dummy2[i] = 0;
          }
          s_ModelFirstBoot.video_link_profiles[VIDEO_PROFILE_BEST_PERF].bitrate_fixed_bps = 5000000;
@@ -350,7 +343,36 @@ Model* first_boot_create_default_model(bool bIsVehicle, u32 uBoardType)
          s_ModelFirstBoot.video_link_profiles[VIDEO_PROFILE_PIP].bitrate_fixed_bps = 5000000;
       }
 
-      char szFile[128];
+      strcpy(szFile, FOLDER_CONFIG);
+      strcat(szFile, "reset_info.txt");
+      if ( access( szFile, R_OK ) != -1 )
+      {
+         log_line("Found info for restoring vehicle frequencies after a reset to defaults. Using it.");
+         FILE* fd = fopen(szFile, "r");
+         if ( NULL != fd )
+         {
+            char szBuff[128];
+            fscanf(fd, "%u %u %d %d %d %s",
+               &s_ModelFirstBoot.uVehicleId, &s_ModelFirstBoot.uControllerId,
+               &s_ModelFirstBoot.radioLinksParams.link_frequency_khz[0],
+               &s_ModelFirstBoot.radioLinksParams.link_frequency_khz[1],
+               &s_ModelFirstBoot.radioLinksParams.link_frequency_khz[2],
+               szBuff);
+            fclose(fd);
+         
+            if ( szBuff[0] == '*' && szBuff[1] == 0 )
+               szBuff[0] = 0;
+            szBuff[MAX_VEHICLE_NAME_LENGTH] = 0;
+            strcpy(s_ModelFirstBoot.vehicle_name, szBuff);
+            log_line("Restored vehicle frequencies.");
+         }
+         else
+            log_softerror_and_alarm("Failed to restore vehicle frequencies.");
+         char szComm[256];
+         snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "rm -rf %s", szFile);
+         hw_execute_bash_command(szComm, NULL);
+      }
+
       strcpy(szFile, FOLDER_CONFIG);
       strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
       _set_default_sik_params_for_vehicle(&s_ModelFirstBoot);
@@ -377,7 +399,7 @@ Model* first_boot_create_default_model(bool bIsVehicle, u32 uBoardType)
 
       s_ModelFirstBoot.b_mustSyncFromVehicle = true;
       s_ModelFirstBoot.is_spectator = false;
-      char szFile[128];
+
       strcpy(szFile, FOLDER_CONFIG);
       strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
       s_ModelFirstBoot.saveToFile(szFile, false);

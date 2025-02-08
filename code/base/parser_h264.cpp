@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga
+    Copyright (c) 2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -44,131 +44,172 @@ ParserH264::~ParserH264()
 
 void ParserH264::init()
 {
+   m_szPrefix[0] = 0;
    m_iDetectedISlices = 1;
-   m_uStreamCurrentParseToken = MAX_U32;
+   m_iConsecutiveSlicesForCurrentNALU = 1;
+   m_uTotalParsedBytes = 0;
+   m_uStreamCurrentParsedToken = 0x11111111;
+   m_uStreamPrevParsedToken = 0x11111111;
    m_uCurrentNALUType = 0;
    m_uLastNALUType = 0;
-   m_iConsecutiveSlicesForCurrentNALU = 0;
-   m_uTimeDurationOfLastFrame = 0;
-   m_uTimeStartOfCurrentFrame = 0;
-   m_uTimeLastStartOfIFrame = 0;
    m_uSizeCurrentFrame = 0;
    m_uSizeLastFrame = 0;
-   m_uCurrentDetectedKeyframeIntervalMs = 0;
-   m_uFramesSinceLastKeyframe = 0;
+   m_iFramesSinceLastKeyframe = 0;
+   m_iDetectedKeyframeIntervalInFrames = 1;
 
-   m_uDebugFramesCounter = 0;
-   m_uDebugTimeStartFramesCounter = 0;
-   m_uDebugDetectedFPS = 0;
+   m_uTimeLastNALStart = 0;
+   m_uTimeLastFPSCompute = 0;
+   m_iFramesSinceLastFPSCompute = 0;
+   m_iDetectedFPS = 0;
+
+   m_bLastParseDetectedNALStart = false;
+   m_iReadH264ProfileAfterBytes = -1;
+   m_iReadH264ProfileConstrainsAfterBytes = -1;
+   m_iReadH264LevelAfterBytes = -1;
+   m_iDetectedH264Profile = 0;
+   m_iDetectedH264ProfileConstrains = -1;
+   m_iDetectedH264Level = 0;
 }
 
-// Returns the number of starts of a new frames if it was found
-int ParserH264::parseData(u8* pData, int iDataLength, u32 uTimeNowMs)
+void ParserH264::setPrefix(const char* szPrefix)
+{
+   if ( (NULL == szPrefix) || (0 == szPrefix[0]) )
+   {
+      m_szPrefix[0] = 0;
+      return;
+   }
+   strncpy(m_szPrefix, szPrefix, sizeof(m_szPrefix)/sizeof(m_szPrefix[0]));
+}
+
+// Returns the number of bytes parsed from input
+int ParserH264::parseDataUntilStartOfNextNALOrLimit(u8* pData, int iDataLength, int iMaxToParse, u32 uTimeNow)
 {
    if ( (NULL == pData) || (iDataLength <= 0) )
       return 0;
 
-   int iFoundFrameStartCount = 0;
-
-   while ( iDataLength > 0 )
+   m_bLastParseDetectedNALStart = false;
+   int iBytesParsed = 0;
+   while ( (iDataLength > 0) && (iBytesParsed < iMaxToParse) )
    {
-      m_uStreamCurrentParseToken = (m_uStreamCurrentParseToken<<8) | (*pData);
+      m_uStreamPrevParsedToken = (m_uStreamPrevParsedToken << 8) | (m_uStreamCurrentParsedToken & 0xFF);
+      m_uStreamCurrentParsedToken = (m_uStreamCurrentParsedToken<<8) | (*pData);
+      m_uTotalParsedBytes++;
+      iBytesParsed++;
       pData++;
       iDataLength--;
       m_uSizeCurrentFrame++;
 
-      // If not start a new NAL unit (00 00 01), continue parsing data
-      if ( (m_uStreamCurrentParseToken & 0xFFFFFF00) != 0x0100 )
-         continue;
-
-      if ( _onParseStartOfNALUnit() )
+      if ( m_iReadH264ProfileAfterBytes >= 0 )
       {
-         iFoundFrameStartCount++;
-         m_uDebugFramesCounter++;
-         m_uTimeDurationOfLastFrame = uTimeNowMs - m_uTimeStartOfCurrentFrame;
-         m_uTimeStartOfCurrentFrame = uTimeNowMs;
-
-         if ( m_uCurrentNALUType == 5 )
+         m_iReadH264ProfileAfterBytes--;
+         if ( 0 == m_iReadH264ProfileAfterBytes )
          {
-            m_uCurrentDetectedKeyframeIntervalMs = uTimeNowMs - m_uTimeLastStartOfIFrame;
-            m_uTimeLastStartOfIFrame = uTimeNowMs;
-            m_uFramesSinceLastKeyframe = 0;
-         }
-
-         if ( uTimeNowMs >= m_uDebugTimeStartFramesCounter + 1000 )
-         {
-            m_uDebugTimeStartFramesCounter = uTimeNowMs;
-            m_uDebugDetectedFPS = m_uDebugFramesCounter;
-            m_uDebugFramesCounter = 0;
+            m_iDetectedH264Profile = m_uStreamCurrentParsedToken & 0xFF;
+            log_line("Detected H264 stream profile: %d (0x%02X)", m_iDetectedH264Profile, (u8)m_iDetectedH264Profile);
          }
       }
+      if ( m_iReadH264ProfileConstrainsAfterBytes >= 0 )
+      {
+         m_iReadH264ProfileConstrainsAfterBytes--;
+         if ( 0 == m_iReadH264ProfileConstrainsAfterBytes )
+         {
+            m_iDetectedH264ProfileConstrains = m_uStreamCurrentParsedToken & 0xFF;
+            log_line("Detected H264 stream profile constrains: %d (0x%02X)", m_iDetectedH264ProfileConstrains, (u8)m_iDetectedH264ProfileConstrains);
+         }
+      }
+      if ( m_iReadH264LevelAfterBytes >= 0 )
+      {
+         m_iReadH264LevelAfterBytes--;
+         if ( 0 == m_iReadH264LevelAfterBytes )
+         {
+            m_iDetectedH264Level = m_uStreamCurrentParsedToken & 0xFF;
+            log_line("Detected H264 stream level: %d (0x%02X)", m_iDetectedH264Level, (u8)m_iDetectedH264Level);
+         }
+      }
+      if ( m_uStreamCurrentParsedToken == 0x00000001 )
+      {
+         m_bLastParseDetectedNALStart = true;
+         return iBytesParsed;
+      }
+      if ( m_uStreamPrevParsedToken == 0x00000001 )
+         _parseDetectedStartOfNALUnit(uTimeNow);
    }
 
-   return iFoundFrameStartCount;
+   return iBytesParsed;
 }
 
-// returns true if start of a new frame is detected (not of a new slice in a frame)
-bool ParserH264::_onParseStartOfNALUnit()
+void ParserH264::_parseDetectedStartOfNALUnit(u32 uTimeNow)
 {
-   m_uCurrentNALUType = m_uStreamCurrentParseToken & 0b11111;
+   m_uLastNALUType = m_uCurrentNALUType;
+   m_uCurrentNALUType = m_uStreamCurrentParsedToken & 0b11111;
+   m_uSizeLastFrame = m_uSizeCurrentFrame;
+   
+   m_uTimeLastNALStart = uTimeNow;
+   m_uSizeCurrentFrame = 0;
 
-   // We started a new frame P,I or SPP PSP frames ?
-   bool bStartedNewFrame = false;
-
-   if ( m_uCurrentNALUType != m_uLastNALUType )
+   // Begin: compute slices based on Iframe
+   if ( m_uCurrentNALUType == m_uLastNALUType )
+      m_iConsecutiveSlicesForCurrentNALU++;
+   else
    {
-      bStartedNewFrame = true;
-      if ( m_uLastNALUType == 5 )
+      if ( (m_uLastNALUType != 1) && (m_uLastNALUType != 7) && (m_uLastNALUType != 8) )
+      {
          m_iDetectedISlices = m_iConsecutiveSlicesForCurrentNALU;
-         
-      m_iConsecutiveSlicesForCurrentNALU = 0;
-      m_uLastNALUType = m_uCurrentNALUType;
+         m_iDetectedKeyframeIntervalInFrames = m_iFramesSinceLastKeyframe/m_iDetectedISlices;
+         m_iFramesSinceLastKeyframe = 0;
+      }
+      m_iConsecutiveSlicesForCurrentNALU = 1;
    }
-   else if ( (m_iConsecutiveSlicesForCurrentNALU >= m_iDetectedISlices) && (m_uCurrentNALUType == 1) )
+
+   // End: compute slices based on Iframe
+
+   if ( (m_uCurrentNALUType == 5) || (m_uCurrentNALUType == 1) )
+      m_iFramesSinceLastKeyframe++;
+
+   if ( m_uCurrentNALUType == 7 )
+   if ( (0 == m_iDetectedH264Level) || (0 == m_iDetectedH264Profile) || (-1 == m_iDetectedH264ProfileConstrains) )
    {
-      bStartedNewFrame = true;
-      m_iConsecutiveSlicesForCurrentNALU = 0;
+      m_iReadH264ProfileAfterBytes = 1;
+      m_iReadH264ProfileConstrainsAfterBytes = 2;
+      m_iReadH264LevelAfterBytes = 3;
    }
-   m_iConsecutiveSlicesForCurrentNALU++;
 
-   // P-frame is 1, I-frame is 5
-   if ( (m_uCurrentNALUType != 1) && (m_uCurrentNALUType != 5) )
-      return bStartedNewFrame;
-
-   // P or I frame (slice) just started. Compute info
-
-   if ( bStartedNewFrame )
+   m_iFramesSinceLastFPSCompute++;
+   if ( 100 == m_iFramesSinceLastFPSCompute )
    {
-      m_uFramesSinceLastKeyframe++;
-      m_uSizeLastFrame = m_uSizeCurrentFrame;
-      m_uSizeCurrentFrame = 0;
+      if ( uTimeNow != m_uTimeLastFPSCompute )
+         m_iDetectedFPS = 100000/(uTimeNow - m_uTimeLastFPSCompute);
+      if ( m_iDetectedISlices > 0 )
+         m_iDetectedFPS /= m_iDetectedISlices;
+      m_uTimeLastFPSCompute = uTimeNow;
+      m_iFramesSinceLastFPSCompute = 0;
    }
-   return bStartedNewFrame;
 }
 
-u32 ParserH264::getStartTimeOfCurrentFrame()
+bool ParserH264::lastParseDetectedNALStart()
 {
-   return m_uTimeStartOfCurrentFrame;
+   return m_bLastParseDetectedNALStart;
 }
 
-u32 ParserH264::getCurrentFrameType()
+bool ParserH264::IsInsideIFrame()
+{
+   return (m_uCurrentNALUType == 5)?true:false;
+}
+
+u32 ParserH264::getCurrentNALType()
 {
    return m_uCurrentNALUType;
 }
 
-u32 ParserH264::getStartTimeOfLastIFrame()
+u32 ParserH264::getPreviousNALType()
 {
-   return m_uTimeLastStartOfIFrame;
+   return m_uLastNALUType;
 }
 
-u32 ParserH264::getSizeOfLastCompleteFrame()
+
+u32 ParserH264::getSizeOfLastCompleteFrameInBytes()
 {
    return m_uSizeLastFrame;
-}
-
-u32 ParserH264::getTimeDurationOfLastCompleteFrame()
-{
-   return m_uTimeDurationOfLastFrame;
 }
 
 int ParserH264::getDetectedSlices()
@@ -176,24 +217,35 @@ int ParserH264::getDetectedSlices()
    return m_iDetectedISlices;
 }
 
-u32 ParserH264::getCurrentlyDetectedKeyframeIntervalMs()
+int ParserH264::getCurrentFrameSlices()
 {
-   return m_uCurrentDetectedKeyframeIntervalMs;
+   return m_iConsecutiveSlicesForCurrentNALU;
 }
 
-bool ParserH264::IsInsideIFrame()
+int ParserH264::getDetectedFPS()
 {
-   if ( m_uCurrentNALUType == 5 )
-      return true;
-   return false;
+   return m_iDetectedFPS;
 }
 
-u32 ParserH264::getFramesSinceLastKeyframe()
+int ParserH264::getDetectedProfile()
 {
-   return m_uFramesSinceLastKeyframe;
+   return m_iDetectedH264Profile;
 }
 
-u32 ParserH264::getDetectedFPS()
+int ParserH264::getDetectedProfileConstrains()
 {
-   return m_uDebugDetectedFPS;
+   return m_iDetectedH264ProfileConstrains;
 }
+
+int ParserH264::getDetectedLevel()
+{
+   return m_iDetectedH264Level;
+}
+
+void ParserH264::resetDetectedProfileAndLevel()
+{
+   m_iDetectedH264Profile = 0;
+   m_iDetectedH264ProfileConstrains = -1;
+   m_iDetectedH264Level = 0;
+}
+

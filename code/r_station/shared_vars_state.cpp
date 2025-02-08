@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -57,8 +57,10 @@ void resetVehicleRuntimeInfo(int iIndex)
       g_State.vehiclesRuntimeInfo[iIndex].uPingRoundtripTimeOnLocalRadioLinks[i] = 0;
    }
 
+   g_State.vehiclesRuntimeInfo[iIndex].bIsVehicleLinkToControllerLostAlarm = false;
    g_State.vehiclesRuntimeInfo[iIndex].uLastTimeReceivedAckFromVehicle = 0;
-   g_State.vehiclesRuntimeInfo[iIndex].iVehicleClockIsBehindThisMilisec = 500000000;
+   g_State.vehiclesRuntimeInfo[iIndex].iVehicleClockDeltaMilisec = 500000000;
+   g_State.vehiclesRuntimeInfo[iIndex].uMinimumPingTimeMilisec = MAX_U32;
 
    g_State.vehiclesRuntimeInfo[iIndex].uTimeLastCommandIdSent = 0;
    g_State.vehiclesRuntimeInfo[iIndex].uLastCommandIdSent = MAX_U32;
@@ -69,29 +71,13 @@ void resetVehicleRuntimeInfo(int iIndex)
    g_State.vehiclesRuntimeInfo[iIndex].uAverageCommandRoundtripMiliseconds = MAX_U32;
    g_State.vehiclesRuntimeInfo[iIndex].uMaxCommandRoundtripMiliseconds = MAX_U32;
    g_State.vehiclesRuntimeInfo[iIndex].uMinCommandRoundtripMiliseconds = MAX_U32;
-   g_State.vehiclesRuntimeInfo[iIndex].bReceivedKeyframeInfoInVideoStream = false;
    
    g_State.vehiclesRuntimeInfo[iIndex].uPendingVideoProfileToSet = 0xFF;
    g_State.vehiclesRuntimeInfo[iIndex].uPendingVideoProfileToSetRequestedBy = 0;
    g_State.vehiclesRuntimeInfo[iIndex].uLastTimeSentVideoProfileRequest = 0;
    g_State.vehiclesRuntimeInfo[iIndex].uLastTimeRecvVideoProfileAck = 0;
 
-   // Reset shared mem adaptive info
-
-   memset(&(g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[iIndex]), 0, sizeof(shared_mem_controller_adaptive_video_info_vehicle));
-
-   g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[iIndex].uUpdateInterval = CONTROLLER_ADAPTIVE_VIDEO_SAMPLE_INTERVAL;
-   g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[iIndex].uLastUpdateTime = 0;
-
-   g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[iIndex].iCurrentTargetLevelShift = -1; // Wait for video stream to decide the initial value
-   g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[iIndex].iLastAcknowledgedLevelShift = -1;
-   g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[iIndex].iLastRequestedLevelShiftRetryCount = 0;
-   g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[iIndex].uTimeLastAckLevelShift = 0;
-   g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[iIndex].uTimeLastLevelShiftCheckConsistency = g_TimeNow;
-
-   g_SM_RouterVehiclesRuntimeInfo.uAverageCommandRoundtripMiliseconds[iIndex] = MAX_U32;
-   g_SM_RouterVehiclesRuntimeInfo.uMaxCommandRoundtripMiliseconds[iIndex] = MAX_U32;
-   g_SM_RouterVehiclesRuntimeInfo.uMinCommandRoundtripMiliseconds[iIndex] = MAX_U32;
+   g_State.vehiclesRuntimeInfo[iIndex].uPendingKeyFrameToSet = 0;
 }
 
 
@@ -104,6 +90,7 @@ void resetPairingStateForVehicleRuntimeInfo(int iIndex)
    g_State.vehiclesRuntimeInfo[iIndex].uPairingRequestId = 0;
    g_State.vehiclesRuntimeInfo[iIndex].uPairingRequestTime = g_TimeNow;
    g_State.vehiclesRuntimeInfo[iIndex].uPairingRequestInterval = 200;
+   g_TimeLastVideoParametersOrProfileChanged = g_TimeNow;
 }
 
 
@@ -116,14 +103,6 @@ void removeVehicleRuntimeInfo(int iIndex)
    for( int i=iIndex; i<MAX_CONCURENT_VEHICLES-1; i++ )
    {
       memcpy(&(g_State.vehiclesRuntimeInfo[i]), &(g_State.vehiclesRuntimeInfo[i+1]), sizeof(type_global_state_vehicle_runtime_info));
-      
-      // Move shared mem vehicles info
-
-      memcpy(&(g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[i]), &(g_SM_RouterVehiclesRuntimeInfo.vehicles_adaptive_video[i+1]), sizeof(shared_mem_controller_adaptive_video_info_vehicle));
-      g_SM_RouterVehiclesRuntimeInfo.uVehiclesIds[i] = g_SM_RouterVehiclesRuntimeInfo.uVehiclesIds[i+1];
-      g_SM_RouterVehiclesRuntimeInfo.uAverageCommandRoundtripMiliseconds[i] = g_SM_RouterVehiclesRuntimeInfo.uAverageCommandRoundtripMiliseconds[i+1];
-      g_SM_RouterVehiclesRuntimeInfo.uMaxCommandRoundtripMiliseconds[i] = g_SM_RouterVehiclesRuntimeInfo.uMaxCommandRoundtripMiliseconds[i+1];
-      g_SM_RouterVehiclesRuntimeInfo.uMinCommandRoundtripMiliseconds[i] = g_SM_RouterVehiclesRuntimeInfo.uMinCommandRoundtripMiliseconds[i+1];
    }
    resetVehicleRuntimeInfo(MAX_CONCURENT_VEHICLES-1);
 }
@@ -219,18 +198,6 @@ void addCommandRTTimeToRuntimeInfo(type_global_state_vehicle_runtime_info* pRunt
 
    if ( pRuntimeInfo->uAverageCommandRoundtripMiliseconds < pRuntimeInfo->uMinCommandRoundtripMiliseconds )
       pRuntimeInfo->uMinCommandRoundtripMiliseconds = pRuntimeInfo->uAverageCommandRoundtripMiliseconds;
-
-   for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
-   {
-      if ( g_State.vehiclesRuntimeInfo[i].uVehicleId == 0 )
-         break;
-      if ( g_State.vehiclesRuntimeInfo[i].uVehicleId != pRuntimeInfo->uVehicleId )
-         continue;
-      g_SM_RouterVehiclesRuntimeInfo.uAverageCommandRoundtripMiliseconds[i] = pRuntimeInfo->uAverageCommandRoundtripMiliseconds;
-      g_SM_RouterVehiclesRuntimeInfo.uMaxCommandRoundtripMiliseconds[i] = pRuntimeInfo->uMaxCommandRoundtripMiliseconds;
-      g_SM_RouterVehiclesRuntimeInfo.uMinCommandRoundtripMiliseconds[i] = pRuntimeInfo->uMinCommandRoundtripMiliseconds;
-      break;
-   }
 }
 
 void adjustLinkClockDeltasForVehicleRuntimeIndex(int iRuntimeInfoIndex, u32 uRoundtripTimeMs, u32 uLocalTimeVehicleMs)
@@ -238,10 +205,7 @@ void adjustLinkClockDeltasForVehicleRuntimeIndex(int iRuntimeInfoIndex, u32 uRou
    if ( (iRuntimeInfoIndex < 0) || (iRuntimeInfoIndex >= MAX_CONCURENT_VEHICLES) )
       return;
    
-   if ( g_State.vehiclesRuntimeInfo[iRuntimeInfoIndex].iVehicleClockIsBehindThisMilisec == 500000000 )
-      g_State.vehiclesRuntimeInfo[iRuntimeInfoIndex].iVehicleClockIsBehindThisMilisec = (int) get_current_timestamp_ms() - (int)uRoundtripTimeMs/2 - (int)uLocalTimeVehicleMs;
-   else if ( (int)uRoundtripTimeMs < g_State.vehiclesRuntimeInfo[iRuntimeInfoIndex].iVehicleClockIsBehindThisMilisec )
-      g_State.vehiclesRuntimeInfo[iRuntimeInfoIndex].iVehicleClockIsBehindThisMilisec = (int) get_current_timestamp_ms() - (int)uRoundtripTimeMs/2 - (int)uLocalTimeVehicleMs;
+   g_State.vehiclesRuntimeInfo[iRuntimeInfoIndex].iVehicleClockDeltaMilisec = (int)uLocalTimeVehicleMs - ((int) g_TimeNow - (int)uRoundtripTimeMs/3);
 
-   radio_set_link_clock_delta(g_State.vehiclesRuntimeInfo[iRuntimeInfoIndex].iVehicleClockIsBehindThisMilisec);
+   radio_set_link_clock_delta(g_State.vehiclesRuntimeInfo[iRuntimeInfoIndex].iVehicleClockDeltaMilisec);
 }

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -192,7 +192,8 @@ void osd_show_HID()
    axeX2 = 0.08 + percentX2 * 0.84;
    axeY2 = 0.08 + percentY2 * 0.84;
 
-   double* pC = get_Color_OSDText();
+   double pC[4];
+   memcpy(pC, get_Color_OSDText(), 4*sizeof(double));
    g_pRenderEngine->setColors(pC);
    g_pRenderEngine->setFill(pC[0], pC[1], pC[2],0.3);
    g_pRenderEngine->setStrokeSize(2.0);

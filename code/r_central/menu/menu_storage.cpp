@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -33,6 +33,7 @@
 #include "menu_objects.h"
 #include "menu_storage.h"
 #include "menu_confirmation.h"
+#include "menu_controller_recording.h"
 
 #include <sys/types.h>
 #include <dirent.h>
@@ -51,7 +52,7 @@ MenuStorage::MenuStorage(void)
 :Menu(MENU_ID_STORAGE, "Media & Storage", NULL)
 {
    m_Width = 0.68;
-   m_Height = 0.62;
+   m_Height = 0.66;
    m_xPos = menu_get_XStartPos(m_Width); m_yPos = 0.12;
    m_VideoInfoFilesCount = 0;
    m_PicturesFilesCount = 0;
@@ -63,6 +64,8 @@ MenuStorage::MenuStorage(void)
    m_ViewScreenShotIndex = -1;
    m_ScreenshotImageId = MAX_U32;
    m_pPopupProgress = NULL;
+   m_uMustRefreshTime = 0;
+   m_IndexRecordingOptions = -1;
 }
 
 MenuStorage::~MenuStorage()
@@ -91,9 +94,9 @@ void MenuStorage::onShow()
    removeAllTopLines();
    removeAllItems();
 
-   sprintf(szComm, "chmod 777 %s 2>&1 1>/dev/null", FOLDER_MEDIA);
+   sprintf(szComm, "chmod 777 %s 2>/dev/null 1>/dev/null", FOLDER_MEDIA);
    hw_execute_bash_command(szComm, NULL);
-   sprintf(szComm, "chmod 777 %s* 2>&1 1>/dev/null", FOLDER_MEDIA);
+   sprintf(szComm, "chmod 777 %s* 2>/dev/null 1>/dev/null", FOLDER_MEDIA);
    hw_execute_bash_command(szComm, NULL);
    
    media_scan_files();
@@ -119,22 +122,24 @@ void MenuStorage::onShow()
    buildFilesListVideo();
 
    m_UIFilesPage = 0;
-   m_IndexExpand = -1;
    m_IndexCopy = -1;
    m_IndexMove = -1;
    m_IndexDelete = -1;
-   m_MainItemsCount = 4;
+   m_MainItemsCount = 5;
 
-   #if defined(HW_PLATFORM_RASPBERRY)
-   m_IndexExpand = addMenuItem(new MenuItem("Expand File System", "Expands the file system to occupy the entire available SD card space."));
-   m_MainItemsCount++;
-   #endif
    m_IndexCopy = addMenuItem(new MenuItem("Copy media files to USB memory stick", "Copy your screenshots and videos to an external USB memory stick."));
    m_IndexMove = addMenuItem(new MenuItem("Move media files to USB memory stick", "Move your screenshots and videos to an external USB memory stick."));
    m_IndexDelete = addMenuItem(new MenuItem("Delete all files", "Deletes all videos, pictures from the SD Card."));
-   m_IndexViewPictures = addMenuItem(new MenuItem("View Screenshots", "View the screenshots"));
+   
+   sprintf(szBuff, "View Screenshots (%d)", media_get_screenshots_count());
+   m_IndexViewPictures = addMenuItem(new MenuItem(szBuff, "View the screenshots"));
    if ( 0 == media_get_screenshots_count() )
       m_pMenuItems[m_IndexViewPictures]->setEnabled(false);
+   else
+      m_pMenuItems[m_IndexViewPictures]->showArrow();
+
+   m_IndexRecordingOptions =  addMenuItem(new MenuItem("Recording Options", "Change recording options."));
+   m_pMenuItems[m_IndexRecordingOptions]->showArrow();
 
    addMenuItem(new MenuItem("Prev Page",""));
    addMenuItem(new MenuItem("Next Page",""));
@@ -159,6 +164,12 @@ void MenuStorage::onShow()
    m_ExtraItemsHeight += height_text * 1.5;
    */
    Menu::onShow();
+
+   if ( g_bVideoRecordingStarted )
+   {
+      MenuConfirmation* pMC = new MenuConfirmation("Recording in progress", "A recording is in progress. Do you want to stop it?", 1);
+      add_menu_to_stack(pMC);
+   }
 }
 
 
@@ -167,12 +178,16 @@ void MenuStorage::Render()
    if ( -1 != m_ViewScreenShotIndex )
    {
       g_pRenderEngine->drawImage(0, 0, 1,1, m_ScreenshotImageId);
+      double cColor[] = {0,0,0,0.7};
+      g_pRenderEngine->setColors(cColor, 0.9);
+      g_pRenderEngine->drawRoundRect(0.03, 0.03, 0.32, 0.1, 0.02);
       g_pRenderEngine->setColors(get_Color_MenuText());
+
       char szBuff[128];
       sprintf(szBuff, "Screenshot %d of %d", m_ViewScreenShotIndex+1, media_get_screenshots_count() );
-      g_pRenderEngine->drawText(0.05, 0.05, g_idFontMenu, szBuff );
+      g_pRenderEngine->drawText(0.05, 0.046, g_idFontMenuLarge, szBuff );
       sprintf(szBuff, "Press [+/-] to navigate and [Back] to close");
-      g_pRenderEngine->drawText(0.05, 0.08, g_idFontMenu, szBuff );
+      g_pRenderEngine->drawText(0.05, 0.084, g_idFontMenu, szBuff );
       return;
    }
 
@@ -303,7 +318,7 @@ void MenuStorage::Render()
    else
       maxMenuIndex += m_VideoInfoFilesCount - indexStartThisPage;
 
-   y += height_text*0.4;
+   //y += height_text*0.4;
 
    sprintf(szBuff, "Page %d of %d", m_UIFilesPage+1,1+(m_VideoInfoFilesCount/m_UIFilesPerPage));
    g_pRenderEngine->drawTextLeft(x+maxWidth-2*m_sfMenuPaddingX, y, g_idFontMenu, szBuff); 
@@ -399,27 +414,26 @@ void MenuStorage::onReturnFromChild(int iChildMenuId, int returnValue)
    if ( 1 != returnValue )
       return;
 
+   if ( 1 == iChildMenuId/1000 )
+   {
+      if ( g_bVideoRecordingStarted )
+      {
+         ruby_stop_recording();
+         m_uMustRefreshTime = g_TimeNow + 5000;
+      }
+      return;
+   }
+
    if ( 5 == iChildMenuId/1000 )
    {
       log_line("Confirmed deletion of all media files.");
       char szComm[256];
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "rm -rf %s* /dev/null 2>&1", FOLDER_MEDIA);
-      hw_execute_bash_command(szComm, NULL);   
+      if ( 0 < strlen(FOLDER_MEDIA) )
+      {
+         snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "rm -rf %s* /dev/null 2>&1", FOLDER_MEDIA);
+         hw_execute_bash_command(szComm, NULL);   
+      }
       onShow();
-      return;
-   }
-
-   if ( 10 == iChildMenuId/1000 )
-   {
-      pairing_stop();
-      onEventReboot();
-
-      // Expand FS
-      #ifdef HW_PLATFORM_RASPBERRY
-      hw_execute_bash_command("sudo raspi-config --expand-rootfs > /dev/null 2>&1", NULL);
-      hardware_reboot();
-      exit(0);
-      #endif
       return;
    }
 }
@@ -564,7 +578,10 @@ void MenuStorage::movePictures(bool bDelete)
    char szFile[MAX_FILE_PATH_SIZE];
    char szSrcFile[MAX_FILE_PATH_SIZE];
 
-   log_line("Moving pictures media files...");
+   if ( bDelete )
+      log_line("Moving pictures media files...");
+   else
+      log_line("Copying pictures media files...");
 
    if ( bDelete )
       m_pPopupProgress->setTitle("Moving screenshots. Please wait...");
@@ -614,7 +631,10 @@ bool MenuStorage::moveVideos(bool bDelete)
    FILE* fd = NULL;
    int fps = 0, duration = 0;
 
-   log_line("Moving video media files...");
+   if ( bDelete )
+      log_line("Moving video media files...");
+   else
+      log_line("Copying video media files...");
 
    if ( bDelete )
       sprintf(szInfo, "Moving videos to USB memory stick [%s]. Please wait...", hardware_get_mounted_usb_name());
@@ -790,13 +810,40 @@ bool MenuStorage::flowCopyMoveFiles(bool bDeleteToo)
 
    ruby_pause_watchdog();
 
-   if ( 0 == hardware_try_mount_usb() )
+   int iMountRes = hardware_try_mount_usb();
+   if ( 1 != iMountRes )
    {
-      ruby_resume_watchdog();
-      m_pPopupProgress->setTitle("No USB memory stick available.");
-      m_pPopupProgress->setTimeout(5);
-      return false;
+      ruby_signal_alive();
+      ruby_processing_loop(true);
+      render_all(g_TimeNow);
+      ruby_signal_alive();
+      if ( 0 == iMountRes )
+         m_pPopupProgress->setTitle("No USB memory stick available.");
+      else
+      {
+         if ( -1 == iMountRes )
+            iMountRes = hardware_try_mount_usb();
+         if ( 1 != iMountRes )
+            m_pPopupProgress->setTitle("USB memory stick available. Try again.");
+      }
+
+      ruby_signal_alive();
+      ruby_processing_loop(true);
+      render_all(g_TimeNow);
+      ruby_signal_alive();
+
+      if ( 1 != iMountRes )
+      {
+         ruby_resume_watchdog();
+         ruby_signal_alive();
+         m_pPopupProgress->setTimeout(5);
+         return false;
+      }
    }
+   ruby_signal_alive();
+   ruby_processing_loop(true);
+   render_all(g_TimeNow);
+   ruby_signal_alive();
 
    movePictures(bDeleteToo);
    bool bHadErrors = moveVideos(bDeleteToo);
@@ -836,8 +883,15 @@ void MenuStorage::stopVideoPlay()
 
    log_line("Stopped video playback.");
 
-   if ( m_bWasPairingStarted )
-      pairing_start_normal();
+   char szComm[256];
+   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "rm -rf %s", CONFIG_FILE_FULLPATH_PAUSE_VIDEO_PLAYER);
+   hw_execute_bash_command(szComm, NULL);
+      
+   //if ( m_bWasPairingStarted )
+   //   pairing_start_normal();
+   if ( pairing_isStarted() )
+      send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_PAUSE_LOCAL_VIDEO_DISPLAY, 0);
+
    render_all(get_current_timestamp_ms(), true);
 }
 
@@ -845,19 +899,35 @@ bool MenuStorage::periodicLoop()
 {
    if ( g_bVideoPlaying )
    {
-      if ( g_TimeNow > g_uVideoPlayingStartTime + 1000 )
-      if ( ! hw_process_exists(VIDEO_PLAYER_OFFLINE) )
+      if ( access(CONFIG_FILE_FULLPATH_PAUSE_VIDEO_PLAYER, R_OK) == -1 )
+         g_uVideoPlayingTimeMs += g_TimeNow - m_uTimestampLastLoopMs;
+      m_uTimestampLastLoopMs = g_TimeNow;
+      
+      static u32 s_uTimeLastVideoPlayerProcessCheck = 0;
+
+      if ( g_TimeNow > s_uTimeLastVideoPlayerProcessCheck + 3000 )
       {
-         log_line("MenuStorage: video player process (%s) does not exist, exit playback.", VIDEO_PLAYER_OFFLINE);
-         stopVideoPlay();
+         s_uTimeLastVideoPlayerProcessCheck = g_TimeNow;
+         if ( g_uVideoPlayingTimeMs > 2000 )
+         if ( ! hw_process_exists(VIDEO_PLAYER_OFFLINE) )
+         {
+            log_line("MenuStorage: video player process (%s) does not exist, exit playback.", VIDEO_PLAYER_OFFLINE);
+            stopVideoPlay();
+         }
       }
-      if ( g_TimeNow > g_uVideoPlayingStartTime + g_uVideoPlayingLengthSec*1000 + 1000 )
+      if ( g_uVideoPlayingTimeMs > g_uVideoPlayingLengthSec*1000 + 1000 )
       {
          log_line("Video playback duration reached. Stopping video player.");
          stopVideoPlay();
       }
    }
 
+   if ( m_uMustRefreshTime != 0 )
+   if ( (g_TimeNow > m_uMustRefreshTime) || (! g_bVideoProcessing) )
+   {
+      m_uMustRefreshTime = 0;
+      menu_refresh_all_menus();
+   }
    return false;
 }
 
@@ -868,18 +938,17 @@ void MenuStorage::onSelectItem()
 
    if ( g_bVideoPlaying )
    {
-      stopVideoPlay();
+      char szComm[256];
+      if ( access(CONFIG_FILE_FULLPATH_PAUSE_VIDEO_PLAYER, R_OK) != -1 )
+         snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "rm -rf %s", CONFIG_FILE_FULLPATH_PAUSE_VIDEO_PLAYER);
+      else
+         snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "touch %s", CONFIG_FILE_FULLPATH_PAUSE_VIDEO_PLAYER);
+      hw_execute_bash_command(szComm, NULL);
+      //stopVideoPlay();
       return;
    }
 
    Menu::onSelectItem();
-
-   if ( m_IndexExpand == m_SelectedIndex )
-   {
-      MenuConfirmation* pMC = new MenuConfirmation("Reboot","This operation requires a reboot. Do you want to continue?", 10);
-      add_menu_to_stack(pMC);
-      return;
-   }
 
    if ( m_IndexCopy == m_SelectedIndex )
    {
@@ -908,6 +977,12 @@ void MenuStorage::onSelectItem()
       m_ScreenshotImageId = g_pRenderEngine->loadImage(szFile);
       if ( (0 != m_ScreenshotImageId) && (MAX_U32 != m_ScreenshotImageId) )
          log_line("Men: Image loaded ok");
+      return;
+   }
+
+   if ( m_IndexRecordingOptions == m_SelectedIndex )
+   {
+      add_menu_to_stack(new MenuControllerRecording());
       return;
    }
 
@@ -960,6 +1035,10 @@ void MenuStorage::playVideoFile(int iMenuItemIndex)
    if ( index < 0 || index >= m_VideoInfoFilesCount )
       return;
 
+   char szComm[256];
+   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "rm -rf %s", CONFIG_FILE_FULLPATH_PAUSE_VIDEO_PLAYER);
+   hw_execute_bash_command(szComm, NULL);
+
    snprintf(szFile, sizeof(szFile)/sizeof(szFile[0]), "%s%s", FOLDER_MEDIA, m_szVideoInfoFiles[index]); 
    FILE* fd = fopen(szFile, "r");
    if ( NULL == fd )
@@ -972,26 +1051,38 @@ void MenuStorage::playVideoFile(int iMenuItemIndex)
    }
    fclose(fd);
 
+   /*
    if ( pairing_isStarted() )
    {
+      for( int i=0; i<10; i++ )
+      {
+         if ( pairing_isRouterReady() )
+            break;
+         hardware_sleep_ms(500);
+      }
       pairing_stop();
       m_bWasPairingStarted = true;
       ruby_signal_alive();
    }
-
+   */
+   if ( pairing_isStarted() )
+   {
+      send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_PAUSE_LOCAL_VIDEO_DISPLAY, 1);
+      hardware_sleep_ms(200);
+   }  
    #ifdef HW_PLATFORM_RASPBERRY
-   snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "./%s %s%s 30 &", VIDEO_PLAYER_OFFLINE, FOLDER_MEDIA, szFile);
+   snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "./%s %s%s %d&", VIDEO_PLAYER_OFFLINE, FOLDER_MEDIA, szFile, m_VideoFilesFPS[index]);
    #endif
 
    #ifdef HW_PLATFORM_RADXA_ZERO3
-   snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "./%s -f %s%s &", VIDEO_PLAYER_OFFLINE, FOLDER_MEDIA, szFile);
+   snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "./%s -f %s%s %d&", VIDEO_PLAYER_OFFLINE, FOLDER_MEDIA, szFile, m_VideoFilesFPS[index]);
    #endif
-   hw_execute_bash_command(szBuff,NULL);
+   hw_execute_bash_command_nonblock(szBuff, NULL);
    hardware_sleep_ms(100);
    g_bVideoPlaying = true;
-   g_uVideoPlayingStartTime = get_current_timestamp_ms();
+   g_uVideoPlayingTimeMs = 0;
    g_uVideoPlayingLengthSec = m_VideoFilesDuration[index];
-
+   m_uTimestampLastLoopMs = g_TimeNow;
    log_line("Started video playback of file: (%s%s)", FOLDER_MEDIA, szFile);
 
 }

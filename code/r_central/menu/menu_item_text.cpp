@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -42,7 +42,7 @@ MenuItemText::MenuItemText(const char* title)
    m_bIsEditable = false;
    m_bUseSmallText = false;
    m_fScale = 1.0;
-   m_fMarginX = 0.5 * Menu::getMenuPaddingX();
+   m_fMarginX = 0;// 0.5 * Menu::getMenuPaddingX();
 }
 
 MenuItemText::MenuItemText(const char* title, bool bUseSmallText)
@@ -53,7 +53,7 @@ MenuItemText::MenuItemText(const char* title, bool bUseSmallText)
    m_bIsEditable = false;
    m_bUseSmallText = bUseSmallText;
    m_fScale = 1.0;
-   m_fMarginX = 0.5 * Menu::getMenuPaddingX();
+   m_fMarginX = 0; //0.5 * Menu::getMenuPaddingX();
 }
      
 MenuItemText::MenuItemText(const char* title,  bool bUseSmallText, float fMargin)

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -88,9 +88,6 @@ void power_leds(int onoff)
 
 void _check_cpu_watchdog(u32 uTimeNow, int iCounter)
 {
-   //if ( (iCounter%3) == 0 )
-   //   log_line("DEBUG Alive %d", iCounter);
-
    static u32 s_uLastTimeWatchDog = 0;
 
    if ( 0 == s_uLastTimeWatchDog )
@@ -138,6 +135,8 @@ int main(int argc, char *argv[])
    bool bHasUpdateApplyInProgress = false;
 
    int nSleepMs = 100;
+
+   log_line("Entering main loop...");
 
    while ( ! gbQuit )
    {
@@ -237,6 +236,7 @@ int main(int argc, char *argv[])
          log_softerror_and_alarm("Main processing loop took too long (%u ms).", dTime);
    }
 
+   log_line("Exiting...");
    power_leds(1);
    hardware_release();
    return (0);

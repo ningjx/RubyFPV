@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -38,8 +38,8 @@
 #include "menu_confirmation.h"
 #include "../../radio/radiolink.h"
 #include "../../base/utils.h"
-#include "../../base/controller_utils.h"
 #include "../process_router_messages.h"
+#include "../../utils/utils_controller.h"
 
 #include <time.h>
 #include <sys/resource.h>
@@ -194,7 +194,7 @@ MenuSystemVideoProfiles::MenuSystemVideoProfiles(void)
       m_pItemsSlider[k*20+17]->setStep(10);
       m_IndexVideoProfile_KeyFrame[k] = addMenuItem(m_pItemsSlider[k*20+17]);
 
-      int iMaxSize = p->iDebugMaxPacketSize-sizeof(t_packet_header)-sizeof(t_packet_header_video_full_98);
+      int iMaxSize = p->iDebugMaxPacketSize-sizeof(t_packet_header)-sizeof(t_packet_header_video_segment);
       iMaxSize = (iMaxSize/10)*10;
       m_pItemsSlider[k*20+11] = new MenuItemSlider("Video Packet size", "How big is each indivisible video packet over the air link. No major impact in link quality. Smaller packets and more EC packets increase the chance of error correction but also increase the CPU usage.", 100,iMaxSize,iMaxSize/2, fSliderWidth);
       m_pItemsSlider[k*20+11]->setStep(10);
@@ -402,6 +402,7 @@ void MenuSystemVideoProfiles::valuesToUI()
 
       m_pItemsSlider[k*20+10]->setCurrentValue(4*g_pCurrentModel->video_link_profiles[k].bitrate_fixed_bps/1000/1000);
       m_pItemsSlider[k*20+11]->setCurrentValue(g_pCurrentModel->video_link_profiles[k].video_data_length);
+      m_pItemsSlider[k*20+11]->setEnabled(false);
       m_pItemsSlider[k*20+12]->setCurrentValue(g_pCurrentModel->video_link_profiles[k].block_packets);
       m_pItemsSlider[k*20+13]->setCurrentValue(g_pCurrentModel->video_link_profiles[k].block_fecs);
 
@@ -575,7 +576,7 @@ void MenuSystemVideoProfiles::sendVideoLinkProfiles()
    if ( ! handle_commands_send_to_vehicle(COMMAND_ID_UPDATE_VIDEO_LINK_PROFILES, 0, buffer, MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile)) )
       valuesToUI();
    else
-      send_control_message_to_router(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, 10000);
+      send_control_message_to_router(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, 7000);
 }
 
 

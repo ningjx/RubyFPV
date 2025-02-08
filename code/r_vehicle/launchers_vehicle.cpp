@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -100,9 +100,11 @@ void vehicle_launch_rx_commands(Model* pModel)
 
 void vehicle_stop_rx_commands()
 {
+   char szComm[256];
+   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "touch %s%s", FOLDER_RUBY_TEMP, FILE_TEMP_STOP);
+   hw_execute_bash_command(szComm, NULL);
+
    char szFile[MAX_FILE_PATH_SIZE];
-   sprintf(szFile, "touch %scmdstop.txt", FOLDER_RUBY_TEMP);
-   hw_execute_bash_command(szFile, NULL);
    strcpy(szFile, FOLDER_RUBY_TEMP);
    strcat(szFile, "cmdstop.txt");
    int iCounter = 0;
@@ -308,9 +310,9 @@ static void * _thread_adjust_affinities_vehicle(void *argument)
       // To fix
       //hw_set_proc_affinity("ruby_rx_rc", 2,2);
 
-      #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-      hw_set_proc_affinity("majestic", 3, s_iCPUCoresCount);
-      #endif
+      //#if defined (HW_PLATFORM_OPENIPC_CAMERA)
+      //hw_set_proc_affinity("majestic", 3, s_iCPUCoresCount);
+      //#endif
 
       #ifdef HW_PLATFORM_RASPBERRY
       if ( bVeYe )
@@ -322,9 +324,9 @@ static void * _thread_adjust_affinities_vehicle(void *argument)
    else
    {
       hw_set_proc_affinity("ruby_rt_vehicle", 1,1);
-      #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-      hw_set_proc_affinity("majestic", 2, s_iCPUCoresCount);
-      #endif
+      //#if defined (HW_PLATFORM_OPENIPC_CAMERA)
+      //hw_set_proc_affinity("majestic", 2, s_iCPUCoresCount);
+      //#endif
       #ifdef HW_PLATFORM_RASPBERRY
       if ( bVeYe )
          hw_set_proc_affinity(VIDEO_RECORDER_COMMAND_VEYE_SHORT_NAME, 2, s_iCPUCoresCount);

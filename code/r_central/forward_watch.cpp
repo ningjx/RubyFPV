@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -90,7 +90,7 @@ void _forward_on_usb_device_detected()
    }
    log_line("USB Device IP Address: %s", szIP);
 
-   bool bHasETH = hardware_has_eth();
+   bool bHasETH = ((hardware_has_eth() != NULL)?true:false);
 
    if ( ! bHasETH )
       log_line("No ETH port. No further action on USB tethering start.");
@@ -124,7 +124,7 @@ void _forward_on_usb_device_unplugged()
    else
       strcpy(szSysType, "STATION");
 
-   bool bHasETH = hardware_has_eth();
+   bool bHasETH = ((hardware_has_eth() != NULL)?true:false);
   
    hw_stop_process("pump");
 

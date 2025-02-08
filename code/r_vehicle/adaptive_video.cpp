@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -33,6 +33,7 @@
 #include "../base/config.h"
 #include "../base/models.h"
 #include "../base/utils.h"
+#include "../base/hardware_cam_maj.h"
 #include "../common/string_utils.h"
 #include "adaptive_video.h"
 #include "shared_vars.h"
@@ -40,6 +41,7 @@
 #include "video_tx_buffers.h"
 #include "video_source_csi.h"
 #include "video_source_majestic.h"
+#include "test_link_params.h"
 #include "packets_utils.h"
 
 u8 s_uLastVideoProfileRequestedByController = 0xFF;
@@ -52,7 +54,7 @@ u16 s_uPendingKFValue = 0;
 int s_iPendingAdaptiveRadioDataRate = 0;
 u32 s_uTimeSetPendingAdaptiveRadioDataRate = 0;
 
-u32 s_uLastAdaptiveAppliedVideoBitrate = 0;
+u32 s_uTemporaryAdaptiveVideoBitrate = 0;
 
 void adaptive_video_init()
 {
@@ -70,33 +72,57 @@ void adaptive_video_set_kf_for_current_video_profile(u16 uKeyframe)
    s_uPendingKFValue = uKeyframe;
 }
 
+void adaptive_video_set_last_kf_requested_by_controller(u16 uKeyframe)
+{
+   s_uPendingKFValue = uKeyframe;
+}
+
 void adaptive_video_set_last_profile_requested_by_controller(int iVideoProfile)
 {
+   if ( s_uLastVideoProfileRequestedByController == iVideoProfile )
+   {
+      log_line("[AdaptiveVideo] Set new video profile requested by controller: %s, same as current one. Do nothing.", str_get_video_profile_name(iVideoProfile));
+      return;
+   }
+
+   log_line("[AdaptiveVideo] Set new video profile requested by controller: (%d) %s, current video profile: %d",
+       iVideoProfile, str_get_video_profile_name(iVideoProfile), s_uLastVideoProfileRequestedByController);
+   log_line("[AdaptiveVideo] Current video profile settings: EC: %d/%d, %d (%d) max bytes in video data, bitrate: %u bps",
+      g_pCurrentModel->video_link_profiles[iVideoProfile].block_packets,
+      g_pCurrentModel->video_link_profiles[iVideoProfile].block_fecs,
+      g_pCurrentModel->video_link_profiles[iVideoProfile].video_data_length,
+      (NULL != g_pVideoTxBuffers)?g_pVideoTxBuffers->getCurrentUsableRawVideoDataSize():0,
+      g_pCurrentModel->video_link_profiles[iVideoProfile].bitrate_fixed_bps);
+
    s_uLastVideoProfileRequestedByController = iVideoProfile;
-   log_line("[AdaptiveVideo] Set new video profile requested by controller: %s", str_get_video_profile_name(iVideoProfile));
    if ( NULL != g_pVideoTxBuffers )
    {
       g_pVideoTxBuffers->updateVideoHeader(g_pCurrentModel);
-      s_uPendingKFValue = g_pCurrentModel->getInitialKeyframeIntervalMs(iVideoProfile);
-      log_line("[AdaptiveVideo] Set new KF ms value requested by controller: %d (current KF ms: %d)", s_uPendingKFValue, s_uCurrentKFValue);
+      // To fix when adaptive kf is working 100%
+      //s_uPendingKFValue = g_pCurrentModel->getInitialKeyframeIntervalMs(iVideoProfile);
+      //log_line("[AdaptiveVideo] Set new KF ms value requested by controller: %d (current KF ms: %d)", s_uPendingKFValue, s_uCurrentKFValue);
    }
 
-   // Update capture video bitrate
+   // Update capture video bitrate, qpdelta
    u32 uBitrateBPS = g_pCurrentModel->video_link_profiles[iVideoProfile].bitrate_fixed_bps;
 
-   if ( uBitrateBPS != s_uLastAdaptiveAppliedVideoBitrate )
-   {
-      s_uLastAdaptiveAppliedVideoBitrate = uBitrateBPS;
-      if ( g_pCurrentModel->hasCamera() )
-      if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-         video_source_csi_send_control_message(RASPIVID_COMMAND_ID_VIDEO_BITRATE, uBitrateBPS/100000, 0);
+   if ( g_pCurrentModel->hasCamera() )
+   if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
+      video_source_csi_send_control_message(RASPIVID_COMMAND_ID_VIDEO_BITRATE, uBitrateBPS/100000, 0);
       
-      if ( g_pCurrentModel->hasCamera() )
-      if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-         video_source_majestic_set_videobitrate_value(uBitrateBPS); 
+   if ( g_pCurrentModel->hasCamera() )
+   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+   {
+      if ( (uBitrateBPS != hardware_camera_maj_get_current_bitrate()) &&
+           (hardware_camera_maj_get_current_qpdelta() != g_pCurrentModel->video_link_profiles[iVideoProfile].iIPQuantizationDelta) )
+         hardware_camera_maj_set_bitrate_and_qpdelta( uBitrateBPS, g_pCurrentModel->video_link_profiles[iVideoProfile].iIPQuantizationDelta);
+      else if ( uBitrateBPS != hardware_camera_maj_get_current_bitrate() )
+         hardware_camera_maj_set_bitrate(uBitrateBPS); 
+      else if ( hardware_camera_maj_get_current_qpdelta() != g_pCurrentModel->video_link_profiles[iVideoProfile].iIPQuantizationDelta )
+         hardware_camera_maj_set_qpdelta(g_pCurrentModel->video_link_profiles[iVideoProfile].iIPQuantizationDelta);
    }
-   // Update adaptive video rate for tx radio:
 
+   // Update adaptive video rate for tx radio:
    if ( s_uLastVideoProfileRequestedByController == g_pCurrentModel->video_params.user_selected_video_link_profile )
    {
       packet_utils_set_adaptive_video_datarate(0);
@@ -129,14 +155,15 @@ void adaptive_video_set_last_profile_requested_by_controller(int iVideoProfile)
    } 
 
    s_uTimeLastVideoProfileRequestedByController = g_TimeNow;
+
+   log_line("[AdaptiveVideo] Did set new video profile requested by controller: %s", str_get_video_profile_name(iVideoProfile));
 }
 
 int adaptive_video_get_current_active_video_profile()
 {
-   int iVideoProfile = g_pCurrentModel->video_params.user_selected_video_link_profile;
    if ( 0xFF != s_uLastVideoProfileRequestedByController )
-      iVideoProfile = s_uLastVideoProfileRequestedByController;
-   return iVideoProfile;
+      return  s_uLastVideoProfileRequestedByController;
+   return g_pCurrentModel->video_params.user_selected_video_link_profile;
 }
 
 u16 adaptive_video_get_current_kf()
@@ -165,17 +192,53 @@ bool _adaptive_video_send_kf_to_capture_program(u16 uNewKeyframeMs)
    {
       float fGOP = 1.0;
       fGOP = ((float)uNewKeyframeMs)/1000.0;
-      video_source_majestic_set_keyframe_value(fGOP);                
+      hardware_camera_maj_set_keyframe(fGOP);                
    }
    return true;
 }
 
-void adaptive_video_on_capture_restarted()
+u32 adaptive_video_set_temporary_bitrate(u32 uBitrate)
 {
-   s_uLastAdaptiveAppliedVideoBitrate = 0;
+   if ( ! g_pCurrentModel->hasCamera() )
+      return 0;
+
+   u32 uReturn = 0;
+   if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
+      uReturn = video_source_csi_get_last_set_videobitrate();
+   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+      uReturn = hardware_camera_maj_get_temporary_bitrate();
+
+   log_line("[AdaptiveVideo] Set temporary video bitrate to %u bps (current (temp) videobitrate is: %u bps)", uBitrate, uReturn);
+
+   s_uTemporaryAdaptiveVideoBitrate = uBitrate;
+
+   if ( 0 != uBitrate )
+   {
+      if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
+         video_source_csi_send_control_message(RASPIVID_COMMAND_ID_VIDEO_BITRATE, s_uTemporaryAdaptiveVideoBitrate/100000, 0);
+      if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+         hardware_camera_maj_set_temporary_bitrate(s_uTemporaryAdaptiveVideoBitrate);
+
+   }
+   else
+   {
+      int iCurrentVideoProfile = adaptive_video_get_current_active_video_profile();
+      u32 uBitrateBPS = g_pCurrentModel->video_link_profiles[iCurrentVideoProfile].bitrate_fixed_bps;
+      if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
+      {
+         video_source_csi_send_control_message(RASPIVID_COMMAND_ID_VIDEO_BITRATE, uBitrateBPS/100000, 0);
+      }
+      if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+         hardware_camera_maj_set_temporary_bitrate(uBitrateBPS);
+   }
+   return uReturn;
 }
 
-void adaptive_video_on_new_camera_read(bool bEndOfFrame, bool bIsInsideIFrame)
+void adaptive_video_on_capture_restarted()
+{
+}
+
+void adaptive_video_on_new_camera_read(bool bIsEndOfFrame)
 {
    if ( 0 != s_uPendingKFValue )
    {
@@ -185,8 +248,7 @@ void adaptive_video_on_new_camera_read(bool bEndOfFrame, bool bIsInsideIFrame)
    if ( s_uPendingKFValue != 0 )
    if ( s_uPendingKFValue != s_uCurrentKFValue )
    if ( NULL != g_pVideoTxBuffers )
-   if ( bEndOfFrame )
-   if ( ! bIsInsideIFrame )
+   if ( bIsEndOfFrame )
    {
       if ( _adaptive_video_send_kf_to_capture_program(s_uPendingKFValue) )
       {
@@ -202,15 +264,8 @@ void adaptive_video_periodic_loop()
 {
    if ( g_TimeNow < s_uTimeLastTimeAdaptivePeriodicLoop + 10 )
       return;
-   if ( g_bNegociatingRadioLinks )
-   {
-      if ( g_TimeNow > g_uTimeStartNegociatingRadioLinks + 60*1000 )
-      {
-         g_uTimeStartNegociatingRadioLinks = 0;
-         g_bNegociatingRadioLinks = false;
-      }
+   if ( g_bNegociatingRadioLinks || test_link_is_in_progress() )
       return;
-   }
    
    s_uTimeLastTimeAdaptivePeriodicLoop = g_TimeNow;
 

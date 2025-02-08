@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -56,12 +56,13 @@
 #include "../base/hw_procs.h"
 #include "../base/utils.h"
 #include "../base/ruby_ipc.h"
+#include "../base/tx_powers.h"
 #include "../common/string_utils.h"
 #include "../r_vehicle/launchers_vehicle.h"
 #include "../r_vehicle/video_source_csi.h"
 #include "../r_vehicle/shared_vars.h"
 #include "../r_vehicle/timers.h"
-#include "../r_vehicle/utils_vehicle.h"
+#include "../utils/utils_vehicle.h"
 #include "../r_vehicle/hw_config_check.h"
 #include "r_start_vehicle.h"
 
@@ -107,7 +108,7 @@ void _set_default_sik_params_for_vehicle(Model* pModel)
          {
             u32 uFreq = pModel->radioLinksParams.link_frequency_khz[iLinkIndex];
             hardware_radio_sik_set_frequency_txpower_airspeed_lbt_ecc(pRadioHWInfo,
-               uFreq, pModel->radioInterfacesParams.txPowerSiK,
+               uFreq, pModel->radioInterfacesParams.interface_raw_power[i],
                pModel->radioLinksParams.link_datarate_data_bps[iLinkIndex],
                (u32)((pModel->radioLinksParams.link_radio_flags[iLinkIndex] & RADIO_FLAGS_SIK_ECC)?1:0),
                (u32)((pModel->radioLinksParams.link_radio_flags[iLinkIndex] & RADIO_FLAGS_SIK_LBT)?1:0),
@@ -180,7 +181,8 @@ bool _check_radio_config(Model* pModel)
 
    log_line("[HW Radio Check] Full radio configuration before doing any changes:");
    log_full_current_radio_configuration(pModel);
-   if ( check_update_hardware_nics_vehicle(pModel) )
+   
+   if ( check_update_hardware_nics_vehicle(pModel) || recheck_disabled_radio_interfaces(pModel) )
    {
       log_line("[HW Radio Check] Hardware radio interfaces configuration check complete and configuration was changed. This is the new hardware radio interfaces and radio links configuration:");
       log_full_current_radio_configuration(pModel);
@@ -189,6 +191,18 @@ bool _check_radio_config(Model* pModel)
    }
    else
       log_line("[HW Radio Check] No radio hardware configuration change detected. No change.");
+
+   for( int i=0; i<modelVehicle.radioInterfacesParams.interfaces_count; i++ )
+   {
+      int iCardModel = modelVehicle.radioInterfacesParams.interface_card_model[i];
+      int iMaxPowerRaw = tx_powers_get_max_usable_power_raw_for_card(modelVehicle.hwCapabilities.uBoardType, iCardModel);
+
+      if ( modelVehicle.radioInterfacesParams.interface_raw_power[i] > iMaxPowerRaw )
+      {
+         modelVehicle.radioInterfacesParams.interface_raw_power[i] = iMaxPowerRaw;
+         bMustSave = true;
+      }
+   }
 
    if ( pModel->check_update_radio_links() )
    {
@@ -377,7 +391,7 @@ void _launch_vehicle_processes()
 
 int r_start_vehicle(int argc, char *argv[])
 {
-   log_init("Vehicle");
+   log_init("RubyVehicle");
    log_arguments(argc, argv);
 
    bool noWatchDog = false;
@@ -475,6 +489,13 @@ int r_start_vehicle(int argc, char *argv[])
       bMustSave = true;
    }
 
+   if ( (uBoardType & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_SIGMASTAR_338Q )
+   if ( ((modelVehicle.hwCapabilities.uBoardType & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT) == BOARD_SUBTYPE_OPENIPC_UNKNOWN )
+   if ( hardware_radio_has_rtl8733bu_cards() )
+   {
+      modelVehicle.hwCapabilities.uBoardType = BOARD_TYPE_OPENIPC_SIGMASTAR_338Q | (BOARD_SUBTYPE_OPENIPC_AIO_THINKER << BOARD_SUBTYPE_SHIFT);
+      bMustSave = true;
+   }
    u32 alarmsOriginal = modelVehicle.alarms;
 
    // Check the file system for write access
@@ -537,6 +558,8 @@ int r_start_vehicle(int argc, char *argv[])
    #ifdef HW_PLATFORM_OPENIPC_CAMERA
    modelVehicle.audio_params.has_audio_device = false;
    modelVehicle.audio_params.enabled = false;
+   hw_execute_bash_command("ulimit -i 1024", NULL);
+   hw_execute_bash_command("ulimit -l 1024", NULL);
    #endif
 
    log_line("Start sequence: Finished detecting audio device. %s", modelVehicle.audio_params.has_audio_device?"Audio capture device found.":"No audio capture devices found.");
@@ -581,8 +604,6 @@ int r_start_vehicle(int argc, char *argv[])
       }
    }
 
-   modelVehicle.setAWBMode();
-
    bMustSave |= _check_radio_config(&modelVehicle);
 
    log_line("Start sequence: Setting all the radio cards params (%s)...", (modelVehicle.relay_params.isRelayEnabledOnRadioLinkId >= 0)?"relaying enabled":"no relay links");
@@ -604,44 +625,34 @@ int r_start_vehicle(int argc, char *argv[])
       modelVehicle.saveToFile(szFile, false);
    }
 
-   for( int i=0; i<modelVehicle.hardwareInterfacesInfo.serial_bus_count; i++ )
+   for( int i=0; i<modelVehicle.hardwareInterfacesInfo.serial_port_count; i++ )
    {
-      if ( modelVehicle.hardwareInterfacesInfo.serial_bus_supported_and_usage[i] & MODEL_SERIAL_PORT_BIT_SUPPORTED )
-      if ( (modelVehicle.hardwareInterfacesInfo.serial_bus_supported_and_usage[i] & 0xFF) != SERIAL_PORT_USAGE_NONE )
+      if ( modelVehicle.hardwareInterfacesInfo.serial_port_supported_and_usage[i] & MODEL_SERIAL_PORT_BIT_SUPPORTED )
+      if ( (modelVehicle.hardwareInterfacesInfo.serial_port_supported_and_usage[i] & 0xFF) != SERIAL_PORT_USAGE_NONE )
       {
-         int iPortId = ( modelVehicle.hardwareInterfacesInfo.serial_bus_supported_and_usage[i] >> 8 ) & 0x0F;
+         int iPortId = ( modelVehicle.hardwareInterfacesInfo.serial_port_supported_and_usage[i] >> 8 ) & 0x0F;
          // USB serial
-         if ( modelVehicle.hardwareInterfacesInfo.serial_bus_supported_and_usage[i] & MODEL_SERIAL_PORT_BIT_EXTRNAL_USB )
+         if ( modelVehicle.hardwareInterfacesInfo.serial_port_supported_and_usage[i] & MODEL_SERIAL_PORT_BIT_EXTRNAL_USB )
          {
             char szPort[32];
             sprintf(szPort, "/dev/ttyUSB%d", iPortId);
-            hardware_configure_serial(szPort, (long)modelVehicle.hardwareInterfacesInfo.serial_bus_speed[i]);
+            hardware_configure_serial(szPort, (long)modelVehicle.hardwareInterfacesInfo.serial_port_speed[i]);
          }
          // Hardware serial
          else
          {
             char szPort[32];
             sprintf(szPort, "/dev/serial%d", iPortId);
-            hardware_configure_serial(szPort, (long)modelVehicle.hardwareInterfacesInfo.serial_bus_speed[i]);
+            hardware_configure_serial(szPort, (long)modelVehicle.hardwareInterfacesInfo.serial_port_speed[i]);
          }
       }
    }
 
-   if ( hardware_radio_has_atheros_cards() )
-   if ( modelVehicle.radioInterfacesParams.txPowerAtheros > 0 )
-      hardware_radio_set_txpower_atheros((int)modelVehicle.radioInterfacesParams.txPowerAtheros);
-   if ( hardware_radio_has_rtl8812au_cards() )
-   if ( modelVehicle.radioInterfacesParams.txPowerRTL8812AU > 0 )
-      hardware_radio_set_txpower_rtl8812au((int)modelVehicle.radioInterfacesParams.txPowerRTL8812AU);
-   if ( hardware_radio_has_rtl8812eu_cards() )
-   if ( modelVehicle.radioInterfacesParams.txPowerRTL8812EU > 0 )
-      hardware_radio_set_txpower_rtl8812eu((int)modelVehicle.radioInterfacesParams.txPowerRTL8812EU);
-
-
    #ifdef HW_PLATFORM_RASPBERRY
-   hw_launch_process("./ruby_alive");
+   hw_execute_ruby_process(NULL, "ruby_alive", NULL, NULL);
    #endif
    
+   log_line("Launching processes...");
    _launch_vehicle_processes();
 
    log_line("");
@@ -661,6 +672,9 @@ int r_start_vehicle(int argc, char *argv[])
       log_only_errors();
 
    g_TimeStart = get_current_timestamp_ms();
+   g_TimeLastCheckRadioSilenceFailsafe = get_current_timestamp_ms();
+   for( int i=0; i<10; i++ )
+      hardware_sleep_ms(500);
 
    u32 maxTimeForProcess = 1;
    char szTime[64];
@@ -669,7 +683,7 @@ int r_start_vehicle(int argc, char *argv[])
    int counter = 0;
    bool bMustRestart = false;
    int iRestartCount = 0;
-   u32 uTimeToAdjustAffinities = get_current_timestamp_ms() + 1000;
+   u32 uTimeToAdjustAffinities = get_current_timestamp_ms() + 5000;
    u32 uTimeLoopLog = g_TimeStart;
 
    char szFileUpdate[MAX_FILE_PATH_SIZE];
@@ -797,6 +811,14 @@ int r_start_vehicle(int argc, char *argv[])
                log_line_watchdog("Router pipeline watchdog check failed: router process (PID [%s]) has crashed! Last active time: %s, last IPC incoming time: %s, last radio TX time: %s", szPIDs, szTime, szTime2, szTime3);
                log_softerror_and_alarm("Router pipeline watchdog check failed: router process (PID [%s]) has crashed! Last active time: %s, last IPC incoming time: %s, last radio TX time: %s", szPIDs, szTime, szTime2, szTime3);
             }
+            log_softerror_and_alarm("Router is blocked on substep: %d, %u ms ago", s_pProcessStatsRouter->uLoopSubStep, g_TimeNow - s_pProcessStatsRouter->lastActiveTime);
+
+            if ( modelVehicle.hasCamera() )
+            if ( modelVehicle.isActiveCameraOpenIPC() )
+            {
+               szPIDs = hw_process_get_pid("majestic");
+               log_line("Majestic PID(s): (%s)", szPIDs);
+            }
             bMustRestart = true;
          }
       }
@@ -878,10 +900,27 @@ int r_start_vehicle(int argc, char *argv[])
          }
       }
 
+      if ( access(CONFIG_FILE_FULLPATH_RESTART, R_OK) != -1 )
+      {
+         log_line("Flag to force restart is set. Restarting...");
+         for( int i=0; i<10; i++ )
+         {
+            hardware_sleep_ms(300);
+            int iPIDRouter = hw_process_exists("ruby_rt_vehicle");
+            if ( iPIDRouter <= 1 )
+               break;
+         }
+         log_line("Router did quit. Can restart now.");
+         sprintf(szBuff, "rm -rf %s", CONFIG_FILE_FULLPATH_RESTART);
+         hw_execute_bash_command_raw(szBuff, NULL);
+         bMustRestart = true;
+      }
+
       if ( bMustRestart )
       {
-         log_softerror_and_alarm("Restarting processes...");
+         log_error_and_alarm("Restarting processes...");
          iRestartCount++;
+
          vehicle_stop_tx_router();
          
          if ( modelVehicle.hasCamera() )
@@ -901,6 +940,9 @@ int r_start_vehicle(int argc, char *argv[])
          shared_mem_process_stats_close(SHARED_MEM_WATCHDOG_RC_RX, s_pProcessStatsRC);
          s_pProcessStatsRC = NULL;
            
+         log_line("----------------------------------------------");
+         log_line("Stopped all processes");
+         log_line("----------------------------------------------");
 
          hardware_sleep_ms(200);
          log_line("Launching processes...");
@@ -908,7 +950,7 @@ int r_start_vehicle(int argc, char *argv[])
 
          log_line("Restarting processes. Done.");
 
-         uTimeToAdjustAffinities = get_current_timestamp_ms() + 1000;
+         uTimeToAdjustAffinities = get_current_timestamp_ms() + 5000;
          s_failCountProcessRouter = 0;
          s_failCountProcessTelemetry = 0;
          s_failCountProcessCommands = 0;

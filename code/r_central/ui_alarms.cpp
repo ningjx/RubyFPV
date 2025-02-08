@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -49,6 +49,7 @@
 
 u32 g_uPersistentAllAlarmsVehicle = 0;
 u32 g_uPersistentAllAlarmsLocal = 0;
+u32 g_uTotalLocalAlarmDevRetransmissions = 0;
 
 u32 s_TimeLastVehicleAlarm = 0;
 u16 s_uLastVehicleAlarms = 0;
@@ -229,14 +230,38 @@ void alarms_add_from_vehicle(u32 uVehicleId, u32 uAlarms, u32 uFlags1, u32 uFlag
 
    if ( uAlarms & ALARM_ID_VIDEO_CAPTURE_MALFUNCTION )
    {
-      uIconId = g_idIconCamera;
-      strcpy(szAlarmText, "Video capture process on vehicle is malfunctioning.");
-      strcpy(szAlarmText2, "Reinstall your vehicle firmware.");
+      static u32 s_uTimeLastCaptureMalfunctionAlarm = 0;
 
-      if ( uFlags1 == 1 )
+      if ( g_TimeNow < s_uTimeLastCaptureMalfunctionAlarm + 10000 )
+         return;
+      s_uTimeLastCaptureMalfunctionAlarm = g_TimeNow;
+
+      uIconId = g_idIconCamera;
+
+      if ( 0 == (uFlags1 & 0xFF) )
+      {
+         strcpy(szAlarmText, "Video capture process on vehicle is malfunctioning.");
+         strcpy(szAlarmText2, "Restarting it...");
+      }
+      else if ( 1 == (uFlags1 & 0xFF) )
       {
          strcpy(szAlarmText, "Video capture process on vehicle is not responding.");
          strcpy(szAlarmText2, "Vehicle will restart now...");
+      }
+      else if ( 2 == (uFlags1 & 0xFF) )
+      {
+         u32 uSkipped = (uFlags1 >> 8) & 0xFF;
+         u32 uDelta1 = uFlags2 & 0xFF;
+         u32 uDelta2 = (uFlags2 >> 8) & 0xFF;
+         u32 uDelta3 = (uFlags2 >> 16) & 0xFF;
+         sprintf(szAlarmText, "Video capture process skipped %u packets from H264/H265 encoder.", uSkipped);
+         sprintf(szAlarmText2, "Please contact Ruby developers. Delta times: %u ms, %u ms, %u ms", uDelta1, uDelta2, uDelta3);
+         bShowAsWarning = true;
+      }
+      else
+      {
+         strcpy(szAlarmText, "Video capture process on vehicle is malfunctioning.");
+         strcpy(szAlarmText2, "A generic error occured. Reinstall your vehicle firmware.");       
       }
    }
 
@@ -460,7 +485,11 @@ void alarms_add_from_vehicle(u32 uVehicleId, u32 uAlarms, u32 uFlags1, u32 uFlag
          bShowAsWarning = true;
       
       if ( bShowAsWarning )
+      {
          warnings_add(0, szAlarmText, uIconId);
+         if ( 0 != szAlarmText2[0] )
+            warnings_add(0, szAlarmText2, uIconId);
+      }
       else
       {
          Popup* p = _get_next_available_alarm_popup(szAlarmText, 7);
@@ -491,21 +520,24 @@ void alarms_add_from_local(u32 uAlarms, u32 uFlags1, u32 uFlags2)
       g_nTotalControllerCPUSpikes++;
 
    bool bShowAsWarning = false;
+   bool bLargeFont = false;
    u32 uIconId = g_idIconAlarm;
    char szAlarmText[256];
    char szAlarmText2[256];
+   char szAlarmText3[128];
 
    char szAlarmDesc[2048];
    alarms_to_string(uAlarms, uFlags1, uFlags2, szAlarmDesc);
-   snprintf(szAlarmText, sizeof(szAlarmText)/sizeof(szAlarmText[0]), "Received alarm (%s) from the vehicle", szAlarmDesc);
-
    snprintf(szAlarmText, sizeof(szAlarmText)/sizeof(szAlarmText[0]), "Triggered alarm(%s) on the controller", szAlarmDesc);
    szAlarmText2[0] = 0;
+   szAlarmText3[0] = 0;
 
    if ( g_bUpdateInProgress )
       return;
 
-   if ( uAlarms != ALARM_ID_CONTROLLER_IO_ERROR )
+   // Alarm is disabled ?
+
+   //if ( uAlarms != ALARM_ID_CONTROLLER_IO_ERROR )
    if ( uAlarms != ALARM_ID_CONTROLLER_LOW_STORAGE_SPACE )
    if ( ! (p->uEnabledAlarms & uAlarms) )
    {
@@ -527,6 +559,20 @@ void alarms_add_from_local(u32 uAlarms, u32 uFlags1, u32 uFlags2)
    {
       uIconId = g_idIconRadio;
       sprintf(szAlarmText, "Controller radio Rx process had a spike of %d ms (read: %u micros, queue: %u micros)", uFlags1, (uFlags2 & 0xFFFF), (uFlags2>>16));
+   }
+
+   if ( uAlarms & ALARM_ID_DEVELOPER_ALARM )
+   {
+      uIconId = g_idIconController;
+      bLargeFont = true;
+      if ( uFlags1 == ALARM_FLAG_DEVELOPER_ALARM_RETRANSMISSIONS_OFF )
+      {
+         g_uTotalLocalAlarmDevRetransmissions++;
+         strcpy(szAlarmText, L("Retransmissions are enabled but not requested/received from/to vehicle."));
+         snprintf(szAlarmText2, sizeof(szAlarmText2)/sizeof(szAlarmText2[0]), L("Please notify the developers about this alarm (id %d)"), uFlags1);
+         if ( (NULL != g_pCurrentModel) && g_pCurrentModel->isVideoLinkFixedOneWay() )
+            strcpy(szAlarmText3, L("Vehicle is in one way video link mode."));
+      }
    }
 
    if ( uAlarms & ALARM_ID_GENERIC )
@@ -788,6 +834,14 @@ void alarms_add_from_local(u32 uAlarms, u32 uFlags1, u32 uFlags2)
          strcpy(szAlarmText2, "Video player output truncated.");
       if ( uFlags1 & ALARM_FLAG_IO_ERROR_VIDEO_PLAYER_OUTPUT_WOULD_BLOCK )
          strcpy(szAlarmText2, "Video player output full.");
+      if ( uFlags1 & ALARM_FLAG_IO_ERROR_VIDEO_MPP_DECODER_STALLED )
+      {
+         bLargeFont = true;
+         uIconId = g_idIconCamera;
+         strcpy(szAlarmText, "Radxa MPP video streamer stalled!");
+         strcpy(szAlarmText2, "If this is a recurent alarm, you can disable it from [Menu]->[System]->[Alarms].");
+         strcpy(szAlarmText3, "Please notify the developers about this alarm.");
+      }
    }
 
    if ( g_TimeNow > s_TimeLastLocalAlarm + 10000 || ((s_uLastLocalAlarms != uAlarms) && (uAlarms != 0)) )
@@ -857,10 +911,15 @@ void alarms_add_from_local(u32 uAlarms, u32 uFlags1, u32 uFlags2)
       else
       {
          Popup* p = _get_next_available_alarm_popup(szAlarmText, 15);
-         p->setFont(g_idFontOSDSmall);
+         if ( bLargeFont )
+            p->setFont(g_idFontOSDWarnings);
+         else
+            p->setFont(g_idFontOSDSmall);
          p->setIconId(uIconId, get_Color_IconNormal());
          if ( 0 != szAlarmText2[0] )
             p->addLine(szAlarmText2);
+         if ( 0 != szAlarmText3[0] )
+            p->addLine(szAlarmText3);
          popups_add_topmost(p);
       }
    }

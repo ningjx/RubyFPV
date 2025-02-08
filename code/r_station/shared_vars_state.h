@@ -21,9 +21,11 @@ typedef struct
    u32 uTimeLastPingReplyReceivedFromVehicleOnLocalRadioLinks[MAX_RADIO_INTERFACES];
    u8  uLastPingIdReceivedFromVehicleOnLocalRadioLinks[MAX_RADIO_INTERFACES];
    u32 uPingRoundtripTimeOnLocalRadioLinks[MAX_RADIO_INTERFACES];
+   u32 uMinimumPingTimeMilisec;
 
+   bool bIsVehicleLinkToControllerLostAlarm;
    u32 uLastTimeReceivedAckFromVehicle;
-   int iVehicleClockIsBehindThisMilisec;
+   int iVehicleClockDeltaMilisec;
 
    // Commands roundtrip info
 
@@ -36,16 +38,15 @@ typedef struct
    u32 uMaxCommandRoundtripMiliseconds;
    u32 uMinCommandRoundtripMiliseconds;
 
-   u32 uMinPingRoundtripTime;
-
    // Adaptive video info
    u8 uPendingVideoProfileToSet;
    u32 uPendingVideoProfileToSetRequestedBy;
    u32 uVideoProfileRequestId;
    u32 uLastTimeSentVideoProfileRequest;
    u32 uLastTimeRecvVideoProfileAck;
-   bool bReceivedKeyframeInfoInVideoStream;
 
+   u32 uPendingKeyFrameToSet;
+   u8 uVideoKeyframeRequestId;
 } ALIGN_STRUCT_SPEC_INFO type_global_state_vehicle_runtime_info;
 
 

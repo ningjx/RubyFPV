@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -31,6 +31,7 @@
 
 #include "../base/base.h"
 #include "../base/config.h"
+#include "../base/hardware_radio.h"
 //#include "../base/radio_utils.h"
 #include "../radio/radiopackets2.h"
 #include "../base/ctrl_settings.h"
@@ -426,6 +427,19 @@ void link_watch_check_link_lost()
 
    // Link is lost
 
+   if ( g_bVideoRecordingStarted && (!g_bVideoProcessing) )
+   if ( NULL != g_pPopupLinkLost )
+   {
+      Preferences* pP = get_Preferences();
+      if ( NULL != pP )
+      if ( pP->iStopRecordingAfterLinkLostSeconds > 0 )
+      if ( g_TimeNow > g_pPopupLinkLost->getCreationTime() + pP->iStopRecordingAfterLinkLostSeconds*1000 )
+      {
+         ruby_stop_recording();
+      }
+   }
+
+
    if ( NULL != g_pPopupLinkLost )
       return;
    
@@ -620,25 +634,27 @@ void link_watch_loop_telemetry()
       }
 
       // FC source telemetry data present or lost ?
-      bool bHasTelemetryFromFC = vehicle_runtime_has_received_fc_telemetry(g_VehiclesRuntimeInfo[i].uVehicleId);
-
-      if ( ! bHasTelemetryFromFC )
+      if ( pairing_isStarted() )
+      if ( g_VehiclesRuntimeInfo[i].pModel->is_spectator || g_VehiclesRuntimeInfo[i].bPairedConfirmed )
       {
-         static bool s_bFirstTimeFCTelemetryWarning = true;
-         if ( g_VehiclesRuntimeInfo[i].bFCTelemetrySourcePresent || s_bFirstTimeFCTelemetryWarning )
+         bool bHasTelemetryFromFC = vehicle_runtime_has_received_fc_telemetry(g_VehiclesRuntimeInfo[i].uVehicleId);
+         if ( ! bHasTelemetryFromFC )
          {
-            warnings_add(g_VehiclesRuntimeInfo[i].uVehicleId, "Flight controller telemetry missing", g_idIconCPU, get_Color_IconError());
+            static bool s_bFirstTimeFCTelemetryWarning = true;
+            if ( g_VehiclesRuntimeInfo[i].bFCTelemetrySourcePresent || s_bFirstTimeFCTelemetryWarning )
+            {
+               warnings_add(g_VehiclesRuntimeInfo[i].uVehicleId, "Flight controller telemetry missing", g_idIconCPU, get_Color_IconError());
+            }
+            g_VehiclesRuntimeInfo[i].bFCTelemetrySourcePresent = false;
+            s_bFirstTimeFCTelemetryWarning = false;
          }
-         g_VehiclesRuntimeInfo[i].bFCTelemetrySourcePresent = false;
-         s_bFirstTimeFCTelemetryWarning = false;
+         else
+         {
+            if ( ! g_VehiclesRuntimeInfo[i].bFCTelemetrySourcePresent )
+               warnings_add(g_VehiclesRuntimeInfo[i].uVehicleId, "Flight controller telemetry recovered", g_idIconCPU, get_Color_IconSucces());
+            g_VehiclesRuntimeInfo[i].bFCTelemetrySourcePresent = true;
+         }
       }
-      else
-      {
-         if ( ! g_VehiclesRuntimeInfo[i].bFCTelemetrySourcePresent )
-            warnings_add(g_VehiclesRuntimeInfo[i].uVehicleId, "Flight controller telemetry recovered", g_idIconCPU, get_Color_IconSucces());
-         g_VehiclesRuntimeInfo[i].bFCTelemetrySourcePresent = true;
-      }
-
       // Check for Ruby telemetry lost or recovered state
 
       if ( g_VehiclesRuntimeInfo[i].bGotRubyTelemetryInfo )
@@ -684,8 +700,8 @@ void link_watch_loop_video()
    if ( NULL == g_pProcessStatsRouter )
       return;
 
-   if ( s_LastRouterProcessCheckedAlarmFlags != g_ProcessStatsRouter.alarmFlags ||
-        g_ProcessStatsRouter.alarmTime > s_TimeLastAlarmRouterProcess )
+   if ( (s_LastRouterProcessCheckedAlarmFlags != g_ProcessStatsRouter.alarmFlags) ||
+        (g_ProcessStatsRouter.alarmTime > s_TimeLastAlarmRouterProcess) )
    {
       s_LastRouterProcessCheckedAlarmFlags = g_ProcessStatsRouter.alarmFlags;
       s_TimeLastAlarmRouterProcess = g_ProcessStatsRouter.alarmTime;
@@ -714,13 +730,18 @@ void link_watch_loop_video()
    }
 }
 
-void link_watch_loop_processes()
+// Returns 1 if a process has issues
+int link_watch_loop_processes()
 {
    if ( g_bSearching )
-      return;
+      return 0;
 
-   char szFile[128];
+   char szFile[MAX_FILE_PATH_SIZE];
+   char szOutput[4096];
 
+   static bool s_bLinkWatchPermanentProcessesError = false;
+
+   if ( ! s_bLinkWatchPermanentProcessesError )
    if ( g_TimeNow > s_TimeLastProcessesCheck + 1000 )
    {
       s_TimeLastProcessesCheck = g_TimeNow;
@@ -743,7 +764,7 @@ void link_watch_loop_processes()
             failureCountMax = 8;
          if ( (int)s_CountProcessRouterFailures > failureCountMax )
          {
-            log_softerror_and_alarm("Router process has failed. Current router PIDS: [%s].", hw_process_get_pid("ruby_rt_station"));
+            log_error_and_alarm("Router process has failed. Current router PIDS: [%s].", hw_process_get_pid("ruby_rt_station"));
             warnings_add(0, "Controller router process is malfunctioning! Restarting it.", g_idIconCPU, get_Color_IconError());
             bNeedsRestart = true;
          }
@@ -754,12 +775,55 @@ void link_watch_loop_processes()
             bNeedsRestart = true;
          }
 
+         static int s_iCheckUSBCount = 0;
+         s_iCheckUSBCount++;
+
+         // To fix make faster or execute in bg
+         if ( (s_iCheckUSBCount % 4) == 0 )
+         {
+            szOutput[0] = 0;
+            hw_execute_bash_command_silent("dmesg | grep \"USB disconnect\"", szOutput);
+            if ( NULL != strstr(szOutput, "USB disconnect") )
+            {
+               log_line("USB disconnect detected. Check radio iterfaces...");
+               int iCurrentRadioInterfacesCount = hardware_get_radio_interfaces_count();
+               int iCurrentRadioInterfacesIEEECount = 0;
+               for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+               {
+                  if ( hardware_radio_index_is_wifi_radio(i) )
+                     iCurrentRadioInterfacesIEEECount++;
+               }
+               log_line("Cached radio config has %d interfaces, of which %d are wifi/IEEEE", iCurrentRadioInterfacesCount, iCurrentRadioInterfacesIEEECount);
+               int iNewRadioInterfacesIEEECount = hardware_radio_get_class_net_adapters_count();
+               log_line("Hardware radio IEEE interfaces detected: %d", iNewRadioInterfacesIEEECount);
+               if ( iNewRadioInterfacesIEEECount != iCurrentRadioInterfacesIEEECount )
+               {
+                  log_error_and_alarm("Radio interfaces count has changed. One or more radio interfaces broke.");
+                  if ( menu_has_menu(MENU_ID_NEGOCIATE_RADIO) || link_is_reconfiguring_radiolink() )
+                  {
+                     log_softerror_and_alarm("Test link params or negociate radio link is in progress. Postpone the restart.");
+                  }
+                  else
+                  {
+                     bNeedsRestart = true;
+                     hw_execute_bash_command_silent("dmesg -C", NULL);
+                  }
+               }
+               else
+                  hw_execute_bash_command_silent("dmesg -C", NULL);
+            }
+            else
+               hw_execute_bash_command_silent("dmesg -C", NULL);
+         }
+
          if ( bNeedsRestart )
          {
             log_line("Will restart processes.");
+            menu_discard_all();
             char szPids[1024];
             szPids[0] = 0;
             hw_execute_bash_command("pidof ruby_rx_telemetry", szPids);
+            removeTrailingNewLines(szPids);
             if ( strlen(szPids) > 2 )
                log_line("Process ruby_rx_telemetry is still present, pid: %s.", szPids);
             else
@@ -767,16 +831,149 @@ void link_watch_loop_processes()
 
             szPids[0] = 0;
             hw_execute_bash_command("pidof ruby_rt_station", szPids);
+            removeTrailingNewLines(szPids);
             if ( strlen(szPids) > 2 )
                log_line("Process ruby_rt_station is still present, pid: %s.", szPids);
             else
                log_line("Process ruby_rt_station is not present, has crashed.");
 
+            if ( NULL != g_pProcessStatsRouter )
+               log_line("Router is in blocking operation: %d", g_pProcessStatsRouter->uInBlockingOperation);
+            else
+               log_line("Router SM process stats is invalid.");
+            #if defined HW_PLATFORM_RASPBERRY
+            szPids[0] = 0;
+            hw_execute_bash_command("pidof ruby_player_p", szPids);
+            removeTrailingNewLines(szPids);
+            if ( strlen(szPids) > 2 )
+               log_line("Video player (pipe) is still present, pid: %s.", szPids);
+            else
+               log_line("Video player (pipe) is not present, has crashed.");
+
+            szPids[0] = 0;
+            hw_execute_bash_command("pidof ruby_player_s", szPids);
+            removeTrailingNewLines(szPids);
+            if ( strlen(szPids) > 2 )
+               log_line("Video player (sm) is still present, pid: %s.", szPids);
+            else
+               log_line("Video player (sm) is not present, has crashed.");
+
+            shared_mem_player_process_stats* pSMPlayer = (shared_mem_player_process_stats*) open_shared_mem_for_read("RUBY_PLAYER_SM_STATS", sizeof(shared_mem_player_process_stats));
+            if ( NULL != pSMPlayer )
+            {
+               log_line("Opened shared mem to video player process stats");
+               log_line("Video player active %u ms ago", g_TimeNow - pSMPlayer->lastActiveTime);
+               log_line("Video player is in blocking operation: %d", pSMPlayer->uInBlockingOperation);
+               munmap(pSMPlayer, sizeof(shared_mem_player_process_stats));
+            }
+            else
+               log_softerror_and_alarm("Can't open shared mem to video player process stats.");
+            #endif
+
+            int iCurrentRadioInterfacesCount = hardware_get_radio_interfaces_count();
+            int iCurrentRadioInterfacesIEEECount = 0;
+            for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+            {
+               if ( hardware_radio_index_is_wifi_radio(i) )
+                  iCurrentRadioInterfacesIEEECount++;
+            }
+            log_line("Radio: Has %d interfaces, of which %d are wifi/IEEEE", iCurrentRadioInterfacesCount, iCurrentRadioInterfacesIEEECount);
+
+
+            pairing_stop();
+            hardware_sleep_ms(200);
+
+            hardware_radio_remove_stored_config();
+            hardware_reset_radio_enumerated_flag();
+
+            szOutput[0] = 0;
+            hw_execute_bash_command_raw("ls /sys/class/net/", szOutput);
+            removeNewLines(szOutput);
+            log_line("Content of class net: [%s]", szOutput);
+ 
+            int iNewRadioInterfacesIEEECount = hardware_radio_get_class_net_adapters_count();
+            int iNewRadioInterfacesCount = iCurrentRadioInterfacesCount;
+            log_line("Radio: new IEEE radio interfaces count: %d", iNewRadioInterfacesIEEECount);
+            /*
+            hardware_enumerate_radio_interfaces();
+
+            int iNewRadioInterfacesCount = hardware_get_radio_interfaces_count();
+            int iNewRadioInterfacesIEEECount = 0;
+            for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+            {
+               if ( hardware_radio_index_is_wifi_radio(i) )
+                  iNewRadioInterfacesIEEECount++;
+            }
+            log_line("Radio: New: has %d interfaces, of which %d are wifi/IEEEE", iNewRadioInterfacesCount, iNewRadioInterfacesIEEECount);
+            */
+
+            if ( (iNewRadioInterfacesIEEECount != iCurrentRadioInterfacesIEEECount) ||
+                 (iNewRadioInterfacesCount != iCurrentRadioInterfacesCount) )
+            {
+               log_error_and_alarm("Radio interfaces count has changed. One or more radio interfaces broke.");
+
+               link_watch_reset();
+               popups_remove_all();
+               Popup* p = new Popup( "Radio hardware error", 0.2, 0.36, 0.5, 0);
+               p->setCentered();
+               p->setIconId(g_idIconError, get_Color_MenuText());
+
+               p->addLine(" ");
+               p->addLine("One of you radio interfaces have broken!");
+               p->addLine("Please check your hardware configuration for overheating issues or power supply issues or USB connections issues.");
+               popups_add_topmost(p);
+
+               if ( iNewRadioInterfacesCount <= 0 )
+                  s_bLinkWatchPermanentProcessesError = true;
+
+               hw_execute_bash_command_raw("dmesg | grep -m1 cable", szOutput);
+               removeTrailingNewLines(szOutput);
+               log_line("dmesg output: (%s)", szOutput);
+            }
+
             s_CountProcessRouterFailures = 0;
             s_CountProcessTelemetryFailures = 0;
             pairing_stop();
+            ruby_signal_alive();
             hardware_sleep_ms(100);
-            pairing_start_normal();
+
+            char szCommRadioParams[64];
+            strcpy(szCommRadioParams, "-initradio");
+            if ( NULL != g_pCurrentModel )
+            for ( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
+            {
+               if ( (g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) == RADIO_TYPE_ATHEROS )
+               if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] >= 0 )
+               if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] < g_pCurrentModel->radioLinksParams.links_count )
+               {
+                  int dataRateMb = g_pCurrentModel->radioLinksParams.link_datarate_video_bps[g_pCurrentModel->radioInterfacesParams.interface_link_id[i]];
+                  if ( dataRateMb > 0 )
+                     dataRateMb = dataRateMb / 1000 / 1000;
+                  if ( dataRateMb > 0 )
+                  {
+                     sprintf(szCommRadioParams, "-initradio %d", dataRateMb);
+                     break;
+                  }
+               }
+            }
+
+            ruby_signal_alive();
+            hardware_enumerate_radio_interfaces();
+            ruby_signal_alive();
+
+            log_line("New number of supported radio interfaces: %d", hardware_get_supported_radio_interfaces_count());
+            if ( hardware_get_supported_radio_interfaces_count () > 0 )
+            {
+               log_line("Still have supported radio interfaces. Reinit radio and restart pairing...");
+               hw_execute_ruby_process_wait(NULL, "ruby_start", szCommRadioParams, NULL, 1);
+               pairing_start_normal();
+            }
+            else
+            {
+               log_line("No more supported radio interfaces present. Just show the error to the user.");
+               s_bLinkWatchPermanentProcessesError = true;
+            }
+            return 1;
          }
       }
    }
@@ -787,64 +984,66 @@ void link_watch_loop_processes()
 
       if ( g_bVideoRecordingStarted )
       {
-      Preferences *p = get_Preferences();
-      if ( p->iVideoDestination == 1 )
-      {
-         if ( g_TimeNow > s_TimeLastVideoMemoryFreeCheck + 4000 )
+         Preferences *p = get_Preferences();
+         if ( p->iVideoDestination == 1 )
          {
-            s_TimeLastVideoMemoryFreeCheck = g_TimeNow;
-            char szComm[1024];
-            char szBuff[2048];
-            char szTemp[64];
-            sprintf(szComm, "df %s | sed -n 2p", FOLDER_TEMP_VIDEO_MEM);
-            hw_execute_bash_command_raw(szComm, szBuff);
-            long lu, lf, lt;
-            sscanf(szBuff, "%s %ld %ld %ld", szTemp, &lt, &lu, &lf);
-            if ( lf/1000 < 20 )
-               ruby_stop_recording();
+            if ( g_TimeNow > s_TimeLastVideoMemoryFreeCheck + 4000 )
+            {
+               s_TimeLastVideoMemoryFreeCheck = g_TimeNow;
+               char szComm[1024];
+               char szBuff[2048];
+               char szTemp[64];
+               sprintf(szComm, "df %s | sed -n 2p", FOLDER_TEMP_VIDEO_MEM);
+               hw_execute_bash_command_raw(szComm, szBuff);
+               long lu, lf, lt;
+               sscanf(szBuff, "%s %ld %ld %ld", szTemp, &lt, &lu, &lf);
+               if ( lf/1000 < 20 )
+                  ruby_stop_recording();
+            }
          }
-      }
       }
 
       if ( g_bVideoProcessing )
       {
-      char szPids[1024];
-      bool procRunning = false;
-      hw_execute_bash_command_silent("pidof ruby_video_proc", szPids);
-      if ( strlen(szPids) > 2 )
-         procRunning = true;
-      if ( ! procRunning )
-      {
-         log_line("Video processing process finished.");
-         g_bVideoProcessing = false;
-         strcpy(szFile, FOLDER_RUBY_TEMP);
-         strcat(szFile, FILE_TEMP_VIDEO_FILE_PROCESS_ERROR);
-         if ( access(szFile, R_OK) != -1 )
+         char szPids[1024];
+         bool procRunning = false;
+         hw_execute_bash_command_silent("pidof ruby_video_proc", szPids);
+         removeTrailingNewLines(szPids);
+         if ( strlen(szPids) > 2 )
+            procRunning = true;
+         if ( ! procRunning )
          {
-            warnings_add(0, "Video file processing failed.", g_idIconCamera, get_Color_IconWarning());
-
-            char szBuff[256];
-            char * line = NULL;
-            size_t len = 0;
-            ssize_t read;
-            FILE* fd = fopen(szFile, "r");
-
-            while ( (NULL != fd) && ((read = getline(&line, &len, fd)) != -1))
+            log_line("Video processing process finished.");
+            g_bVideoProcessing = false;
+            strcpy(szFile, FOLDER_RUBY_TEMP);
+            strcat(szFile, FILE_TEMP_VIDEO_FILE_PROCESS_ERROR);
+            if ( access(szFile, R_OK) != -1 )
             {
-              printf("Retrieved line of length %zu:\n", read);
-              if ( read > 0 )
-                 warnings_add(0, line, g_idIconCamera, get_Color_IconWarning());
+               warnings_add(0, "Video file processing failed.", g_idIconCamera, get_Color_IconWarning());
+
+               char szBuff[256];
+               char * line = NULL;
+               size_t len = 0;
+               ssize_t read;
+               FILE* fd = fopen(szFile, "r");
+
+               while ( (NULL != fd) && ((read = getline(&line, &len, fd)) != -1))
+               {
+                 printf("Retrieved line of length %zu:\n", read);
+                 if ( read > 0 )
+                    warnings_add(0, line, g_idIconCamera, get_Color_IconWarning());
+               }
+               if ( NULL != fd )
+                  fclose(fd);
+               sprintf(szBuff, "rm -rf %s%s 2>/dev/null", FOLDER_RUBY_TEMP, FILE_TEMP_VIDEO_FILE_PROCESS_ERROR);
+               hw_execute_bash_command(szBuff, NULL );
             }
-            if ( NULL != fd )
-               fclose(fd);
-            sprintf(szBuff, "rm -rf %s%s 2>/dev/null", FOLDER_RUBY_TEMP, FILE_TEMP_VIDEO_FILE_PROCESS_ERROR);
-            hw_execute_bash_command(szBuff, NULL );
+            else
+                warnings_add(0, "Video file processing complete.", g_idIconCamera, get_Color_IconNormal());
          }
-         else
-             warnings_add(0, "Video file processing complete.", g_idIconCamera, get_Color_IconNormal());
-      }
       }
    }
+   return 0;
 }
 
 void link_watch_rc()
@@ -948,16 +1147,6 @@ bool link_has_received_videostream(u32 uVehicleId)
    }
 
    return false;
-}
-
-void link_reset_has_received_videostream(u32 uVehicleId)
-{
-   log_line("LinkWatch: Reset received video stream flag for VID: %u", uVehicleId);
-   for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
-   {
-      if ( (uVehicleId == 0) || (g_SM_RadioStats.radio_streams[i][0].uVehicleId == uVehicleId) || (g_SM_RadioStats.radio_streams[i][STREAM_ID_VIDEO_1].uVehicleId == uVehicleId) )
-         g_SM_RadioStats.radio_streams[i][STREAM_ID_VIDEO_1].totalRxBytes = 0;
-   }
 }
 
 bool link_has_received_vehicle_telemetry_info(u32 uVehicleId)

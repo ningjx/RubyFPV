@@ -74,7 +74,8 @@ class ProcessorRxVideo
 
       virtual bool init();
       virtual bool uninit();
-      virtual void resetState();
+      virtual void resetStateOnVehicleRestart();
+      virtual void discardRetransmissionsInfo();
       void onControllerSettingsChanged();
 
       void pauseProcessing();
@@ -82,7 +83,6 @@ class ProcessorRxVideo
 
       u32 getLastTimeVideoStreamChanged();
       u32 getLastestVideoPacketReceiveTime();
-      int getCurrentlyReceivedVideoProfile();
       int getCurrentlyReceivedVideoFPS();
       int getCurrentlyReceivedVideoKeyframe();
       int getCurrentlyMissingVideoPackets();
@@ -90,10 +90,10 @@ class ProcessorRxVideo
       int getVideoHeight();
       int getVideoFPS();
       int getVideoType();
-      shared_mem_video_stream_stats_history* getVideoDecodeStatsHistory();
       
       void updateHistoryStats(u32 uTimeNow);
-      virtual void periodicLoop(u32 uTimeNow);
+      // Returns how many retransmission packets where requested, if any
+      virtual int periodicLoop(u32 uTimeNow, bool bForceSyncNow);
       virtual int handleReceivedVideoPacket(int interfaceNb, u8* pBuffer, int length);
 
       static int m_siInstancesCount;
@@ -111,12 +111,14 @@ class ProcessorRxVideo
       void resetReceiveBuffers(int iToMaxIndex);
       void resetReceiveBuffersBlock(int iBlockIndex);
 
-      void updateVideoDecodingStats(u8* pRadioPacket, int iPacketLength);
+      void updateControllerRTInfoAndVideoDecodingStats(u8* pRadioPacket, int iPacketLength);
       
       void reconstructBlock(int rx_buffer_block_index);
 
-      void checkAndRequestMissingPackets();
-      void checkAndDiscardBlocksTooOld();
+      // Returns how many retransmission packets where requested, if any
+      int checkAndRequestMissingPackets(bool bForceSyncNow);
+      // Returns true if buffer was discarded
+      bool checkAndDiscardBlocksTooOld();
       void sendPacketToOutput(int rx_buffer_block_index, int block_packet_index);
       void pushIncompleteBlocksOut(int iStackIndexToDiscardTo, bool bTooOld);
       void pushFirstBlockOut();
@@ -148,12 +150,8 @@ class ProcessorRxVideo
 
       // Rx state 
 
-      shared_mem_video_stream_stats_history m_SM_VideoDecodeStatsHistory;
-      
       type_last_rx_packet_info m_InfoLastReceivedVideoPacket;
       u8 m_uLastReceivedVideoLinkProfile;
-      u32 m_uLastHardEncodingsChangeVideoBlockIndex;
-      u32 m_uLastVideoResolutionChangeVideoBlockIndex;
 
       u32 m_uLastTimeRequestedRetransmission;
       u32 m_uRequestRetransmissionUniqueId;
@@ -169,4 +167,7 @@ class ProcessorRxVideo
       u32 m_uLastBlockReceivedAdaptiveVideoInterval;
       u32 m_uLastBlockReceivedSetVideoBitrate;
       u32 m_uLastBlockReceivedEncodingExtraFlags2;
+
+      u32 m_uLastVideoBlockIndexResolutionChange;
+      u32 m_uLastVideoBlockPacketIndexResolutionChange;
 };

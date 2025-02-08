@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -67,8 +67,6 @@ void _telemetry_mavlink_send_setup()
    if ( s_bDidSentMAVLinkSetup )
       return;
 
-   set_time_last_mavlink_message_from_fc(g_TimeNow - 1200);
-
    int componentId = MAV_COMP_ID_MISSIONPLANNER;
    //int componentId = MAV_COMP_ID_SYSTEM_CONTROL;
    //int componentId = 255;
@@ -86,7 +84,7 @@ void _telemetry_mavlink_send_setup()
       parse_telemetry_remove_duplicate_messages(false);
 
    bool bUseLocalVSpeed = false;
-   int li = g_pCurrentModel->osd_params.layout;
+   int li = g_pCurrentModel->osd_params.iCurrentOSDLayout;
    if ( (li >= 0) && (li < MODEL_MAX_OSD_PROFILES) )
    if ( g_pCurrentModel->osd_params.osd_flags2[li] & OSD_FLAG2_SHOW_LOCAL_VERTICAL_SPEED )
       bUseLocalVSpeed = true;
@@ -362,11 +360,10 @@ void _preprocess_fc_telemetry(t_packet_header_fc_telemetry* pPHFCT)
 {
    pPHFCT->fc_telemetry_type = g_pCurrentModel->telemetry_params.fc_telemetry_type;
 
-   if ( (g_TimeNow > TIMEOUT_TELEMETRY_LOST) && (get_time_last_mavlink_message_from_fc() + TIMEOUT_TELEMETRY_LOST < g_TimeNow) )
+   if ( (g_TimeNow < TIMEOUT_FC_TELEMETRY_LOST) || (get_time_last_mavlink_message_from_fc() < g_TimeNow - TIMEOUT_FC_TELEMETRY_LOST) )
       pPHFCT->flags |= FC_TELE_FLAGS_NO_FC_TELEMETRY;
    else
       pPHFCT->flags &= ~FC_TELE_FLAGS_NO_FC_TELEMETRY;
-
    if ( g_bDebug )
    {
       pPHFCT->flags &= ~FC_TELE_FLAGS_NO_FC_TELEMETRY;
@@ -490,7 +487,7 @@ void telemetry_mavlink_send_to_controller()
 
    radio_packet_init(&PH, PACKET_COMPONENT_TELEMETRY, PACKET_TYPE_FC_TELEMETRY, STREAM_ID_TELEMETRY);
    PH.vehicle_id_src = g_pCurrentModel->uVehicleId;
-   
+   PH.vehicle_id_dest = 0;
    t_packet_header_fc_telemetry* pFCTelem = telemetry_get_fc_telemetry_header();
    t_packet_header_fc_extra* pFCTelemExtra = telemetry_get_fc_extra_telemetry_header();
    _preprocess_fc_telemetry(pFCTelem);
@@ -535,6 +532,7 @@ void telemetry_mavlink_send_to_controller()
 
    radio_packet_init(&PH, PACKET_COMPONENT_TELEMETRY, PACKET_TYPE_FC_TELEMETRY, STREAM_ID_TELEMETRY);
    PH.vehicle_id_src = g_pCurrentModel->uVehicleId;
+   PH.vehicle_id_dest = 0;
    PH.total_length = (u16)sizeof(t_packet_header) + (u16)sizeof(t_packet_header_fc_telemetry);
    if ( bSendFCMessage )
    {

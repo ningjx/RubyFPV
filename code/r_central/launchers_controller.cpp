@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -101,9 +101,13 @@ void controller_launch_router(bool bSearchMode, int iFirmwareType)
          sprintf(szPrefix, "nice -n %d", pcs->iNiceRouter);
    }
 
+   if ( ! pcs->iPrioritiesAdjustment )
+      szPrefix[0] = 0;
+
    hw_execute_ruby_process(szPrefix, "ruby_rt_station", szParams, NULL);
 
-   hw_set_proc_priority( "ruby_rt_station", pcs->iNiceRouter, pcs->ioNiceRouter, 1);
+   if ( pcs->iPrioritiesAdjustment )
+      hw_set_proc_priority( "ruby_rt_station", pcs->iNiceRouter, pcs->ioNiceRouter, 1);
 
    log_line("Done launching controller router.");
 }
@@ -310,18 +314,21 @@ void controller_wait_for_stop_all()
 
 static void * _thread_adjust_affinities(void *argument)
 {
-   log_line("Started background thread to adjust processes affinities...");
+   log_line("[BGThread] Started background thread to adjust processes affinities...");
    if ( s_iCPUCoresCount > 2 )
    {
       hw_set_proc_affinity("ruby_rt_station", 1,1);
       hw_set_proc_affinity("ruby_central", 2,2);
       hw_set_proc_affinity("ruby_rx_telemetry", 3, 3);
       hw_set_proc_affinity("ruby_tx_rc", 3, 3);
-      #if defined(HW_PLATFORM_RASPBERRY)
-      hw_set_proc_affinity("ruby_player_p", 3, s_iCPUCoresCount);
-      #endif
-      #if defined(HW_PLATFORM_RADXA_ZERO3)
-      hw_set_proc_affinity("ruby_player_radxa", 3, s_iCPUCoresCount);
+      #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA_ZERO3)
+      char szFile[MAX_FILE_PATH_SIZE];
+      ControllerSettings* pCS = get_ControllerSettings();
+      if ( 0 == pCS->iStreamerOutputMode )
+         strcpy(szFile, VIDEO_PLAYER_SM);
+      else
+         strcpy(szFile, VIDEO_PLAYER_PIPE);
+      hw_set_proc_affinity(szFile, 3, s_iCPUCoresCount);
       #endif
    }
    else
@@ -329,7 +336,7 @@ static void * _thread_adjust_affinities(void *argument)
       hw_set_proc_affinity("ruby_rt_station", 1,1);
       hw_set_proc_affinity("ruby_central", 2,2); 
    }
-   log_line("Background thread to adjust processes affinities completed.");
+   log_line("[BGThread] Background thread to adjust processes affinities completed.");
    return NULL;
 }
 
@@ -340,6 +347,13 @@ void controller_check_update_processes_affinities()
       log_line("Single core CPU (%d), no affinity adjustments for processes to be done.", s_iCPUCoresCount);
       return;
    }
+   ControllerSettings* pCS = get_ControllerSettings();
+   if ( (NULL == pCS) || (0 == pCS->iCoresAdjustment) )
+   {
+      log_line("%d CPU cores, affinity adjustments is disabled. Do nothing.", s_iCPUCoresCount);
+      return;
+   }
+   
    log_line("%d CPU cores, doing affinity adjustments for processes...", s_iCPUCoresCount);
 
    pthread_t pThreadBg;
@@ -349,4 +363,5 @@ void controller_check_update_processes_affinities()
       log_error_and_alarm("Failed to create thread for adjusting processes affinities.");
       return;
    }
+   log_line("Done launching worker thread to adjust affinities.");
 }

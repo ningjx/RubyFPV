@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -34,6 +34,7 @@
 #include "menu.h"
 #include "menu_confirmation.h"
 
+
 MenuConfirmation::MenuConfirmation(const char* szTitle, const char* szText, int id)
 :Menu(MENU_ID_CONFIRMATION + id*1000, szTitle, NULL)
 {
@@ -41,9 +42,17 @@ MenuConfirmation::MenuConfirmation(const char* szTitle, const char* szText, int 
    m_xPos = 0.35; m_yPos = 0.35;
    m_Width = 0.3;
    m_bSingleOption = false;
-   addTopLine(szText);
-   addMenuItem(new MenuItem("No"));
-   addMenuItem(new MenuItem("Yes"));
+   m_bShowDoNotShowAgain = false;
+   m_bDoNotShowAgain = false;
+   m_uIconId = 0;
+   m_iUniqueId = 0;
+   if ( NULL != szText )
+      addTopLine(szText);
+
+   m_iIndexMenuOk = -1;
+   m_iIndexMenuCancel = -1;
+   m_iIndexMenuDoNotShow = -1;
+   m_pCheckBox = NULL;
 }
 
 MenuConfirmation::MenuConfirmation(const char* szTitle, const char* szText, int id, bool singleOption)
@@ -53,36 +62,143 @@ MenuConfirmation::MenuConfirmation(const char* szTitle, const char* szText, int 
    m_xPos = 0.35; m_yPos = 0.35;
    m_Width = 0.3;
    m_bSingleOption = singleOption;
-   addTopLine(szText);
-   if ( m_bSingleOption )
-   {
-      addMenuItem(new MenuItem("Ok"));
-      m_yPos = 0.45;
-   }
-   else
-   {
-      addMenuItem(new MenuItem("No"));
-      addMenuItem(new MenuItem("Yes"));
-   }
+   m_bShowDoNotShowAgain = false;
+   m_bDoNotShowAgain = false;
+   m_uIconId = 0;
+   m_iUniqueId = 0;
+   if ( NULL != szText )
+      addTopLine(szText);
+
+   m_iIndexMenuOk = -1;
+   m_iIndexMenuCancel = -1;
+   m_iIndexMenuDoNotShow = -1;
+   m_pCheckBox = NULL;
 }
 
 MenuConfirmation::~MenuConfirmation()
 {
 }
 
+void MenuConfirmation::setIconId(u32 uIconId)
+{
+   m_uIconId = uIconId;
+   invalidate();
+}
+
+void MenuConfirmation::setUniqueId(int iUniqueId)
+{
+   m_iUniqueId = iUniqueId;
+}
+
+void MenuConfirmation::enableShowDoNotShowAgain()
+{
+   m_bShowDoNotShowAgain = true;
+}
+
+void MenuConfirmation::onShow()
+{
+   removeAllItems();
+   m_iIndexMenuOk = -1;
+   m_iIndexMenuCancel = -1;
+   m_iIndexMenuDoNotShow = -1;
+   m_pCheckBox = NULL;
+
+   if ( m_bSingleOption )
+   {
+      m_iIndexMenuOk = addMenuItem(new MenuItem("Ok"));
+      m_yPos = 0.45;
+   }
+   else
+   {
+      m_iIndexMenuCancel = addMenuItem(new MenuItem("No"));
+      m_iIndexMenuOk = addMenuItem(new MenuItem("Yes"));
+   }
+
+   if ( m_bShowDoNotShowAgain && (m_iUniqueId > 0) && (getPreferencesDoNotShowAgain(m_iUniqueId) != -1) )
+   {
+      m_pMenuItems[m_ItemsCount-1]->setExtraHeight(g_pRenderEngine->textHeight(g_idFontMenu));
+      m_pCheckBox = new MenuItemCheckbox("Do not show again");
+      m_iIndexMenuDoNotShow = addMenuItem(m_pCheckBox);
+
+      m_bDoNotShowAgain = (bool)getPreferencesDoNotShowAgain(m_iUniqueId);
+      m_pCheckBox->setChecked(m_bDoNotShowAgain);
+   }
+}
+ 
+void MenuConfirmation::valuesToUI()
+{
+
+}
+
+void MenuConfirmation::Render()
+{
+   RenderPrepare();
+
+   float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
+   float iconHeight = 3.0*height_text;
+   float iconWidth = iconHeight/g_pRenderEngine->getAspectRatio();
+
+   if ( m_uIconId != 0 )
+      m_RenderWidth += iconWidth + m_sfMenuPaddingX;
+   
+   float yTop = RenderFrameAndTitle();
+   float y = yTop;
+   
+   if ( m_uIconId != 0 )
+      m_RenderWidth -= iconWidth + m_sfMenuPaddingX;
+
+   for( int i=0; i<m_ItemsCount; i++ )
+      y += RenderItem(i,y);
+  
+   if ( m_uIconId != 0 )
+   {
+      g_pRenderEngine->setColors(get_Color_MenuText(), 0.9);
+      g_pRenderEngine->setStrokeSize(MENU_OUTLINEWIDTH);
+      g_pRenderEngine->drawIcon(m_RenderXPos + m_RenderWidth, m_RenderYPos + 0.5*(m_RenderHeight-iconHeight), iconWidth, iconHeight, m_uIconId);
+   }
+}
+
+void MenuConfirmation::_saveDoNotShowFlag()
+{
+   if ( m_iUniqueId <= 0 )
+      return;
+   setPreferencesDoNotShowAgain(m_iUniqueId, (int)m_bDoNotShowAgain);
+   save_Preferences();
+}
+
+int MenuConfirmation::onBack()
+{
+   int iRet = Menu::onBack();
+   _saveDoNotShowFlag();
+   log_line("Menu Confirmation: will close on Back, return value: %d, confirmation id: %d (%d)", iRet, m_MenuId, (m_MenuId - MENU_ID_CONFIRMATION)/1000);
+   return iRet;
+}
 
 void MenuConfirmation::onSelectItem()
 {
    log_line("Menu Confirmation: selected item: %d", m_SelectedIndex);
-   if ( m_bSingleOption )
+   
+   if ( (m_iIndexMenuOk != -1) && (m_iIndexMenuOk == m_SelectedIndex) )
    {
+      log_line("Menu Confirmation: will close with Ok, confirmation id: %d (%d)", m_MenuId, (m_MenuId - MENU_ID_CONFIRMATION)/1000);
+      _saveDoNotShowFlag();
       menu_stack_pop(1);
       return;
    }
 
-   if ( 0 == m_SelectedIndex )
+   if ( (m_iIndexMenuCancel != -1) && (m_iIndexMenuCancel == m_SelectedIndex) )
+   {
+      log_line("Menu Confirmation: will close with Cancel, confirmation id: %d (%d)", m_MenuId, (m_MenuId - MENU_ID_CONFIRMATION)/1000);
+      _saveDoNotShowFlag();
       menu_stack_pop(0);
+      return;
+   }
 
-   if ( 1 == m_SelectedIndex )
-      menu_stack_pop(1);
+   if ( (m_iIndexMenuDoNotShow != -1) && (m_iIndexMenuDoNotShow == m_SelectedIndex) )
+   {
+      m_bDoNotShowAgain = !m_bDoNotShowAgain;
+      if ( NULL != m_pCheckBox )
+         m_pCheckBox->setChecked(m_bDoNotShowAgain);
+      _saveDoNotShowFlag();
+   }
 }

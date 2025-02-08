@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga
+    Copyright (c) 2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -50,7 +50,8 @@ const char* commands_get_description(u8 command_type)
       case COMMAND_ID_SET_RADIO_CARD_MODEL: strcpy(szCommandDesc, "Set_Radio_Card_Model"); break;
       case COMMAND_ID_SET_MODEL_FLAGS: strcpy(szCommandDesc, "Set_Model_Flags"); break;
       case COMMAND_ID_SET_SIK_PACKET_SIZE: strcpy(szCommandDesc, "Set_SiK_Packet_Size"); break;
-      case COMMAND_ID_RESET_RADIO_LINK: strcpy(szCommandDesc, "Reset_Radio_Link"); break; 
+      case COMMAND_ID_RESET_RADIO_LINK: strcpy(szCommandDesc, "Reset_Radio_Link"); break;
+      case COMMAND_ID_SET_AUTO_TX_POWERS: strcpy(szCommandDesc, "SetAutoTxPowers"); break;
       case COMMAND_ID_GET_USB_INFO: strcpy(szCommandDesc, "Get_USB_Info"); break;
       case COMMAND_ID_SET_RADIO_LINK_CAPABILITIES: strcpy(szCommandDesc, "Set_Radio_Link_Capabilities"); break;
       case COMMAND_ID_GET_USB_INFO2: strcpy(szCommandDesc, "Get_USB_Info2"); break;
@@ -86,8 +87,6 @@ const char* commands_get_description(u8 command_type)
       case COMMAND_ID_SET_NICE_VALUE_TELEMETRY: strcpy(szCommandDesc, "Set_NiceValueTelemetry"); break;
       case COMMAND_ID_SET_NICE_VALUES: strcpy(szCommandDesc, "Set_NiceValues"); break;
       case COMMAND_ID_SET_IONICE_VALUES: strcpy(szCommandDesc, "Set_IONiceValues"); break;
-      case COMMAND_ID_SET_RADIO_SLOTTIME: strcpy(szCommandDesc, "Set_Radio_Slottime"); break;
-      case COMMAND_ID_SET_RADIO_THRESH62: strcpy(szCommandDesc, "Set_Radio_Thresh62"); break;
       case COMMAND_ID_SET_ENABLE_DHCP: strcpy(szCommandDesc, "Set_Enable_DHCP"); break;
       case COMMAND_ID_SET_ALL_PARAMS: strcpy(szCommandDesc, "Set_All_Params"); break;
       case COMMAND_ID_GET_ALL_PARAMS_ZIP: strcpy(szCommandDesc, "Get_All_Params_Zip"); break;
@@ -106,7 +105,7 @@ const char* commands_get_description(u8 command_type)
       case COMMAND_ID_SET_DEVELOPER_FLAGS: strcpy(szCommandDesc, "Set_Developer_Flags"); break;
       case COMMAND_ID_RESET_ALL_DEVELOPER_FLAGS: strcpy(szCommandDesc, "Reset_All_Developer_Flags"); break;
       case COMMAND_ID_ENABLE_DEBUG: strcpy(szCommandDesc, "Enable_Debug"); break;
-      case COMMAND_ID_DEBUG_GET_TOP: strcpy(szCommandDesc, "Dbg_Get_TOP"); break;
+      case COMMAND_ID_DEBUG_GET_TOP: strcpy(szCommandDesc, "Debug_Get_TOP"); break;
       case COMMAND_ID_SET_ENCRYPTION_PARAMS: strcpy(szCommandDesc, "Set Encryption Params"); break;
       case COMMAND_ID_DOWNLOAD_FILE: strcpy(szCommandDesc, "Download_File"); break;
       case COMMAND_ID_DOWNLOAD_FILE_SEGMENT: strcpy(szCommandDesc, "Download_File_Segment"); break;

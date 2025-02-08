@@ -16,7 +16,6 @@
 #define MODEL_MAX_OSD_PROFILES 5
 
 #define CAMERA_FLAG_FORCE_MODE_1 1
-#define CAMERA_FLAG_AWB_MODE_OLD ((u32)(((u32)0x01)<<1))
 #define CAMERA_FLAG_IR_FILTER_OFF ((u32)(((u32)0x01)<<2))
 #define CAMERA_FLAG_OPENIPC_DAYLIGHT_OFF ((u32)(((u32)0x01) << 3))
 #define CAMERA_FLAG_OPENIPC_3A_SIGMASTAR ((u32)(((u32)0x01) << 4))
@@ -69,6 +68,9 @@ typedef struct
 {
    int user_selected_video_link_profile; // set by user on the controller
    int iH264Slices;
+   int iRemovePPSVideoFrames;
+   int iInsertPPSVideoFrames;
+   int iInsertSPTVideoFramesTimings;
    int videoAdjustmentStrength; // 1..10 (from 10% to 100% strength)
    u32 lowestAllowedAdaptiveVideoBitrate;
    u32 uMaxAutoKeyframeIntervalMs; // in milisec
@@ -86,8 +88,8 @@ typedef struct
 
 typedef struct
 {
-   u32 flags;
-      // bit x: not used now
+   u32 uProfileFlags;
+      // bit 0.1: 3d noise: 0,1, auto (2)
 
    u32 uProfileEncodingFlags; // same as radio video packet uProfileEncodingFlags
 
@@ -112,12 +114,13 @@ typedef struct
 
    int radio_datarate_video_bps; // radio data rate to use for this video profile for video packets: 0 - to use auto datarate, positive: bps, negative: MCS
    int radio_datarate_data_bps;  // radio data rate to use for this video profile for data packets: 0 - to use auto datarate, positive: bps, negative: MCS
+   
    u32 radio_flags; // 0 if no custom ones, use the radio link radio flags
    int h264profile; // 0 = baseline, 1 = main, 2 = high
    int h264level; //0 = 4.0, 1 = 4.1, 2 = 4.2
    int h264refresh; // 0 = cyclic, 1 = adaptive, 2 = both, 3 = cyclicrows
    int h264quantization; // 0 - auto, // pozitive - value to use, // negative - value when disabled (auto)
-   u8 insertPPS;
+   int iIPQuantizationDelta;
 
    int width;
    int height;
@@ -134,7 +137,7 @@ typedef struct
 
 typedef struct
 {
-   int layout;
+   int iCurrentOSDLayout;
    bool voltage_alarm_enabled;
    float voltage_alarm;
    int  battery_show_per_cell;
@@ -280,8 +283,8 @@ typedef struct
 
 #define MAX_MODEL_I2C_BUSSES 6
 #define MAX_MODEL_I2C_DEVICES 16
-#define MAX_MODEL_SERIAL_BUSSES 6
-#define MAX_MODEL_SERIAL_BUS_NAME 16
+#define MAX_MODEL_SERIAL_PORTS 6
+#define MAX_MODEL_SERIAL_PORT_NAME 16
 
 #define MODEL_SERIAL_PORT_BIT_EXTRNAL_USB ((u32)(((u32)0x01)<<11))
 #define MODEL_SERIAL_PORT_BIT_SUPPORTED ((u32)(((u32)0x01)<<12))
@@ -294,15 +297,15 @@ typedef struct
    int i2c_devices_bus[MAX_MODEL_I2C_DEVICES];
    int radio_interface_count;
 
-   int serial_bus_count;
-   char serial_bus_names[MAX_MODEL_SERIAL_BUSSES][MAX_MODEL_SERIAL_BUS_NAME];
-   u32 serial_bus_supported_and_usage[MAX_MODEL_SERIAL_BUSSES];
+   int serial_port_count;
+   char serial_port_names[MAX_MODEL_SERIAL_PORTS][MAX_MODEL_SERIAL_PORT_NAME];
+   u32 serial_port_supported_and_usage[MAX_MODEL_SERIAL_PORTS];
      // byte 0: usage type; same as hardware_serial enum: SERIAL_PORT_USAGE_xxxx
      // byte 1: bits 0...3 usb or hardware port index
      //         bits 4 : 0 - hardware builtin, 1 - on usb
      //         bits 5 : supported 0/1
 
-   int serial_bus_speed[MAX_MODEL_SERIAL_BUSSES];
+   int serial_port_speed[MAX_MODEL_SERIAL_PORTS];
 } type_vehicle_hardware_interfaces_info;
 
 
@@ -367,37 +370,43 @@ typedef struct
 
 typedef struct
 {
-   int txPowerRTL8812AU;
-   int txPowerRTL8812EU;
-   int txPowerAtheros;
-   int txPowerSiK;
-   int txMaxPowerRTL8812AU;
-   int txMaxPowerRTL8812EU;
-   int txMaxPowerAtheros;
-   int slotTime;
-   int thresh62;
+   //int txPowerRTL8812AU;
+   //int txPowerRTL8812EU;
+   //int txPowerAtheros;
+   //int txPowerSiK;
+   //int txMaxPowerRTL8812AU;
+   //int txMaxPowerRTL8812EU;
+   //int txMaxPowerAtheros;
+   //int slotTime;
+   //int thresh62;
+   int iAutoVehicleTxPower;
+   int iAutoControllerTxPower;
+   int iDummyR3;
+   int iDummyR4;
+   int iDummyR5;
+   int iDummyR6;
+   int iDummyR7;
+   int iDummyR8;
+   int iDummyR9;
 
    int  interfaces_count;
    int  interface_card_model[MAX_RADIO_INTERFACES]; // 0 or positive - autodetected, negative - user set
    int  interface_link_id[MAX_RADIO_INTERFACES];
-   int  interface_power[MAX_RADIO_INTERFACES];
-   u32  interface_radiotype_and_driver[MAX_RADIO_INTERFACES]; // first byte: radio type, second byte = driver type, third byte: supported card flag
+   int  interface_raw_power[MAX_RADIO_INTERFACES];
+   u32  interface_radiotype_and_driver[MAX_RADIO_INTERFACES]; // low byte: radio type, second byte = driver type, third byte: supported card flag
    u8   interface_supported_bands[MAX_RADIO_INTERFACES];  // bits 0-3: 2.3, 2.4, 2.5, 5.8 bands
    char interface_szMAC[MAX_RADIO_INTERFACES][MAX_MAC_LENGTH];
    char interface_szPort[MAX_RADIO_INTERFACES][6]; // first byte - first char, sec byte - sec char
    u32  interface_capabilities_flags[MAX_RADIO_INTERFACES]; // what the card is used for: video/data/relay/tx/rx
    u32  interface_current_frequency_khz[MAX_RADIO_INTERFACES]; // current frequency for this card
-   u32  interface_current_radio_flags[MAX_RADIO_INTERFACES]; // radio flags: frame type, STBC, LDP, MCS etc
+   u32  interface_current_radio_flags[MAX_RADIO_INTERFACES]; // radio flags: legacy/MCS datarate type, frame type, STBC, LDP, MCS etc
    
-   // Deprecated in 9.5
-   //int  interface_datarate_video_bps[MAX_RADIO_INTERFACES]; // 0 - auto (use radio link datarates), positive: bps, negative (-1 or less): MCS rate
-   //int  interface_datarate_data_bps[MAX_RADIO_INTERFACES]; // 0 - auto (use radio link datarates), positive: bps, negative (-1 or less): MCS rate
-   int  interface_dummy1[MAX_RADIO_INTERFACES];
    int  interface_dummy2[MAX_RADIO_INTERFACES];
 
 } type_radio_interfaces_parameters;
 
 
+#define FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO 0
 #define FLAG_RADIO_LINK_DATARATE_DATA_TYPE_FIXED 1
 #define FLAG_RADIO_LINK_DATARATE_DATA_TYPE_LOWEST 2
 #define FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO 3
@@ -407,7 +416,7 @@ typedef struct
    int links_count;
    u32 link_frequency_khz[MAX_RADIO_INTERFACES];
    u32 link_capabilities_flags[MAX_RADIO_INTERFACES]; // data/video/both?
-   u32 link_radio_flags[MAX_RADIO_INTERFACES]; // radio flags: frame type, STBC, LDP, MCS, SIK flags, etc
+   u32 link_radio_flags[MAX_RADIO_INTERFACES]; // radio flags: legacy/MCS datarate type, frame type, STBC, LDP, MCS, SIK flags, etc
    int link_datarate_video_bps[MAX_RADIO_INTERFACES]; // positive: bps, negative (-1 or less): MCS rate
    int link_datarate_data_bps[MAX_RADIO_INTERFACES]; // positive: bps, negative (-1 or less): MCS rate
 
@@ -476,7 +485,8 @@ typedef struct
    int iMaxTxVideoBlocksBuffer; // max blocks that can be cached on vehicle
    int iMaxTxVideoBlockPackets; // max packets in a video block
    u32 uFlags;
-   int dummyhwc[2];
+   u32 uRubyBaseVersion;
+   int dummyhwc[1];
    u32 dummyhwc2[3];
 } type_hardware_capabilities;
 
@@ -570,12 +580,15 @@ class Model
       bool saveToFile(const char* filename, bool isOnController);
       int  getLoadedFileVersion();
       bool isRunningOnOpenIPCHardware();
+      bool isRunningOnPiHardware();
+      bool isRunningOnRadxaHardware();
       void populateHWInfo();
       bool populateVehicleSerialPorts();
-      void resetRadioLinkParams(int iRadioLink);
+      void resetRadioLinkDataRatesAndFlags(int iRadioLink);
       void addNewRadioLinkForRadioInterface(int iRadioInterfaceIndex, bool* pbDefault24Used, bool* pbDefault24_2Used, bool* pbDefault58Used, bool* pbDefault58_2Used);
       void populateRadioInterfacesInfoFromHardware();
       void populateDefaultRadioLinksInfoFromRadioInterfaces();
+      void updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
       bool check_update_radio_links();
       void resetToDefaults(bool generateId);
       void resetHWCapabilities();
@@ -598,7 +611,7 @@ class Model
       bool validate_fps_and_exposure_settings(type_video_link_profile* pVideoLinkProfile, camera_profile_parameters_t* pCameraProfile);
       bool validate_settings();
       bool validate_relay_links_flags();
-      void updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+      void validate_radio_flags();
       u32 getLinkRealDataRate(int nLinkId);
       int getRadioInterfaceIndexForRadioLink(int iRadioLink);
       bool canSwapEnabledHighCapacityRadioInterfaces();
@@ -630,13 +643,10 @@ class Model
       int getInitialKeyframeIntervalMs(int iVideoProfile);
       void setDefaultVideoBitrate();
       
-      void setAWBMode();
       void getCameraFlags(char* szCameraFlags);
       // To fix
       void getVideoFlags(char* szVideoFlags, int iVideoProfile);//, shared_mem_video_link_overwrites* pVideoOverwrites);
       void populateVehicleTelemetryData_v3(t_packet_header_ruby_telemetry_extended_v3* pPHRTE);
-      void populateFromVehicleTelemetryData_v1(t_packet_header_ruby_telemetry_extended_v1* pPHRTE);
-      void populateFromVehicleTelemetryData_v2(t_packet_header_ruby_telemetry_extended_v2* pPHRTE);
       void populateFromVehicleTelemetryData_v3(t_packet_header_ruby_telemetry_extended_v3* pPHRTE);
 
       void copy_video_link_profile(int from, int to);

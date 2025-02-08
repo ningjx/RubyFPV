@@ -3,6 +3,7 @@ Ruby is a complete solution (hardware and software) for robust end to end digita
 
 Read more about Ruby, including how to setup, install and use your Ruby systems, here: https://rubyfpv.com/
 
+
 # Features highlights:
 
 <B>Mutiple, rendundant radio links on 433/868/915 Mhz and 2.4/5.8 Ghz bands:</B>
@@ -16,6 +17,9 @@ Mobile (vehicles) and/or fixed relay nodes can be inserted in the system for lon
 <B>Encryption:</B>
 
 The radio links can be encrypted end to end so that only authorized components can decode the radio data;
+
+Note: Encryption is temporarly disabled due to...[reasons]
+
 
 <B>Live video, telemetry, remote control, auxiliary & custom data streams:</B>
 

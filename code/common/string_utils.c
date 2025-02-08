@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -10,9 +10,9 @@
         * Redistributions in binary form must reproduce the above copyright
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permited.
@@ -33,10 +33,12 @@
 #include "../base/hardware.h"
 #include "../base/hardware_radio.h"
 #include "../base/flags.h"
+#include "../base/flags_video.h"
 #include "../radio/radioflags.h"
 #include "../radio/radiopackets2.h"
 #include <ctype.h>
 #include "string_utils.h"
+#include "strings_table.h"
 
 
 void str_sanitize_modelname(char* szName)
@@ -258,7 +260,7 @@ char* str_get_packet_type(int iPacketType)
       case PACKET_TYPE_RUBY_RADIO_CONFIG_UPDATED: strcpy(s_szPacketType, "PACKET_TYPE_RUBY_RADIO_CONFIG_UPDATED"); break;
       case PACKET_TYPE_RUBY_LOG_FILE_SEGMENT:    strcpy(s_szPacketType, "PACKET_TYPE_RUBY_LOG_FILE_SEGMENT"); break;
       case PACKET_TYPE_RUBY_ALARM:               strcpy(s_szPacketType, "PACKET_TYPE_RUBY_ALARM"); break;
-      case PACKET_TYPE_VIDEO_DATA_98  :          strcpy(s_szPacketType, "PACKET_TYPE_VIDEO_DATA_98"); break;
+      case PACKET_TYPE_VIDEO_DATA:               strcpy(s_szPacketType, "PACKET_TYPE_VIDEO_DATA"); break;
       case PACKET_TYPE_AUDIO_SEGMENT:            strcpy(s_szPacketType, "PACKET_TYPE_AUDIO_SEGMENT"); break;
       case PACKET_TYPE_VIDEO_REQ_MULTIPLE_PACKETS:   strcpy(s_szPacketType, "PACKET_TYPE_VIDEO_REQ_MULTIPLE_PACKETS"); break;
       case PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL:     strcpy(s_szPacketType, "PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL"); break;
@@ -290,7 +292,7 @@ char* str_get_packet_type(int iPacketType)
       case PACKET_TYPE_AUX_DATA_LINK_DOWNLOAD:    strcpy(s_szPacketType, "PACKET_TYPE_AUX_DATA_LINK_DOWNLOAD"); break;
       case PACKET_TYPE_RUBY_TELEMETRY_VIDEO_INFO_STATS:  strcpy(s_szPacketType, "PACKET_TYPE_RUBY_TELEMETRY_VIDEO_INFO_STATS"); break;
       case PACKET_TYPE_RUBY_TELEMETRY_RADIO_RX_HISTORY: strcpy(s_szPacketType, "PACKET_TYPE_RUBY_TELEMETRY_RADIO_RX_HISTORY"); break;
-
+      case PACKET_TYPE_TELEMETRY_MSP:             strcpy(s_szPacketType, "PACKET_TYPE_TELEMETRY_MSP"); break;
       case PACKET_TYPE_VEHICLE_RECORDING: strcpy(s_szPacketType, "PACKET_TYPE_VEHICLE_RECORDING"); break;
       case PACKET_TYPE_NEGOCIATE_RADIO_LINKS: strcpy(s_szPacketType, "PACKET_TYPE_NEGOCIATE_RADIO_LINKS"); break;       
       // Local packets
@@ -298,32 +300,27 @@ char* str_get_packet_type(int iPacketType)
       case PACKET_TYPE_LOCAL_CONTROL_PAUSE_VIDEO:           strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_PAUSE_VIDEO"); break;
       case PACKET_TYPE_LOCAL_CONTROL_RESUME_VIDEO:          strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_RESUME_VIDEO"); break;
       case PACKET_TYPE_LOCAL_CONTROL_UPDATE_VIDEO_PROGRAM:  strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_UPDATE_VIDEO_PROGRAM"); break;
+      case PACKET_TYPE_LOCAL_CONTROL_PAUSE_LOCAL_VIDEO_DISPLAY: strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_PAUSE_LOCAL_VIDEO_DISPLAY"); break;
       case PACKET_TYPE_LOCAL_CONTROL_MODEL_CHANGED:         strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_MODEL_CHANGED"); break;
-      case PACKET_TYPE_LOCAL_CONTROL_SIGNAL_VIDEO_ENCODINGS_CHANGED:  strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_SIGNAL_VIDEO_ENCODINGS_CHANGED"); break;
       case PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED:    strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED"); break;
       case PACKET_TYPE_LOCAL_CONTROL_START_VIDEO_PROGRAM:   strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_START_VIDEO_PROGRAM"); break;
       case PACKET_TYPE_LOCAL_CONTROL_REBOOT:                strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_REBOOT"); break;
       case PACKET_TYPE_LOCAL_CONTROL_UPDATE_STARTED:        strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_UPDATE_STARTED"); break;
       case PACKET_TYPE_LOCAL_CONTROL_UPDATE_STOPED:         strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_UPDATE_STOPED"); break;
       case PACKET_TYPE_LOCAL_CONTROL_UPDATE_FINISHED:       strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_UPDATE_FINISHED"); break;
-      case PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_START:     strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_START"); break;
-      case PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_STOP:      strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_STOP"); break;
-      case PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_PAUSE:     strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_PAUSE"); break;
-      case PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_RESUME:    strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_DEBUG_SCOPE_RESUME"); break;
       case PACKET_TYPE_LOCAL_CONTROL_UPDATED_VIDEO_LINK_OVERWRITES:  strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_UPDATED_VIDEO_LINK_OVERWRITES"); break;
       case PACKET_TYPE_LOCAL_CONTROL_RELAY_MODE_SWITCHED:            strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_RELAY_MODE_SWITCHED"); break;
       case PACKET_TYPE_LOCAL_CONTROL_BROADCAST_RADIO_REINITIALIZED:  strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_BROADCAST_RADIO_REINITIALIZED"); break;
       case PACKET_TYPE_LOCAL_CONTROL_RECEIVED_MODEL_SETTING:         strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_RECEIVED_MODEL_SETTING"); break;
       case PACKET_TYPE_LOCAL_CONTROL_REINITIALIZE_RADIO_LINKS:       strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_REINITIALIZE_RADIO_LINKS"); break;
       case PACKET_TYPE_LOCAL_CONTROL_RECEIVED_VEHICLE_LOG_SEGMENT:   strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_RECEIVED_VEHICLE_LOG_SEGMENT"); break;
-      case PACKET_TYPE_LOCAL_CONTROL_SIGNAL_USER_SELECTED_VIDEO_PROFILE_CHANGED:  strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_SIGNAL_USER_SELECTED_VIDEO_PROFILE_CHANGED"); break;
       case PACKET_TYPE_LOCAL_CONTROL_PASSPHRASE_CHANGED:      strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_PASSPHRASE_CHANGED"); break;
       case PACKET_TYPE_LOCAL_CONTROLL_VIDEO_DETECTED_ON_SEARCH: strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROLL_VIDEO_DETECTED_ON_SEARCH"); break;
       case PACKET_TYPE_LOCAL_CONTROL_I2C_DEVICE_CHANGED:      strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_I2C_DEVICE_CHANGED"); break;
       case PACKET_TYPE_LOCAL_CONTROLLER_ROUTER_READY:         strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROLLER_ROUTER_READY"); break;
       case PACKET_TYPE_LOCAL_CONTROLLER_RADIO_INTERFACE_FAILED_TO_INITIALIZE:  strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROLLER_RADIO_INTERFACE_FAILED_TO_INITIALIZE"); break;
       case PACKET_TYPE_LOCAL_CONTROLLER_RELOAD_CORE_PLUGINS:  strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROLLER_RELOAD_CORE_PLUGINS"); break;
-      case PACKET_TYPE_LOCAL_CONTROL_VEHICLE_SET_CAMERA_PARAM: strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_VEHICLE_SET_CAMERA_PARAM"); break;
+      case PACKET_TYPE_LOCAL_CONTROL_VEHICLE_SET_CAMERA_PARAMS: strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_VEHICLE_SET_CAMERA_PARAMS"); break;
       case PACKET_TYPE_LOCAL_CONTROL_BROADCAST_VEHICLE_STATS: strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_BROADCAST_VEHICLE_STATS"); break;
       case PACKET_TYPE_LOCAL_CONTROLLER_SEARCH_FREQ_CHANGED:  strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROLLER_SEARCH_FREQ_CHANGED"); break;
       case PACKET_TYPE_LOCAL_CONTROL_LINK_FREQUENCY_CHANGED:          strcpy(s_szPacketType, "PACKET_TYPE_LOCAL_CONTROL_LINK_FREQUENCY_CHANGED"); break;
@@ -373,7 +370,7 @@ char* str_get_packet_history_symbol(int iPacketType, int iRepeatCount)
    if ( iPacketType == PACKET_TYPE_AUDIO_SEGMENT )
       s_szOSDRenderRxHistoryPacketSymbol[0] = 'A';
 
-   if ( iPacketType == PACKET_TYPE_VIDEO_DATA_98 ||
+   if ( iPacketType == PACKET_TYPE_VIDEO_DATA ||
         iPacketType == PACKET_TYPE_VIDEO_REQ_MULTIPLE_PACKETS )
      s_szOSDRenderRxHistoryPacketSymbol[0] = 'V';
 
@@ -628,8 +625,8 @@ char* str_format_frequency_no_sufix(u32 uFrequencyKhz)
 
 const char* str_get_hardware_board_name(u32 board_type)
 {
-   static const char* s_szBoardTypeUnknown = "N/A";
-   #ifdef HW_PLATFORM_RASPBERRY
+   static const char* s_szBoardTypeUnknown = "Unknown";
+
    static const char* s_szBoardTypePi0 = "Raspberry Pi Zero";
    static const char* s_szBoardTypePi0W = "Raspberry Pi Zero W";
    static const char* s_szBoardTypePi02 = "Raspberry Pi Zero 2";
@@ -640,21 +637,23 @@ const char* str_get_hardware_board_name(u32 board_type)
    static const char* s_szBoardTypePi3B = "Raspberry Pi 3B";
    static const char* s_szBoardTypePi3BP = "Raspberry Pi 3B+";
    static const char* s_szBoardTypePi4B = "Raspberry Pi 4B";
-   #endif
-   #ifdef HW_PLATFORM_RADXA_ZERO3
+
    static const char* s_szBoardTypeRadxaZero3 = "Radxa Zero 3";
    static const char* s_szBoardTypeRadxa3C = "Radxa 3C";
-   #endif
+
    static const char* s_szBoardTypeOpenIPCGoke200 = "OpenIPC Goke200";
    static const char* s_szBoardTypeOpenIPCGoke210 = "OpenIPC Goke210";
    static const char* s_szBoardTypeOpenIPCGoke300 = "OpenIPC Goke300";
-   static const char* s_szBoardTypeOpenIPCSigmaster338Q = "OpenIPC SSC338Q";
    static const char* s_szBoardTypeOpenIPCSigmasterGeneric = "OpenIPC SSC338Q Generic";
+   static const char* s_szBoardTypeOpenIPCSigmasterGeneric30KQ = "OpenIPC SSC30KQ Generic";
    static const char* s_szBoardTypeOpenIPCSigmasterUltrasight = "Ultrasight AIO";
    static const char* s_szBoardTypeOpenIPCSigmasterMario = "Mario AIO";
    static const char* s_szBoardTypeOpenIPCSigmasterRuncam = "Runcam";
+   static const char* s_szBoardTypeOpenIPCSigmasterEMax = "EMax";
+   static const char* s_szBoardTypeOpenIPCSigmasterEMaxMini = "EMax-Mini";
+   static const char* s_szBoardTypeOpenIPCSigmasterThinker = "OpenIPC Thinker (builtin radio)";
+   static const char* s_szBoardTypeOpenIPCSigmasterThinkerE = "OpenIPC Thinker (ext radio)";
 
-   #ifdef HW_PLATFORM_RASPBERRY
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO )
       return s_szBoardTypePi0;
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW )
@@ -675,14 +674,11 @@ const char* str_get_hardware_board_name(u32 board_type)
       return s_szBoardTypePi3BP;
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PI4B )
       return s_szBoardTypePi4B;
-   #endif
 
-   #if defined (HW_PLATFORM_RADXA_ZERO3)
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_RADXA_ZERO3 )
       return s_szBoardTypeRadxaZero3;
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_RADXA_3C )
       return s_szBoardTypeRadxa3C;
-   #endif
 
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE200 )
       return s_szBoardTypeOpenIPCGoke200;
@@ -690,26 +686,29 @@ const char* str_get_hardware_board_name(u32 board_type)
       return s_szBoardTypeOpenIPCGoke210;
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE300 )
       return s_szBoardTypeOpenIPCGoke300;
-   if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_SIGMASTER_338Q )
+   if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_SIGMASTAR_338Q )
    {
-      if ( (board_type & BOARD_SUBTYPE_MASK) == BOARD_SUBTYPE_OPENIPC_GENERIC )
-         return s_szBoardTypeOpenIPCSigmasterGeneric;
-      else if ( (board_type & BOARD_SUBTYPE_MASK) == BOARD_SUBTYPE_OPENIPC_AIO_ULTRASIGHT )
-         return s_szBoardTypeOpenIPCSigmasterUltrasight;
-      else if ( (board_type & BOARD_SUBTYPE_MASK) == BOARD_SUBTYPE_OPENIPC_AIO_MARIO )
-         return s_szBoardTypeOpenIPCSigmasterMario;
-      else if ( (board_type & BOARD_SUBTYPE_MASK) == BOARD_SUBTYPE_OPENIPC_AIO_RUNCAM )
-         return s_szBoardTypeOpenIPCSigmasterRuncam;
-      else
-         return s_szBoardTypeOpenIPCSigmaster338Q;
+      switch ( (board_type & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT )
+      {
+         case BOARD_SUBTYPE_OPENIPC_GENERIC: return s_szBoardTypeOpenIPCSigmasterGeneric;
+         case BOARD_SUBTYPE_OPENIPC_GENERIC_30KQ: return s_szBoardTypeOpenIPCSigmasterGeneric30KQ;
+         case BOARD_SUBTYPE_OPENIPC_AIO_ULTRASIGHT: return s_szBoardTypeOpenIPCSigmasterUltrasight;
+         case BOARD_SUBTYPE_OPENIPC_AIO_MARIO: return s_szBoardTypeOpenIPCSigmasterMario;
+         case BOARD_SUBTYPE_OPENIPC_AIO_RUNCAM: return s_szBoardTypeOpenIPCSigmasterRuncam;
+         case BOARD_SUBTYPE_OPENIPC_AIO_EMAX: return s_szBoardTypeOpenIPCSigmasterEMax;
+         case BOARD_SUBTYPE_OPENIPC_AIO_EMAX_MINI: return s_szBoardTypeOpenIPCSigmasterEMaxMini;
+         case BOARD_SUBTYPE_OPENIPC_AIO_THINKER: return s_szBoardTypeOpenIPCSigmasterThinker;
+         case BOARD_SUBTYPE_OPENIPC_AIO_THINKER_E: return s_szBoardTypeOpenIPCSigmasterThinkerE;
+         default: return s_szBoardTypeOpenIPCSigmasterGeneric;
+      }
    }
    return s_szBoardTypeUnknown;
 }
 
 const char* str_get_hardware_board_name_short(u32 board_type)
 {
-   static const char* s_szBoardSTypeUnknown = "N/A";
-   #ifdef HW_PLATFORM_RASPBERRY
+   static const char* s_szBoardSTypeUnknown = "Unknown";
+
    static const char* s_szBoardSTypePi0 = "Pi 0";
    static const char* s_szBoardSTypePi0W = "Pi 0W";
    static const char* s_szBoardSTypePi02 = "Pi 02";
@@ -720,23 +719,23 @@ const char* str_get_hardware_board_name_short(u32 board_type)
    static const char* s_szBoardSTypePi3B = "Pi 3B";
    static const char* s_szBoardSTypePi3BP = "Pi 3B+";
    static const char* s_szBoardSTypePi4B = "Pi 4B";
-   #endif
 
-   #ifdef HW_PLATFORM_RADXA_ZERO3
    static const char* s_szBoardSTypeRadxaZero3 = "Radxa Zero3";
    static const char* s_szBoardSTypeRadxa3C = "Radxa 3C";
-   #endif
 
    static const char* s_szBoardSTypeOpenIPCGoke200 = "Goke200";
    static const char* s_szBoardSTypeOpenIPCGoke210 = "Goke210";
    static const char* s_szBoardSTypeOpenIPCGoke300 = "Goke300";
-   static const char* s_szBoardSTypeOpenIPCSigmaster338Q = "SSC338Q";
-   static const char* s_szBoardSTypeOpenIPCSigmasterGeneric = "SSC338Q Generic";
+   static const char* s_szBoardSTypeOpenIPCSigmasterGeneric = "SSC338Q";
+   static const char* s_szBoardSTypeOpenIPCSigmasterGeneric30KQ = "SSC30KQ";
    static const char* s_szBoardSTypeOpenIPCSigmasterUltrasight = "Ultrasight";
    static const char* s_szBoardSTypeOpenIPCSigmasterMario = "Mario";
    static const char* s_szBoardSTypeOpenIPCSigmasterRuncam = "Runcam";
+   static const char* s_szBoardSTypeOpenIPCSigmasterEMax = "EMax";
+   static const char* s_szBoardSTypeOpenIPCSigmasterEMaxMini = "EMax-Mini";
+   static const char* s_szBoardSTypeOpenIPCSigmasterThinker = "Thinker";
+   static const char* s_szBoardSTypeOpenIPCSigmasterThinkerE = "Thinker(E)";
 
-   #ifdef HW_PLATFORM_RASPBERRY
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO )
       return s_szBoardSTypePi0;
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW )
@@ -757,14 +756,11 @@ const char* str_get_hardware_board_name_short(u32 board_type)
       return s_szBoardSTypePi3BP;
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PI4B )
       return s_szBoardSTypePi4B;
-   #endif
 
-   #if defined(HW_PLATFORM_RADXA_ZERO3)
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_RADXA_ZERO3 )
       return s_szBoardSTypeRadxaZero3;
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_RADXA_3C )
       return s_szBoardSTypeRadxa3C;
-   #endif
 
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE200 )
       return s_szBoardSTypeOpenIPCGoke200;
@@ -772,18 +768,21 @@ const char* str_get_hardware_board_name_short(u32 board_type)
       return s_szBoardSTypeOpenIPCGoke210;
    if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE300 )
       return s_szBoardSTypeOpenIPCGoke300;
-   if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_SIGMASTER_338Q )
+   if ( (board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_SIGMASTAR_338Q )
    {
-      if ( (board_type & BOARD_SUBTYPE_MASK) == BOARD_SUBTYPE_OPENIPC_GENERIC )
-         return s_szBoardSTypeOpenIPCSigmasterGeneric;
-      else if ( (board_type & BOARD_SUBTYPE_MASK) == BOARD_SUBTYPE_OPENIPC_AIO_ULTRASIGHT )
-         return s_szBoardSTypeOpenIPCSigmasterUltrasight;
-      else if ( (board_type & BOARD_SUBTYPE_MASK) == BOARD_SUBTYPE_OPENIPC_AIO_MARIO )
-         return s_szBoardSTypeOpenIPCSigmasterMario;
-      else if ( (board_type & BOARD_SUBTYPE_MASK) == BOARD_SUBTYPE_OPENIPC_AIO_RUNCAM )
-         return s_szBoardSTypeOpenIPCSigmasterRuncam;
-      else
-         return s_szBoardSTypeOpenIPCSigmaster338Q;
+      switch ( (board_type & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT)
+      {
+         case BOARD_SUBTYPE_OPENIPC_GENERIC: return s_szBoardSTypeOpenIPCSigmasterGeneric;
+         case BOARD_SUBTYPE_OPENIPC_GENERIC_30KQ: return s_szBoardSTypeOpenIPCSigmasterGeneric30KQ;
+         case BOARD_SUBTYPE_OPENIPC_AIO_ULTRASIGHT: return s_szBoardSTypeOpenIPCSigmasterUltrasight;
+         case BOARD_SUBTYPE_OPENIPC_AIO_MARIO: return s_szBoardSTypeOpenIPCSigmasterMario;
+         case BOARD_SUBTYPE_OPENIPC_AIO_RUNCAM: return s_szBoardSTypeOpenIPCSigmasterRuncam;
+         case BOARD_SUBTYPE_OPENIPC_AIO_EMAX: return s_szBoardSTypeOpenIPCSigmasterEMax;
+         case BOARD_SUBTYPE_OPENIPC_AIO_EMAX_MINI: return s_szBoardSTypeOpenIPCSigmasterEMaxMini;
+         case BOARD_SUBTYPE_OPENIPC_AIO_THINKER: return s_szBoardSTypeOpenIPCSigmasterThinker;
+         case BOARD_SUBTYPE_OPENIPC_AIO_THINKER_E: return s_szBoardSTypeOpenIPCSigmasterThinkerE;
+         default: return s_szBoardSTypeOpenIPCSigmasterGeneric;
+      }
    }
 
    return s_szBoardSTypeUnknown;
@@ -820,7 +819,6 @@ void str_get_hardware_camera_type_string(u32 camType, char* szOutput)
    
    strcpy(szOutput, "Unknown");
 
-   #ifdef HW_PLATFORM_RASPBERRY   
    if ( camType == CAMERA_TYPE_CSI )
       strcpy(szOutput, "Standard CSI");
    else if ( camType == CAMERA_TYPE_VEYE290 )
@@ -835,7 +833,6 @@ void str_get_hardware_camera_type_string(u32 camType, char* szOutput)
       strcpy(szOutput, "USB");
    else if ( camType == CAMERA_TYPE_IP )
       strcpy(szOutput, "IP");
-   #endif
 
    if ( camType == CAMERA_TYPE_OPENIPC_IMX307 )
       strcpy(szOutput, "Sony IMX307");
@@ -909,6 +906,11 @@ void str_get_supported_bands_string(u32 bands, char* szOut)
       iCount++;
    }
 
+   if ( (0 == szOut[0]) || (0 == iCount) )
+   {
+      strcpy(szOut, "N/A");
+      return;
+   }
    if ( hasGhz )
       strcat(szOut, " Ghz");
 
@@ -957,6 +959,8 @@ const char* str_get_radio_driver_description(int iDriverType)
       strcpy(sszNICDriverDescription, "8812au");
    if ( iDriverType == RADIO_HW_DRIVER_REALTEK_8812EU )
       strcpy(sszNICDriverDescription, "8812eu");
+   if ( iDriverType == RADIO_HW_DRIVER_REALTEK_8733BU )
+      strcpy(sszNICDriverDescription, "8733bu");
    if ( iDriverType == RADIO_HW_DRIVER_SERIAL_SIK )
       strcpy(sszNICDriverDescription, "SiK");
    if ( iDriverType == RADIO_HW_DRIVER_SERIAL )
@@ -972,6 +976,8 @@ const char* str_get_radio_card_model_string(int cardModel)
    s_szCardModelDescription[0] = 0;
    strcpy(s_szCardModelDescription, "Generic");
    if ( cardModel == CARD_MODEL_TPLINK722N )        strcpy(s_szCardModelDescription, "TPLink 722N");
+   if ( cardModel == CARD_MODEL_ATHEROS_GENERIC )   strcpy(s_szCardModelDescription, "Atheros Generic");
+   if ( cardModel == CARD_MODEL_RTL8812AU_GENERIC ) strcpy(s_szCardModelDescription, "RTL8812AU Generic");
    if ( cardModel == CARD_MODEL_ALFA_AWUS036NHA )   strcpy(s_szCardModelDescription, "Alfa AWUS036NHA");
    if ( cardModel == CARD_MODEL_ALFA_AWUS036NH )    strcpy(s_szCardModelDescription, "Alfa AWUS036NH");
    if ( cardModel == CARD_MODEL_ALFA_AWUS036ACH )   strcpy(s_szCardModelDescription, "Alfa AWUS036ACH");
@@ -982,11 +988,16 @@ const char* str_get_radio_card_model_string(int cardModel)
    if ( cardModel == CARD_MODEL_NETGEAR_A6100 )     strcpy(s_szCardModelDescription, "Netgear A6100");
    if ( cardModel == CARD_MODEL_TENDA_U12 )         strcpy(s_szCardModelDescription, "Tenda U12");
    // 10
-   if ( cardModel == CARD_MODEL_RTL8812AU_LOW_POWER ) strcpy(s_szCardModelDescription, "RTL8812AU Low Power");
+   if ( cardModel == CARD_MODEL_RTL8812AU_AF1 )     strcpy(s_szCardModelDescription, "RTL8812AU-AF1");
    if ( cardModel == CARD_MODEL_ZIPRAY )            strcpy(s_szCardModelDescription, "Zipray 1W");
    if ( cardModel == CARD_MODEL_ARCHER_T2UPLUS )    strcpy(s_szCardModelDescription, "Archer T2U Plus");
    if ( cardModel == CARD_MODEL_RTL8814AU )         strcpy(s_szCardModelDescription, "RTL8814AU");
    if ( cardModel == CARD_MODEL_BLUE_8812EU )       strcpy(s_szCardModelDescription, "Blue RTL8812EU");
+   if ( cardModel == CARD_MODEL_RTL8812AU_OIPC_USIGHT ) strcpy(s_szCardModelDescription, "RTL8812AU Ultrasight");
+   if ( cardModel == CARD_MODEL_RTL8812AU_OIPC_USIGHT2 ) strcpy(s_szCardModelDescription, "RTL8812AU Ultrasight 2");
+   if ( cardModel == CARD_MODEL_RTL8812AU_AF1 )     strcpy(s_szCardModelDescription, "RTL8812AU-AF1");
+   if ( cardModel == CARD_MODEL_RTL8733BU )         strcpy(s_szCardModelDescription, "RTL8733BU");
+   
    if ( cardModel == CARD_MODEL_SIK_RADIO )         strcpy(s_szCardModelDescription, "SiK-Radio");
    if ( cardModel == CARD_MODEL_SERIAL_RADIO )      strcpy(s_szCardModelDescription, "Serial-Radio");
    if ( cardModel == CARD_MODEL_SERIAL_RADIO_ELRS ) strcpy(s_szCardModelDescription, "ELRS-Radio");
@@ -1002,6 +1013,8 @@ const char* str_get_radio_card_model_string_short(int cardModel)
    s_szCardModelDescription[0] = 0;
    strcpy(s_szCardModelDescription, "Generic");
    if ( cardModel == CARD_MODEL_TPLINK722N )        strcpy(s_szCardModelDescription, "TPL-722N");
+   if ( cardModel == CARD_MODEL_ATHEROS_GENERIC )   strcpy(s_szCardModelDescription, "Atheros");
+   if ( cardModel == CARD_MODEL_RTL8812AU_GENERIC ) strcpy(s_szCardModelDescription, "RTL8812AU");
    if ( cardModel == CARD_MODEL_ALFA_AWUS036NHA )   strcpy(s_szCardModelDescription, "AWUS036NHA");
    if ( cardModel == CARD_MODEL_ALFA_AWUS036NH )    strcpy(s_szCardModelDescription, "AWUS036NH");
    if ( cardModel == CARD_MODEL_ALFA_AWUS036ACH )   strcpy(s_szCardModelDescription, "AWUS036ACH");
@@ -1012,12 +1025,16 @@ const char* str_get_radio_card_model_string_short(int cardModel)
    if ( cardModel == CARD_MODEL_NETGEAR_A6100 )     strcpy(s_szCardModelDescription, "A6100");
    if ( cardModel == CARD_MODEL_TENDA_U12 )         strcpy(s_szCardModelDescription, "T-U12");
    // 10
-   if ( cardModel == CARD_MODEL_RTL8812AU_LOW_POWER ) strcpy(s_szCardModelDescription, "LowPow");
+   if ( cardModel == CARD_MODEL_RTL8812AU_AF1 )     strcpy(s_szCardModelDescription, "RTL881AU-AF1");
    if ( cardModel == CARD_MODEL_ZIPRAY )            strcpy(s_szCardModelDescription, "Zipray-1W");
    if ( cardModel == CARD_MODEL_ARCHER_T2UPLUS )    strcpy(s_szCardModelDescription, "T2U+");
    if ( cardModel == CARD_MODEL_RTL8814AU )         strcpy(s_szCardModelDescription, "RTL8814AU");
    if ( cardModel == CARD_MODEL_BLUE_8812EU )       strcpy(s_szCardModelDescription, "RTL8812EU");
-   
+   if ( cardModel == CARD_MODEL_RTL8812AU_OIPC_USIGHT ) strcpy(s_szCardModelDescription, "RTL8812AU USight");
+   if ( cardModel == CARD_MODEL_RTL8812AU_OIPC_USIGHT2 ) strcpy(s_szCardModelDescription, "RTL8812AU USight2");
+   if ( cardModel == CARD_MODEL_RTL8812AU_AF1 )     strcpy(s_szCardModelDescription, "RTL8812AU-AF1");
+   if ( cardModel == CARD_MODEL_RTL8733BU )         strcpy(s_szCardModelDescription, "RTL8733BU");
+
    if ( cardModel == CARD_MODEL_SIK_RADIO )         strcpy(s_szCardModelDescription, "SiK-Radio");
    if ( cardModel == CARD_MODEL_SERIAL_RADIO )      strcpy(s_szCardModelDescription, "Serial-Radio");
    if ( cardModel == CARD_MODEL_SERIAL_RADIO_ELRS ) strcpy(s_szCardModelDescription, "ELRS");
@@ -1064,20 +1081,18 @@ char* str_get_radio_frame_flags_description2(u32 frameFlags)
 
 void str_get_radio_frame_flags_description(u32 frameFlags, char* szOutput)
 {
-   if ( frameFlags & 0x00FF0000 )
+   if ( (frameFlags & RADIO_FLAGS_USE_LEGACY_DATARATES) && (frameFlags & RADIO_FLAGS_USE_MCS_DATARATES) )
+      strcpy(szOutput, "[MIXED rates]");
+   else if ( frameFlags & RADIO_FLAGS_USE_LEGACY_DATARATES )
+      strcpy(szOutput, "[LEGACY rates]");
+   else if ( frameFlags & RADIO_FLAGS_USE_MCS_DATARATES )
       strcpy(szOutput, "[MCS rates]");
    else
-      strcpy(szOutput, "[LEGACY rates]");
+      strcpy(szOutput, "[Unknown rates]");
 
-   if ( frameFlags & RADIO_FLAGS_FRAME_TYPE_RTS )
-      strcat(szOutput, " [Frames Type: RTS]");
-   if ( frameFlags & RADIO_FLAGS_FRAME_TYPE_DATA_SHORT )
-      strcat(szOutput, " [Frames Type: DATA_SHORT]");
    if ( frameFlags & RADIO_FLAGS_FRAME_TYPE_DATA )
       strcat(szOutput, " [Frames Type: DATA]");
    if ( !( frameFlags & RADIO_FLAGS_FRAME_TYPE_DATA) )
-   if ( !( frameFlags & RADIO_FLAGS_FRAME_TYPE_DATA_SHORT) )
-   if ( !( frameFlags & RADIO_FLAGS_FRAME_TYPE_RTS) )      
       strcat(szOutput, " [Frames Type: UNKNOWN]");
 
    if ( frameFlags & RADIO_FLAGS_SIK_ECC )
@@ -1152,6 +1167,29 @@ char* str_format_video_encoding_flags(u32 uVideoProfileEncodingFlags)
    return sl_szVideoEncodingFlagsString;
 }
 
+char* str_format_video_frame_and_nal_flags(u32 uFrameAndNALFlags)
+{
+   static char s_szFrameNALFlags[256];
+   s_szFrameNALFlags[0] = 0;
+
+   if ( uFrameAndNALFlags & VIDEO_PACKET_FLAGS_CONTAINS_I_NAL )
+      strcat(s_szFrameNALFlags, " I-NAL");
+   if ( uFrameAndNALFlags & VIDEO_PACKET_FLAGS_CONTAINS_P_NAL )
+      strcat(s_szFrameNALFlags, " P-NAL");
+   if ( uFrameAndNALFlags & VIDEO_PACKET_FLAGS_CONTAINS_O_NAL )
+      strcat(s_szFrameNALFlags, " O-NAL");
+
+   if ( uFrameAndNALFlags & VIDEO_PACKET_FLAGS_IS_END_OF_TRANSMISSION_FRAME )
+   {
+      strcat(s_szFrameNALFlags, " E-Of-TrFrame");
+      char szTmp[32];
+      sprintf(szTmp, "-%d", uFrameAndNALFlags & 0x03);
+      strcat(s_szFrameNALFlags, szTmp);
+   }
+
+   return s_szFrameNALFlags;
+}
+
 char* str_get_video_profile_name(u32 videoProfileId)
 {
    static char s_szOSDSchema[32];
@@ -1173,6 +1211,75 @@ char* str_get_video_profile_name(u32 videoProfileId)
       strcpy(s_szOSDSchema,"N/A");
 
    return s_szOSDSchema;
+}
+
+char* str_get_decode_h264_profile_name(u8 uH264Profile, u8 uH264ProfileConstrains, u8 uH264Level)
+{
+   static char s_szH264DecodedProfileName[64];
+   s_szH264DecodedProfileName[0] = 0;
+
+   if ( uH264Profile == 0x42 ) //Baseline
+   {
+      if ( uH264ProfileConstrains & 0b01000000 )
+         strcpy(s_szH264DecodedProfileName, getString(16));
+      else
+         strcpy(s_szH264DecodedProfileName, getString(5));
+   }
+   if ( uH264Profile == 0x4D ) // Main
+   {
+      if ( uH264ProfileConstrains & 0b10000000 )
+         strcpy(s_szH264DecodedProfileName, getString(17));
+      else
+         strcpy(s_szH264DecodedProfileName, getString(6));
+   }
+   if ( uH264Profile == 0x53 ) // Scalable baseline
+   {
+      strcpy(s_szH264DecodedProfileName, getString(19));
+   }
+   if ( uH264Profile == 0x56 ) // Scalable high
+   {
+      strcpy(s_szH264DecodedProfileName, getString(20));
+   }
+
+   if ( uH264Profile == 0x58 ) // Extended
+   {
+      if ( uH264ProfileConstrains & 0b11000000 )
+         strcpy(s_szH264DecodedProfileName, getString(18));
+      else
+         strcpy(s_szH264DecodedProfileName, getString(7));
+   }
+   if ( uH264Profile == 0x64 ) // High
+   {
+      strcpy(s_szH264DecodedProfileName, getString(8));
+   }
+   if ( uH264Profile == 0x6E ) // High10
+   {
+      if ( uH264ProfileConstrains & 0b00010000 )
+         strcpy(s_szH264DecodedProfileName, getString(12));
+      else
+         strcpy(s_szH264DecodedProfileName, getString(9));
+   }
+   if ( uH264Profile == 0x7A ) // High422
+   {
+      if ( uH264ProfileConstrains & 0b00010000 )
+         strcpy(s_szH264DecodedProfileName, getString(13));
+      else
+         strcpy(s_szH264DecodedProfileName, getString(10));
+   }
+   if ( uH264Profile == 0xF4 ) // High444
+   {
+      if ( uH264ProfileConstrains & 0b00010000 )
+         strcpy(s_szH264DecodedProfileName, getString(13));
+      else
+         strcpy(s_szH264DecodedProfileName, getString(11));
+   }
+   
+   if ( uH264Profile == 0x2C )
+   {
+      strcpy(s_szH264DecodedProfileName, getString(15));
+   }
+
+   return s_szH264DecodedProfileName;
 }
 
 char* str_get_radio_stream_name(int iStreamId)
@@ -1328,8 +1435,6 @@ char* str_get_component_id(int iComponentId)
       strcpy(s_szComponentIdString, "PACKET_COMPONENT_RUBY");
    else if ( iComponentId == PACKET_COMPONENT_AUDIO )
       strcpy(s_szComponentIdString, "PACKET_COMPONENT_AUDIO");
-   else if ( iComponentId == PACKET_COMPONENT_DATA )
-      strcpy(s_szComponentIdString, "PACKET_COMPONENT_DATA");
    else
       strcpy(s_szComponentIdString, "INVALID");
 
@@ -1380,6 +1485,8 @@ char* str_get_model_change_type(int iModelChangeType)
       strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_DEFAULT_MAX_ADATIVE_KEYFRAME");
    else if ( iModelChangeType == MODEL_CHANGED_VIDEO_KEYFRAME )
       strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_VIDEO_KEYFRAME");
+   else if ( iModelChangeType == MODEL_CHANGED_VIDEO_PROFILES )
+      strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_VIDEO_PROFILES");
    else if ( iModelChangeType == MODEL_CHANGED_SWAPED_RADIO_INTERFACES )
       strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_SWAPED_RADIO_INTERFACES");
    else if ( iModelChangeType == MODEL_CHANGED_CONTROLLER_TELEMETRY )
@@ -1396,14 +1503,6 @@ char* str_get_model_change_type(int iModelChangeType)
       strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_RC_PARAMS");
    else if ( iModelChangeType == MODEL_CHANGED_RESET_RADIO_LINK )
       strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_RESET_RADIO_LINK");
-   else if ( iModelChangeType == MODEL_CHANGED_CAMERA_BRIGHTNESS )
-      strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_CAMERA_BRIGHTNESS");
-   else if ( iModelChangeType == MODEL_CHANGED_CAMERA_CONTRAST )
-      strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_CAMERA_CONTRAST");
-   else if ( iModelChangeType == MODEL_CHANGED_CAMERA_SATURATION )
-      strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_CAMERA_SATURATION");
-   else if ( iModelChangeType == MODEL_CHANGED_CAMERA_HUE )
-      strcpy(s_szModelChangeTypeString, "MODEL_CHANGED_CAMERA_HUE");
    else
       strcpy(s_szModelChangeTypeString, "UNKNOWN");
    return s_szModelChangeTypeString;

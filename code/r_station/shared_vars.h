@@ -16,7 +16,7 @@
 
 // Define this to get profile logs about receiving and processing rx packets times
 #define PROFILE_RX 1
-#define PROFILE_RX_MAX_TIME 15
+#define PROFILE_RX_MAX_TIME 5
 
 extern bool g_bQuit;
 extern bool g_bDebugState;
@@ -30,11 +30,7 @@ extern bool g_bSearching;
 extern u32  g_uSearchFrequency;
 extern u32  g_uAcceptedFirmwareType;
 extern bool g_bUpdateInProgress;
-extern bool s_bReceivedInvalidRadioPackets;
 extern bool g_bNegociatingRadioLinks;
-
-extern bool g_bDebugIsPacketsHistoryGraphOn;
-extern bool g_bDebugIsPacketsHistoryGraphPaused;
 
 // Router
 
@@ -50,19 +46,16 @@ extern shared_mem_radio_stats_rx_hist* g_pSM_HistoryRxStats;
 extern shared_mem_radio_stats_rx_hist g_SM_HistoryRxStats;
 extern shared_mem_audio_decode_stats* g_pSM_AudioDecodeStats;
 
-extern shared_mem_video_info_stats g_SM_VideoInfoStatsOutput;
-extern shared_mem_video_info_stats g_SM_VideoInfoStatsRadioIn;
-extern shared_mem_video_info_stats* g_pSM_VideoInfoStatsOutput;
-extern shared_mem_video_info_stats* g_pSM_VideoInfoStatsRadioIn;
+extern shared_mem_video_frames_stats g_SM_VideoFramesStatsOutput;
+extern shared_mem_video_frames_stats* g_pSM_VideoFramesStatsOutput;
+//extern shared_mem_video_frames_stats g_SM_VideoInfoStatsRadioIn;
+//extern shared_mem_video_frames_stats* g_pSM_VideoInfoStatsRadioIn;
 
 extern shared_mem_router_vehicles_runtime_info g_SM_RouterVehiclesRuntimeInfo;
 extern shared_mem_router_vehicles_runtime_info* g_pSM_RouterVehiclesRuntimeInfo;
 
 extern shared_mem_video_stream_stats_rx_processors g_SM_VideoDecodeStats;
 extern shared_mem_video_stream_stats_rx_processors* g_pSM_VideoDecodeStats;
-
-extern shared_mem_video_stream_stats_history_rx_processors g_SM_VideoDecodeStatsHistory;
-extern shared_mem_video_stream_stats_history_rx_processors* g_pSM_VideoDecodeStatsHistory;
 
 extern shared_mem_radio_rx_queue_info* g_pSM_RadioRxQueueInfo;
 extern shared_mem_radio_rx_queue_info g_SM_RadioRxQueueInfo;
@@ -75,7 +68,6 @@ extern shared_mem_radio_stats_interfaces_rx_graph* g_pSM_RadioStatsInterfacesRxG
 // To fix
 //extern shared_mem_video_link_stats_and_overwrites* g_pSM_VideoLinkStats;
 extern shared_mem_video_link_graphs* g_pSM_VideoLinkGraphs;
-extern shared_mem_router_packets_stats_history* g_pDebug_SM_RouterPacketsStatsHistory;
 extern shared_mem_process_stats* g_pProcessStats;
 extern t_packet_data_controller_link_stats g_PD_ControllerLinkStats;
 
@@ -90,14 +82,10 @@ extern t_sik_radio_state g_SiKRadiosState;
 
 extern bool g_bFirstModelPairingDone;
 
-
 // Used for Atheros cards data rates set;
 extern u32 g_uLastInterceptedCommandCounterToSetRadioFlags;
 extern u32 g_uLastRadioLinkIndexForSentSetRadioLinkFlagsCommand;
 extern int g_iLastRadioLinkDataRateSentForSetRadioLinkFlagsCommand;
-
-extern bool g_bIsVehicleLinkToControllerLost;
-extern bool g_bIsControllerLinkToVehicleLost;
 
 extern int g_iDebugShowKeyFramesAfterRelaySwitch;
 

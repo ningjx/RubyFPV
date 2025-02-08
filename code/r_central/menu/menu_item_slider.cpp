@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -45,6 +45,7 @@ MenuItemSlider::MenuItemSlider(const char* title, int min, int max, int mid, flo
    m_bIsEditable = true;
    m_Step = 1;
    m_HalfStepsEnabled = false;
+   m_szSufix[0] = 0;
 }
 
 MenuItemSlider::MenuItemSlider(const char* title, const char* tooltip, int min, int max, int mid, float sliderWidth)
@@ -58,6 +59,7 @@ MenuItemSlider::MenuItemSlider(const char* title, const char* tooltip, int min, 
    m_bIsEditable = true;
    m_Step = 1;
    m_HalfStepsEnabled = false;
+   m_szSufix[0] = 0;
 }
 
 MenuItemSlider::~MenuItemSlider()
@@ -100,6 +102,16 @@ void MenuItemSlider::setMaxValue(int val)
    m_ValueMax = val;
 }
 
+void MenuItemSlider::setSufix(const char* szSufix)
+{
+   if ( (NULL == szSufix) || (0 == szSufix[0]) )
+   {
+      m_szSufix[0] = 0;
+      return;
+   }
+   strncpy(m_szSufix, szSufix, 31);
+}
+
 void MenuItemSlider::beginEdit()
 {
    m_ValuePrev = m_ValueCurrent;
@@ -116,15 +128,25 @@ void MenuItemSlider::endEdit(bool bCanceled)
 
 void MenuItemSlider::Render(float xPos, float yPos, bool bSelected, float fWidthSelection)
 {
-   RenderBaseTitle(xPos, yPos, bSelected, fWidthSelection);
-
-   char szBuff[32];
-   sprintf(szBuff, "%d", m_ValueCurrent);
+   char szValue[64];
+   sprintf(szValue, "%d", m_ValueCurrent);
    if ( m_HalfStepsEnabled )
-      sprintf(szBuff, "%.2f", m_ValueCurrent/4.0);
+      sprintf(szValue, "%.2f", m_ValueCurrent/4.0);
+   if ( 0 != m_szSufix[0] )
+   {
+      strcat(szValue, " ");
+      strcat(szValue, m_szSufix);
+   }
 
    float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
    float valueWidth = g_pRenderEngine->textWidth(g_idFontMenu, "AAA");
+   if ( m_ValueMax > 999 )
+      valueWidth += g_pRenderEngine->textWidth(g_idFontMenu, "A");
+   if ( 0 != m_szSufix[0] )
+   {
+      valueWidth += g_pRenderEngine->textWidth(g_idFontMenu, " ");
+      valueWidth += g_pRenderEngine->textWidth(g_idFontMenu, m_szSufix);
+   }
    float valueMargin = 0.4*height_text;
    float paddingV = Menu::getSelectionPaddingY();
    float paddingH = Menu::getSelectionPaddingX();
@@ -142,6 +164,13 @@ void MenuItemSlider::Render(float xPos, float yPos, bool bSelected, float fWidth
       if ( sliderWidth < fMinSliderWidth )
          sliderWidth = fMinSliderWidth;
    }
+
+   if ( fWidthSelection + sliderWidth + valueWidth + valueMargin + Menu::getMenuPaddingX() + m_fMarginX > m_pMenu->getUsableWidth() )
+      fWidthSelection = m_pMenu->getUsableWidth() - m_fMarginX - sliderWidth - valueWidth - valueMargin - Menu::getMenuPaddingX();
+
+   RenderBaseTitle(xPos, yPos, bSelected, fWidthSelection);
+
+
    float fSizeSelectorH = 0.8 * fHeightEdit;// 0.8 * m_RenderTitleHeight;
    float fSizeSelectorW = fSizeSelectorH*0.4;
 
@@ -179,7 +208,7 @@ void MenuItemSlider::Render(float xPos, float yPos, bool bSelected, float fWidth
 
    g_pRenderEngine->setStrokeSize(0);
 
-   g_pRenderEngine->drawTextLeft(xPosSlider-valueMargin, yPos, g_idFontMenu, szBuff);
+   g_pRenderEngine->drawTextLeft(xPosSlider-valueMargin, yPos, g_idFontMenu, szValue);
    
    g_pRenderEngine->setStrokeSize(1);
    g_pRenderEngine->drawRoundRect(xPosSelector, yTop, fSizeSelectorW, fSizeSelectorH, 0.1*Menu::getMenuPaddingY());

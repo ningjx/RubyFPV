@@ -46,20 +46,15 @@ extern shared_mem_radio_stats_rx_hist g_SM_HistoryRxStatsVehicle;
 extern shared_mem_audio_decode_stats* g_pSM_AudioDecodeStats;
 extern shared_mem_audio_decode_stats g_SM_AudioDecodeStats;
 
-extern shared_mem_video_info_stats* g_pSM_VideoInfoStatsOutput;
-extern shared_mem_video_info_stats g_SM_VideoInfoStatsOutput;
-
-extern shared_mem_video_info_stats* g_pSM_VideoInfoStatsRadioIn;
-extern shared_mem_video_info_stats g_SM_VideoInfoStatsRadioIn;
-
-extern shared_mem_video_info_stats g_VideoInfoStatsFromVehicleCameraOut;
-extern shared_mem_video_info_stats g_VideoInfoStatsFromVehicleRadioOut;
+extern shared_mem_video_frames_stats* g_pSM_VideoFramesStatsOutput;
+extern shared_mem_video_frames_stats g_SM_VideoFramesStatsOutput;
+//extern shared_mem_video_frames_stats* g_pSM_VideoInfoStatsRadioIn;
+//extern shared_mem_video_frames_stats g_SM_VideoInfoStatsRadioIn;
+//extern shared_mem_video_frames_stats g_VideoInfoStatsFromVehicleCameraOut;
+//extern shared_mem_video_frames_stats g_VideoInfoStatsFromVehicleRadioOut;
 
 extern shared_mem_video_stream_stats_rx_processors* g_pSM_VideoDecodeStats;
 extern shared_mem_video_stream_stats_rx_processors g_SM_VideoDecodeStats;
-
-extern shared_mem_video_stream_stats_history_rx_processors* g_pSM_VDS_history;
-extern shared_mem_video_stream_stats_history_rx_processors g_SM_VDS_history;
 
 extern shared_mem_radio_rx_queue_info* g_pSM_RadioRxQueueInfo;
 extern shared_mem_radio_rx_queue_info g_SM_RadioRxQueueInfo;
@@ -80,5 +75,3 @@ extern t_shared_mem_i2c_current* g_pSMVoltage;
 extern t_shared_mem_i2c_current g_SMVoltage;
 
 extern t_shared_mem_i2c_rotary_encoder_buttons_events* g_pSMRotaryEncoderButtonsEvents;
-
-extern shared_mem_router_packets_stats_history* g_pDebugSMRPST;

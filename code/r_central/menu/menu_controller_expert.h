@@ -17,6 +17,8 @@ class MenuControllerExpert: public Menu
       MenuItemSelect* m_pItemsSelect[20];
       MenuItemSlider* m_pItemsSlider[15];
 
+      int m_iIndexCoresAdjustment;
+      int m_iIndexPrioritiesAdjustment;
       int m_IndexNiceRouter, m_IndexIONiceRouter, m_IndexIONiceRouterValue;
       int m_IndexNiceCentral;
       int m_IndexAutoRxVideo, m_IndexNiceRXVideo, m_IndexIONiceRXVideo, m_IndexIONiceValueRXVideo;
@@ -32,6 +34,7 @@ class MenuControllerExpert: public Menu
       int m_IndexGPUSpeed;
       int m_IndexVoltage;
       int m_IndexReset;
+      int m_IndexVersions;
       int m_IndexReboot;
 
       int m_iDefaultARMFreq;

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -159,8 +159,16 @@ void MenuVehicleGeneral::Render()
    g_pRenderEngine->setStrokeSize(MENU_OUTLINEWIDTH);
 
    for( int i=0; i<m_ItemsCount; i++ )
-      y += RenderItem(i,y);
-
+   {
+      float hItem = RenderItem(i,y);
+      if ( i == m_IndexBoardType )
+      {
+         float dy = 0.5*(g_pRenderEngine->textHeight(g_idFontMenu) - g_pRenderEngine->textHeight(g_idFontMenu));
+         float fWidth = g_pRenderEngine->textWidth(g_idFontMenu, str_get_hardware_board_name_short(g_pCurrentModel->hwCapabilities.uBoardType));
+         g_pRenderEngine->drawText(m_RenderXPos + m_RenderWidth - m_sfMenuPaddingX - fWidth, y+dy, g_idFontMenu, str_get_hardware_board_name_short(g_pCurrentModel->hwCapabilities.uBoardType) );
+      }
+      y += hItem;
+   }
    RenderEnd(yTop);
 }
 

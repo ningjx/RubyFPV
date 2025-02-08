@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga
+    Copyright (c) 2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -61,7 +61,7 @@ void reset_Preferences()
    s_Preferences.iVideoDestination = prefVideoDestination_Disk;
    s_Preferences.iStartVideoRecOnArm = 0;
    s_Preferences.iStopVideoRecOnDisarm = 0;
-   s_Preferences.iShowControllerCPUInfo = 1;
+   s_Preferences.iShowControllerCPUInfo = 0;
    s_Preferences.iShowBigRecordButton = 0;
    s_Preferences.iSwapUpDownButtons = 0;
    s_Preferences.iSwapUpDownButtonsValues = 0;
@@ -71,6 +71,7 @@ void reset_Preferences()
    s_Preferences.iAHIStrokeSize = 0;
 
    s_Preferences.iUnits = prefUnitsMetric;
+   s_Preferences.iUnitsHeight = prefUnitsMetric;
 
    s_Preferences.iColorOSD[0] = 255;
    s_Preferences.iColorOSD[1] = 250;
@@ -92,7 +93,7 @@ void reset_Preferences()
    s_Preferences.iDebugRestartOnRadioSilence = 0;
    s_Preferences.iOSDFont = 1;
    s_Preferences.iPersistentMessages = 1;
-   s_Preferences.nLogLevel = 0;
+   s_Preferences.nLogLevel = 1;
    s_Preferences.iDebugShowDevVideoStats = 0;
    s_Preferences.iDebugShowDevRadioStats = 0;
    s_Preferences.iDebugShowFullRXStats = 0;
@@ -101,7 +102,7 @@ void reset_Preferences()
    s_Preferences.iDebugShowVideoSnapshotOnDiscard = 0;
    s_Preferences.iDebugWiFiChangeDelay = DEFAULT_DELAY_WIFI_CHANGE;
 
-   s_Preferences.iAutoExportSettings = 1;
+   s_Preferences.iAutoExportSettings = 0;
    s_Preferences.iAutoExportSettingsWasModified = 0;
 
    s_Preferences.iShowProcessesMonitor = 0;
@@ -110,17 +111,20 @@ void reset_Preferences()
    s_Preferences.iShowOnlyPresentTxPowerCards = 1;
    s_Preferences.iShowTxBoosters = 0;
    s_Preferences.iMenuStyle = 0;
+   s_Preferences.iStopRecordingAfterLinkLostSeconds = 20;
 
    s_Preferences.iDebugStatsQAButton = 0;
-   s_Preferences.uDebugStatsFlags = CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_DATA_PACKETS |
+   s_Preferences.uDebugStatsFlags = CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_TX_PACKETS |
       CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_H264265_FRAMES |
-      CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_DBM |
-      CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_MISSING_PACKETS_MAX_GAP |
+      //CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_DBM |
+      //CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_MISSING_PACKETS_MAX_GAP |
       //CTRL_RT_DEBUG_INFO_FLAG_SHOW_MIN_MAX_ACK_TIME |
       CTRL_RT_DEBUG_INFO_FLAG_SHOW_ACK_TIME_HISTORY |
       CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_MAX_EC_USED |
       CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_UNRECOVERABLE_BLOCKS |
       CTRL_RT_DEBUG_INFO_FLAG_SHOW_VIDEO_PROFILE_CHANGES;
+
+   s_Preferences.iLanguage = 0;
 }
 
 int save_Preferences()
@@ -182,8 +186,18 @@ int save_Preferences()
 
    fprintf(fd, "%d \n", s_Preferences.iShowCPULoad);
    fprintf(fd, "%d %d %d\n", s_Preferences.iShowOnlyPresentTxPowerCards, s_Preferences.iShowTxBoosters, s_Preferences.iMenuStyle);
-   fprintf(fd, "%d %d\n", s_Preferences.iDebugStatsQAButton, s_Preferences.uDebugStatsFlags);
+   fprintf(fd, "%d %u\n", s_Preferences.iDebugStatsQAButton, s_Preferences.uDebugStatsFlags);
+   fprintf(fd, "%d\n", s_Preferences.iStopRecordingAfterLinkLostSeconds);
+   fprintf(fd, "%d\n", s_Preferences.iLanguage);
 
+   for( int i=0; i<MAX_PREFERENCES_CHECKBOXES; i++ )
+   {
+      fprintf(fd, "%d %d ", s_Preferences.iDoNotShowAgainIds[i], s_Preferences.iDoNotShowAgainValues[i]);
+      if ( ((i%10) == 0) && (i != 0) )
+         fprintf(fd, "\n");
+   }
+   fprintf(fd, "\n");
+   fprintf(fd, "%d \n", s_Preferences.iUnitsHeight);
    fclose(fd);
    log_line("Saved preferences to file: %s", szFile);
    return 1;
@@ -323,18 +337,21 @@ int load_Preferences()
    if ( bOk && 1 != fscanf(fd, "%d", &s_Preferences.iDebugShowVideoSnapshotOnDiscard) )
    {
       s_Preferences.iDebugShowVideoSnapshotOnDiscard = 0;
+      bOk = 0;
    }
 
    if ( bOk && 2 != fscanf(fd, "%d %d", &s_Preferences.iDebugShowVehicleVideoStats, &s_Preferences.iDebugShowVehicleVideoGraphs) )
    {
       s_Preferences.iDebugShowVehicleVideoStats = 0;
       s_Preferences.iDebugShowVehicleVideoGraphs = 0;
+      bOk = 0;
    }
 
    if ( bOk && 2 != fscanf(fd, "%d %d", &s_Preferences.iAutoExportSettings, &s_Preferences.iAutoExportSettingsWasModified) )
    {
       s_Preferences.iAutoExportSettings = 1;
       s_Preferences.iAutoExportSettingsWasModified = 0;
+      bOk = 0;
    }
 
    if ( bOk && 1 != fscanf(fd, "%d", &s_Preferences.iShowProcessesMonitor) )
@@ -352,16 +369,41 @@ int load_Preferences()
    if ( bOk && 1 != fscanf(fd, "%d", &s_Preferences.iMenuStyle) )
       s_Preferences.iMenuStyle = 0;
 
-   if ( bOk && 2 != fscanf(fd, "%d %d", &s_Preferences.iDebugStatsQAButton, &s_Preferences.uDebugStatsFlags) )
+   if ( bOk && 2 != fscanf(fd, "%d %u", &s_Preferences.iDebugStatsQAButton, &s_Preferences.uDebugStatsFlags) )
    {
       s_Preferences.iDebugStatsQAButton = 0;
-      s_Preferences.uDebugStatsFlags = CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_DATA_PACKETS |
+      s_Preferences.uDebugStatsFlags = CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_TX_PACKETS |
          CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_MISSING_PACKETS_MAX_GAP |
          //CTRL_RT_DEBUG_INFO_FLAG_SHOW_MIN_MAX_ACK_TIME |
          CTRL_RT_DEBUG_INFO_FLAG_SHOW_ACK_TIME_HISTORY |
          CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_MAX_EC_USED;
+      bOk = 0;
    }
 
+   if ( bOk && 1 != fscanf(fd, "%d", &s_Preferences.iStopRecordingAfterLinkLostSeconds) )
+   {
+      s_Preferences.iStopRecordingAfterLinkLostSeconds = 20;
+      bOk = 0;
+   }
+
+   if ( bOk && (1 != fscanf(fd, "%d", &s_Preferences.iLanguage)) )
+   {
+      s_Preferences.iLanguage = 0;
+   }
+
+   if ( bOk )
+   {
+      for( int i=0; i<MAX_PREFERENCES_CHECKBOXES; i++ )
+      {
+         fscanf(fd, "%d %d", &s_Preferences.iDoNotShowAgainIds[i], &s_Preferences.iDoNotShowAgainValues[i]);
+      }
+   }
+
+   if ( bOk && (1 != fscanf(fd, "%d", &s_Preferences.iUnitsHeight)) )
+   {
+      s_Preferences.iUnitsHeight = prefUnitsMetric;
+   }
+   
    // ----------------------------------------------------
    // End reading file;
    // Validate settings
@@ -403,6 +445,8 @@ int load_Preferences()
       fclose(fd);
       return 0;
    }
+   if ( ! bOk )
+      log_softerror_and_alarm("Some preferences settings where missing from file.");
    fclose(fd);
    log_line("Loaded preferences from file: %s", szFile);
    return 1;
@@ -413,10 +457,67 @@ Preferences* get_Preferences()
    return &s_Preferences;
 }
 
+int getPreferencesDoNotShowAgain(int iUniqueId)
+{
+   if ( iUniqueId <= 0 )
+      return 0;
+
+   for( int i=0; i<MAX_PREFERENCES_CHECKBOXES; i++ )
+   {
+      if ( s_Preferences.iDoNotShowAgainIds[i] == iUniqueId )
+         return s_Preferences.iDoNotShowAgainValues[i];
+   }
+   return 0;
+}
+
+void setPreferencesDoNotShowAgain(int iUniqueId, int iDoNotShowAgain)
+{
+   if ( iUniqueId <= 0 )
+      return;
+
+   int iFirstEmptySlot = -1;
+   for( int i=0; i<MAX_PREFERENCES_CHECKBOXES; i++ )
+   {
+      if ( -1 == iFirstEmptySlot )
+      if ( 0 == s_Preferences.iDoNotShowAgainIds[i] )
+         iFirstEmptySlot = i;
+
+      if ( s_Preferences.iDoNotShowAgainIds[i] == iUniqueId )
+      {
+         s_Preferences.iDoNotShowAgainValues[i] = iDoNotShowAgain;
+         return;
+      }
+   }
+   if ( -1 != iFirstEmptySlot )
+   {
+      s_Preferences.iDoNotShowAgainIds[iFirstEmptySlot] = iUniqueId;
+      s_Preferences.iDoNotShowAgainValues[iFirstEmptySlot] = iDoNotShowAgain;
+   }
+}
+
+void removePreferencesDoNotShowAgain(int iUniqueId)
+{
+   if ( iUniqueId <= 0 )
+      return;
+
+   for( int i=0; i<MAX_PREFERENCES_CHECKBOXES; i++ )
+   {
+      if ( s_Preferences.iDoNotShowAgainIds[i] == iUniqueId )
+      {
+         s_Preferences.iDoNotShowAgainIds[i] = 0;
+         s_Preferences.iDoNotShowAgainValues[i] = 0;
+         return;
+      }
+   }
+}
+
 #else
 
 int save_Preferences() { return 0; }
 int load_Preferences() { return 0; }
 void reset_Preferences() {}
 Preferences* get_Preferences() { return NULL; }
+int getPreferencesDoNotShowAgain(int iUniqueId) { return 0; }
+void setPreferencesDoNotShowAgain(int iUniqueId, int iDoNotShowAgain){}
+void removePreferencesDoNotShowAgain(int iUniqueId){}
 #endif

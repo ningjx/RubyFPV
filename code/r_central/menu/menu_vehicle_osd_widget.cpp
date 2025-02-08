@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -345,6 +345,7 @@ int MenuVehicleOSDWidget::onBack()
       stopAction();
       return 1;
    }
+   menu_setGlobalAlpha(1.0);
    return Menu::onBack();
 }
 
@@ -444,7 +445,7 @@ void MenuVehicleOSDWidget::onSelectItem()
          if ( NULL == pPluginSettings )
             return;
 
-         int osdLayoutIndex = g_pCurrentModel->osd_params.layout;
+         int osdLayoutIndex = g_pCurrentModel->osd_params.iCurrentOSDLayout;
          int iModelIndex = getPluginModelSettingsIndex(pPluginSettings, g_pCurrentModel);
 
          int type = osd_plugin_get_setting_type(m_nPluginIndex, i);

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2024 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and use in source and/or binary forms, with or without
@@ -43,9 +43,10 @@
 #include "../common/radio_stats.h"
 #include "../radio/radio_rx.h"
 #include "../radio/radio_tx.h"
+#include "../utils/utils_controller.h"
 
 #include "packets_utils.h"
-#include "links_utils.h"
+#include "ruby_rt_station.h"
 
 int s_iFailedInitRadioInterface = -1;
 u32 s_uTimeLastCheckedAuxiliaryLinks = 0;
@@ -66,9 +67,8 @@ void radio_links_reinit_radio_interfaces()
    
    send_alarm_to_central(ALARM_ID_GENERIC_STATUS_UPDATE, ALARM_FLAG_GENERIC_STATUS_RECONFIGURING_RADIO_INTERFACE, 0);
 
-   sprintf(szComm, "rm -rf %s%s", FOLDER_CONFIG, FILE_CONFIG_CURRENT_RADIO_HW_CONFIG);
-   hw_execute_bash_command(szComm, NULL);
-
+   hardware_radio_remove_stored_config();
+   
    hw_execute_bash_command("/etc/init.d/udev restart", NULL);
    hardware_sleep_ms(200);
    hw_execute_bash_command("sudo systemctl restart networking", NULL);
@@ -105,8 +105,7 @@ void radio_links_reinit_radio_interfaces()
    }
 
    log_line("Reinitializing radio interfaces: found interfaces on ip link: [%s]", szOutput);
-   sprintf(szComm, "rm -rf %s%s", FOLDER_CONFIG, FILE_CONFIG_CURRENT_RADIO_HW_CONFIG);
-   hw_execute_bash_command(szComm, NULL);
+   hardware_radio_remove_stored_config();
    
    //hw_execute_bash_command("ifconfig wlan0 down", NULL);
    //hw_execute_bash_command("ifconfig wlan1 down", NULL);
@@ -173,7 +172,7 @@ void radio_links_reinit_radio_interfaces()
 
    log_line("=================================================================");
    log_line("Detected hardware radio interfaces:");
-   hardware_log_radio_info();
+   hardware_log_radio_info(NULL, 0);
 
    radio_links_open_rxtx_radio_interfaces();
 
@@ -384,7 +383,7 @@ void radio_links_open_rxtx_radio_interfaces()
          int nRateTx = DEFAULT_RADIO_DATARATE_DATA;
          if ( NULL != g_pCurrentModel )
          {
-            nRateTx = compute_packet_uplink_datarate(nVehicleRadioLinkId, i, &(g_pCurrentModel->radioLinksParams));
+            nRateTx = compute_packet_uplink_datarate(nVehicleRadioLinkId, i, &(g_pCurrentModel->radioLinksParams), NULL);
             log_line("Current model uplink radio datarate for vehicle radio link %d (%s): %d, %u, uplink rate type: %d",
                nVehicleRadioLinkId+1, pRadioHWInfo->szName, nRateTx, getRealDataRateFromRadioDataRate(nRateTx, 0),
                g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[nVehicleRadioLinkId]);
@@ -542,9 +541,14 @@ void radio_links_open_rxtx_radio_interfaces()
    if ( NULL != g_pSM_RadioStats )
       memcpy((u8*)g_pSM_RadioStats, (u8*)&g_SM_RadioStats, sizeof(shared_mem_radio_stats));
    log_line("Finished opening RX/TX radio interfaces.");
+
+   radio_links_set_monitor_mode();
+   load_ControllerSettings();
+   load_ControllerInterfacesSettings();
+   apply_controller_radio_tx_powers(g_pCurrentModel, get_ControllerSettings()->iFixedTxPower, false);
+
    log_line("OPEN RADIO INTERFACES END ===========================================================");
    log_line("");
-   radio_links_set_monitor_mode();
 }
 
 
@@ -601,8 +605,7 @@ bool radio_links_apply_settings(Model* pModel, int iRadioLink, type_radio_links_
            (pRadioHWInfo->iRadioType != RADIO_TYPE_RALINK) )
          continue;
 
-      //int nRateTx = pRadioLinkParams->uplink_datarate_data_bps[iRadioLink];
-      int nRateTx = compute_packet_uplink_datarate(iRadioLink, i, pRadioLinkParamsNew);
+      int nRateTx = compute_packet_uplink_datarate(iRadioLink, i, pRadioLinkParamsNew, NULL);
       update_atheros_card_datarate(pModel, i, nRateTx, g_pProcessStats);
       g_TimeNow = get_current_timestamp_ms();
    }
@@ -653,7 +656,7 @@ void radio_links_set_monitor_mode()
    }
 }
 
-u32 radio_linkgs_get_last_set_monitor_time()
+u32 radio_links_get_last_set_monitor_time()
 {
    return s_uTimeLastSetRadioLinksMonitorMode;
 }
