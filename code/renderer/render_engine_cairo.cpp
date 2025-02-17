@@ -1344,9 +1344,19 @@ void RenderEngineCairo::_drawSimpleTextScaled(RenderEngineRawFont* pFont, const 
    }
    if ( (fColor[3] < 0.1) || (fColor[3] >= 1.0) )
       fColor[3] = 1.0;
-   cairo_set_source_rgba(m_pCairoCtx, fColor[0], fColor[1], fColor[2], fColor[3]);
+   cairo_save(m_pCairoCtx);
    cairo_move_to (m_pCairoCtx, xPos * m_iRenderWidth, yPos * m_iRenderHeight + pFont->baseLine);
-   cairo_show_text (m_pCairoCtx, szText);
+   cairo_set_source_rgba(m_pCairoCtx,  0, 0,  0, 1);
+   cairo_set_line_width(m_pCairoCtx, 0.5);
+   cairo_text_path(m_pCairoCtx, szText);
+   cairo_stroke(m_pCairoCtx);
+   cairo_stroke_preserve(m_pCairoCtx);
+   cairo_set_source_rgba(m_pCairoCtx, fColor[0], fColor[1], fColor[2], fColor[3]);
+   cairo_fill(m_pCairoCtx);
+   cairo_restore(m_pCairoCtx);
+   //cairo_set_source_rgba(m_pCairoCtx, fColor[0], fColor[1], fColor[2], fColor[3]);
+   //cairo_move_to (m_pCairoCtx, xPos * m_iRenderWidth, yPos * m_iRenderHeight + pFont->baseLine);
+   //cairo_show_text (m_pCairoCtx, szText);
    
    return;
 
