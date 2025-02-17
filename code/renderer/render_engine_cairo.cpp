@@ -1349,7 +1349,6 @@ void RenderEngineCairo::_drawSimpleTextScaled(RenderEngineRawFont* pFont, const 
    cairo_set_source_rgba(m_pCairoCtx,  0, 0,  0, 1);
    cairo_set_line_width(m_pCairoCtx, 0.5);
    cairo_text_path(m_pCairoCtx, szText);
-   cairo_stroke(m_pCairoCtx);
    cairo_stroke_preserve(m_pCairoCtx);
    cairo_set_source_rgba(m_pCairoCtx, fColor[0], fColor[1], fColor[2], fColor[3]);
    cairo_fill(m_pCairoCtx);

@@ -215,7 +215,7 @@ extern "C"
                //g_pEngine->drawText(xt, yt - height_text * 0.5, fontId, const_cast<char *>(szBuff));
 
                g_pEngine->setColors(g_pEngine->getColorOSDInstruments());
-               g_pEngine->setStrokeSize(fLineThicknessPx);
+               g_pEngine->setStrokeSize(g_pEngine->fLineThicknessPx);
                rotate_point(g_pEngine, xl, y, xCenter, yCenter, roll, &xt, &yt);
                g_pEngine->drawTextLeft(xt, yt - height_text * 0.5, fontId, const_cast<char *>(szBuff));
                rotate_point(g_pEngine, xr, y, xCenter, yCenter, roll, &xt, &yt);
@@ -279,7 +279,7 @@ extern "C"
          //g_pEngine->drawText(xtr, ytr - 0.5 * height_text, fontId, const_cast<char *>(szBuff));
 
          g_pEngine->setColors(g_pEngine->getColorOSDInstruments());
-         g_pEngine->setStrokeSize(fLineThicknessPx);
+         g_pEngine->setStrokeSize(g_pEngine->fLineThicknessPx);
          g_pEngine->drawTextLeft(xtl, ytl - 0.5 * height_text, fontId, const_cast<char *>(szBuff));
          g_pEngine->drawText(xtr, ytr - 0.5 * height_text, fontId, const_cast<char *>(szBuff));
 
