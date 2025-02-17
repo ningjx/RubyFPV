@@ -847,20 +847,13 @@ void RenderEngineCairo::drawLine(float x1, float y1, float x2, float y2)
 
    if(delta_x <= delta_min && delta_y <= delta_min)
       return;
-   else if (delta_x > delta_min && delta_y < delta_min){
+   
+   if (delta_x > delta_min && delta_y < delta_min){
       x1 = x1 < 0 ? 0.0 : x1;
       x2 = x2 < 0 ? 0.0 : x2;
       x1 = x1 > 1.0 - m_fPixelWidth ? 1.0 - m_fPixelWidth : x1;
       x2 = x2 > 1.0 - m_fPixelWidth ? 1.0 - m_fPixelWidth : x2;
-
-      cairo_save(m_pCairoCtx);
-      cairo_set_source_rgba(m_pCairoCtx, m_ColorStroke[0]/255.0, m_ColorStroke[1]/255.0, m_ColorStroke[2]/255.0, m_ColorStroke[3]/255.0);
-      cairo_set_line_width(m_pCairoCtx, m_fStrokeSize);
-      cairo_move_to (m_pCairoCtx, x1 * m_iRenderWidth, y1 * m_iRenderHeight); 
-      cairo_line_to (m_pCairoCtx, x2 * m_iRenderWidth, y1 * m_iRenderHeight);
-      cairo_stroke (m_pCairoCtx);
-      cairo_restore(m_pCairoCtx);
-      return;
+      y2 = y1;
    }
    else if ( delta_x < delta_min && delta_y > delta_min )
    {
@@ -868,15 +861,7 @@ void RenderEngineCairo::drawLine(float x1, float y1, float x2, float y2)
       y2 = y2 < 0 ? 0.0 : y2;
       y1 = y1 > 1.0 - m_fPixelHeight ? 1.0 - m_fPixelHeight : y1;
       y2 = y2 > 1.0 - m_fPixelHeight ? 1.0 - m_fPixelHeight : y2;
-      
-      cairo_save(m_pCairoCtx);
-      cairo_set_source_rgba(m_pCairoCtx, m_ColorStroke[0]/255.0, m_ColorStroke[1]/255.0, m_ColorStroke[2]/255.0, m_ColorStroke[3]/255.0);
-      cairo_set_line_width(m_pCairoCtx, m_fStrokeSize);
-      cairo_move_to (m_pCairoCtx, x1 * m_iRenderWidth, y1 * m_iRenderHeight); 
-      cairo_line_to (m_pCairoCtx, x1 * m_iRenderWidth, y2 * m_iRenderHeight);
-      cairo_stroke (m_pCairoCtx);
-      cairo_restore(m_pCairoCtx);
-      return;
+      x2 = x1;
    }
    else{
       cairo_save(m_pCairoCtx);
