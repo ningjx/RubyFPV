@@ -154,7 +154,8 @@ extern "C"
       int angle = pitch - range / 2;
       int max = pitch + range / 2;
 
-      bool pitch_warning = pTelemetryInfo->ahi_warning_angle > 1 && fabs(angle) >= pTelemetryInfo->ahi_warning_angle;
+      bool pitch_warning = pTelemetryInfo->ahi_warning_angle > 1 && fabs(pTelemetryInfo->pitch) >= pTelemetryInfo->ahi_warning_angle;
+      bool roll_warning = pTelemetryInfo->ahi_warning_angle > 1 && fabs(pTelemetryInfo->roll) >= pTelemetryInfo->ahi_warning_angle;
 
       // Draw a triangle at the center
       float xt[3] = {(float)(xCenter - planeWidth * 0.2), (float)(xCenter + planeWidth * 0.2), xCenter};
@@ -166,7 +167,7 @@ extern "C"
       g_pEngine->drawPolyLine(xt, yt, 3);
       g_pEngine->fillPolygon(xt, yt, 3);
       // Draw the triangle
-      g_pEngine->setColors(pitch_warning ? g_pEngine->getColorOSDWarning() : g_pEngine->getColorOSDInstruments());
+      g_pEngine->setColors(roll_warning ? g_pEngine->getColorOSDWarning() : g_pEngine->getColorOSDInstruments());
       g_pEngine->setStrokeSize(pCurrentSettings->fLineThicknessPx);
       g_pEngine->drawPolyLine(xt, yt, 3);
       g_pEngine->fillPolygon(xt, yt, 3);
@@ -190,11 +191,12 @@ extern "C"
       show_value_centered(g_pEngine, xCenter, yCenter + planeWidth * 0.7, szBuff, fontId);
       //g_pEngine->drawText(xCenter, yCenter + planeWidth * 0.7, fontId, const_cast<char *>(szBuff));
 
-      if (NULL != pCurrentSettings && pCurrentSettings->nSettingsValues[0] == 0)
+      if (pCurrentSettings->nSettingsValues[0] == 0)
       {
          angle = 0;
          max = 0;
       }
+
       while (angle <= max)
       {
          float y = yCenter - (angle - pitch) * ratio;
@@ -202,9 +204,9 @@ extern "C"
          {
             float xl, xr;
             float xt, yt;
-            if (pCurrentSettings->nSettingsValues[0] != 0)
-            {
-               sprintf(szBuff, "0");
+            //if (pCurrentSettings->nSettingsValues[0] != 0)
+            //{
+               //sprintf(szBuff, "0");
                //g_pEngine->setColors(g_pEngine->getColorOSDOutline());
                //g_pEngine->setStrokeSize(pCurrentSettings->fOutlineThicknessPx);
                //xl = xCenter - width_ladder * 0.5 - space_text;
@@ -220,7 +222,7 @@ extern "C"
                //g_pEngine->drawTextLeft(xt, yt - height_text * 0.5, fontId, const_cast<char *>(szBuff));
                //rotate_point(g_pEngine, xr, y, xCenter, yCenter, roll, &xt, &yt);
                //g_pEngine->drawText(xt, yt - height_text * 0.5, fontId, const_cast<char *>(szBuff));
-            }
+            //}
             xl = xCenter - width_ladder * 0.5;
             xr = xCenter + width_ladder * 0.5;
             float xtl, ytl;
