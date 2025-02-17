@@ -214,12 +214,12 @@ extern "C"
                //rotate_point(g_pEngine, xr, y, xCenter, yCenter, roll, &xt, &yt);
                //g_pEngine->drawText(xt, yt - height_text * 0.5, fontId, const_cast<char *>(szBuff));
 
-               g_pEngine->setColors(g_pEngine->getColorOSDInstruments());
-               g_pEngine->setStrokeSize(pCurrentSettings->fLineThicknessPx);
-               rotate_point(g_pEngine, xl, y, xCenter, yCenter, roll, &xt, &yt);
-               g_pEngine->drawTextLeft(xt, yt - height_text * 0.5, fontId, const_cast<char *>(szBuff));
-               rotate_point(g_pEngine, xr, y, xCenter, yCenter, roll, &xt, &yt);
-               g_pEngine->drawText(xt, yt - height_text * 0.5, fontId, const_cast<char *>(szBuff));
+               //g_pEngine->setColors(g_pEngine->getColorOSDInstruments());
+               //g_pEngine->setStrokeSize(pCurrentSettings->fLineThicknessPx);
+               //rotate_point(g_pEngine, xl, y, xCenter, yCenter, roll, &xt, &yt);
+               //g_pEngine->drawTextLeft(xt, yt - height_text * 0.5, fontId, const_cast<char *>(szBuff));
+               //rotate_point(g_pEngine, xr, y, xCenter, yCenter, roll, &xt, &yt);
+               //g_pEngine->drawText(xt, yt - height_text * 0.5, fontId, const_cast<char *>(szBuff));
             }
             xl = xCenter - width_ladder * 0.5;
             xr = xCenter + width_ladder * 0.5;
