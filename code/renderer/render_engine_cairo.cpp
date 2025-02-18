@@ -853,16 +853,16 @@ void RenderEngineCairo::drawLine(float x1, float y1, float x2, float y2)
       x1 = x1 > 1.0 - m_fPixelWidth ? 1.0 - m_fPixelWidth : x1;
       x2 = x2 > 1.0 - m_fPixelWidth ? 1.0 - m_fPixelWidth : x2;
 
-      if ( x1 < x2 )
-         _draw_hline(x1*m_iRenderWidth, y1*m_iRenderHeight, (x2-x1)*m_iRenderWidth, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);
-      else if ( x1 > x2 )
-         _draw_hline(x2*m_iRenderWidth, y1*m_iRenderHeight, (x1-x2)*m_iRenderWidth, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);
+      //if ( x1 < x2 )
+      //   _draw_hline(x1*m_iRenderWidth, y1*m_iRenderHeight, (x2-x1)*m_iRenderWidth, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);
+      //else if ( x1 > x2 )
+      //   _draw_hline(x2*m_iRenderWidth, y1*m_iRenderHeight, (x1-x2)*m_iRenderWidth, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);
       //cairo_save(m_pCairoCtx);
-      //cairo_set_source_rgba(m_pCairoCtx, m_ColorStroke[0]/255.0, m_ColorStroke[1]/255.0, m_ColorStroke[2]/255.0, m_ColorStroke[3]/255.0);
-      //cairo_set_line_width(m_pCairoCtx, m_fStrokeSize);
-      //cairo_move_to (m_pCairoCtx, x1 * m_iRenderWidth, y1 * m_iRenderHeight); 
-      //cairo_line_to (m_pCairoCtx, x2 * m_iRenderWidth, y1 * m_iRenderHeight);
-      //cairo_stroke (m_pCairoCtx);
+      cairo_set_source_rgba(m_pCairoCtx, m_ColorStroke[0]/255.0, m_ColorStroke[1]/255.0, m_ColorStroke[2]/255.0, m_ColorStroke[3]/255.0);
+      cairo_set_line_width(m_pCairoCtx, m_fStrokeSize);
+      cairo_move_to (m_pCairoCtx, x1 * m_iRenderWidth, y1 * m_iRenderHeight); 
+      cairo_line_to (m_pCairoCtx, x2 * m_iRenderWidth, y1 * m_iRenderHeight);
+      cairo_stroke (m_pCairoCtx);
       //cairo_restore(m_pCairoCtx);
       return;
    }
@@ -873,26 +873,26 @@ void RenderEngineCairo::drawLine(float x1, float y1, float x2, float y2)
       y1 = y1 > 1.0 - m_fPixelHeight ? 1.0 - m_fPixelHeight : y1;
       y2 = y2 > 1.0 - m_fPixelHeight ? 1.0 - m_fPixelHeight : y2;
       
-      float yPos = y1;
-      float h = (y2-y1);
-      if ( y1 > y2 )
-      {
-         yPos = y2;
-         h = y1 - y2;
-      }
-      if ( m_fStrokeSize < 1.5 )
-         _draw_vline(x1*m_iRenderWidth, yPos*m_iRenderHeight, h*m_iRenderHeight, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);
-      else
-      {
-         _draw_vline(x1*m_iRenderWidth-m_fPixelWidth*0.5, yPos*m_iRenderHeight, h*m_iRenderHeight, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);       
-         _draw_vline(x1*m_iRenderWidth+m_fPixelWidth*0.5, yPos*m_iRenderHeight, h*m_iRenderHeight, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);       
-      }
+      //float yPos = y1;
+      //float h = (y2-y1);
+      //if ( y1 > y2 )
+      //{
+      //   yPos = y2;
+      //   h = y1 - y2;
+      //}
+      //if ( m_fStrokeSize < 1.5 )
+      //   _draw_vline(x1*m_iRenderWidth, yPos*m_iRenderHeight, h*m_iRenderHeight, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);
+      //else
+      //{
+      //   _draw_vline(x1*m_iRenderWidth-m_fPixelWidth*0.5, yPos*m_iRenderHeight, h*m_iRenderHeight, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);       
+      //   _draw_vline(x1*m_iRenderWidth+m_fPixelWidth*0.5, yPos*m_iRenderHeight, h*m_iRenderHeight, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);       
+      //}
       //cairo_save(m_pCairoCtx);
-      //cairo_set_source_rgba(m_pCairoCtx, m_ColorStroke[0]/255.0, m_ColorStroke[1]/255.0, m_ColorStroke[2]/255.0, m_ColorStroke[3]/255.0);
-      //cairo_set_line_width(m_pCairoCtx, m_fStrokeSize);
-      //cairo_move_to (m_pCairoCtx, x1 * m_iRenderWidth, y1 * m_iRenderHeight); 
-      //cairo_line_to (m_pCairoCtx, x1 * m_iRenderWidth, y2 * m_iRenderHeight);
-      //cairo_stroke (m_pCairoCtx);
+      cairo_set_source_rgba(m_pCairoCtx, m_ColorStroke[0]/255.0, m_ColorStroke[1]/255.0, m_ColorStroke[2]/255.0, m_ColorStroke[3]/255.0);
+      cairo_set_line_width(m_pCairoCtx, m_fStrokeSize);
+      cairo_move_to (m_pCairoCtx, x1 * m_iRenderWidth, y1 * m_iRenderHeight); 
+      cairo_line_to (m_pCairoCtx, x1 * m_iRenderWidth, y2 * m_iRenderHeight);
+      cairo_stroke (m_pCairoCtx);
       //cairo_restore(m_pCairoCtx);
       return;
    }
