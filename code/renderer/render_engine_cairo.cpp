@@ -846,9 +846,9 @@ void RenderEngineCairo::drawLine(float x1, float y1, float x2, float y2)
    double delta_y = fabs(y1-y2);
    double delta_min = 0.0001;
 
-   if(delta_x <= delta_min && delta_y <= delta_min)
+   if((delta_x <= delta_min) && (delta_y <= delta_min))
       return;
-   else if (delta_x > delta_min && delta_y < delta_min){
+   else if ((delta_x > delta_min) && (delta_y < delta_min)){
       x1 = x1 < 0 ? 0.0 : x1;
       x2 = x2 < 0 ? 0.0 : x2;
       x1 = x1 > 1.0 - m_fPixelWidth ? 1.0 - m_fPixelWidth : x1;
@@ -861,7 +861,7 @@ void RenderEngineCairo::drawLine(float x1, float y1, float x2, float y2)
       cairo_stroke (m_pCairoCtx);
       return;
    }
-   else if ( delta_x < delta_min && delta_y > delta_min )
+   else if ((delta_x < delta_min) && (delta_y > delta_min))
    {
       y1 = y1 < 0 ? 0.0 : y1;
       y2 = y2 < 0 ? 0.0 : y2;
