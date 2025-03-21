@@ -37,6 +37,7 @@
 #include "menu_item_section.h"
 #include "menu_about.h"
 #include "../osd/osd_common.h"
+#include "../../base/hardware.h"
 
 extern u32 g_idIconOpenIPC;
 
@@ -98,16 +99,9 @@ MenuAbout::MenuAbout(void)
 
    snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "Board: %s, ", szOutput);
    
-   int temp = 0;
-   fd = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
-   if ( NULL != fd )
-   {
-      fscanf(fd, "%d", &temp);
-      fclose(fd);
-      fd = NULL;
-   }
+   int temp = hardware_get_cpu_temp();
    int speed = hardware_get_cpu_speed();
-   sprintf(szTemp, "CPU: %d Mhz, Temp: %d C", speed, temp/1000); 
+   sprintf(szTemp, "CPU: %d Mhz, Temp: %d C", speed, temp); 
    strcat(szBuff, szTemp);
    addTopLine(szBuff);
 
@@ -118,7 +112,7 @@ MenuAbout::MenuAbout(void)
    #ifdef HW_PLATFORM_RASPBERRY
    sprintf(szComm, "df -m %s | grep root", FOLDER_BINARIES);
    #endif
-   #ifdef HW_PLATFORM_RADXA_ZERO3
+   #ifdef HW_PLATFORM_RADXA
    sprintf(szComm, "df -m %s | grep mmc", FOLDER_BINARIES);
    #endif
    if ( 1 == hw_execute_bash_command_raw(szComm, szBuff) )

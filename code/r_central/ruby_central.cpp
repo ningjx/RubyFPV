@@ -76,7 +76,7 @@
 #if defined (HW_PLATFORM_RASPBERRY)
 #include "../renderer/render_engine_raw.h"
 #endif
-#if defined (HW_PLATFORM_RADXA_ZERO3)
+#if defined (HW_PLATFORM_RADXA)
 #include "../renderer/drm_core.h"
 #include "../renderer/render_engine_cairo.h"
 #endif
@@ -115,6 +115,7 @@
 #include "events.h"
 #include "menu_info_booster.h"
 #include "menu_confirmation_import.h"
+#include "menu_confirmation_sdcard_update.h"
 #include "process_router_messages.h"
 #include "quickactions.h"
 #include "oled/oled_render.h"
@@ -209,13 +210,14 @@ void load_resources()
    osd_load_resources();
 }
 
-void _draw_background()
+void _draw_background_picture()
 {
    if ( g_TimeNow > s_uTimeLastChangeBgImage + 40000 )
    {
       s_uTimeLastChangeBgImage = g_TimeNow;
-      if ( ! g_bUpdateInProgress )
+      if ( (! g_bUpdateInProgress) && (! g_bSearching) )
       {
+         log_line("Not searching or updating. Update background picture.");
          int iIndex = s_iBgImageIndex;
          while ( iIndex == s_iBgImageIndex )
          {
@@ -235,7 +237,7 @@ void _draw_background()
       iImageIdPrev = s_idBgImageMenu[s_iBgImageIndexPrev];
    }
 
-   if ( (g_TimeNow >= s_uTimeLastChangeBgImage) && (g_TimeNow < s_uTimeLastChangeBgImage + 3000) )
+   if ( (! g_bUpdateInProgress) && (! g_bSearching) && (g_TimeNow >= s_uTimeLastChangeBgImage) && (g_TimeNow < s_uTimeLastChangeBgImage + 3000) )
    {
       int iAlpha = ((s_uTimeLastChangeBgImage+3000) - g_TimeNow)/12;
       if ( iAlpha < 0 )
@@ -271,10 +273,12 @@ void _draw_background()
    //g_pRenderEngine->drawText(0.42, 0.2, g_idFontMenuLarge, szBuff);
    //g_pRenderEngine->drawText(0.42, 0.24, g_idFontMenuLarge, "Digital FPV System");
 
+   float fXTextStart = 0.3;
+   
    double c[4] = {40,40,40,1};
    g_pRenderEngine->setColors(c);
    sprintf(szBuff, "Welcome to %s Digital FPV System", SYSTEM_NAME);
-   g_pRenderEngine->drawText(0.35, 0.1, g_idFontMenuLarge, szBuff);
+   g_pRenderEngine->drawText(fXTextStart, 0.1, g_idFontMenuLarge, szBuff);
 
    double c2[4] = {0,0,0,1};
    g_pRenderEngine->setColors(c2);
@@ -284,15 +288,15 @@ void _draw_background()
    {
       if ( 0 == getControllerModelsCount() )
       {
-         g_pRenderEngine->drawText(0.32, 0.3, g_idFontMenuLarge, "Info: No vehicle defined!");
-         g_pRenderEngine->drawText(0.32, 0.34, g_idFontMenuLarge, "You have no vehicles linked to this controller.");
-         g_pRenderEngine->drawText(0.32, 0.37, g_idFontMenuLarge, "Press [Menu] key and then select 'Search' to search for a vehicle to connect to.");
+         g_pRenderEngine->drawText(fXTextStart, 0.3, g_idFontMenuLarge, "Info: No vehicle defined!");
+         g_pRenderEngine->drawText(fXTextStart, 0.34, g_idFontMenuLarge, "You have no vehicles linked to this controller.");
+         g_pRenderEngine->drawText(fXTextStart, 0.37, g_idFontMenuLarge, "Press [Menu] key and then select 'Search' to search for a vehicle to connect to.");
       }
       else if ( ! g_bSearching )
       {
-         g_pRenderEngine->drawText(0.32, 0.3, g_idFontMenuLarge, "Info: No vehicle selected!");
-         g_pRenderEngine->drawText(0.32, 0.34, g_idFontMenuLarge, "You have no vehicle selected as active.");
-         g_pRenderEngine->drawText(0.32, 0.37, g_idFontMenuLarge, "Press [Menu] key and then select 'My Vehicles' to select the vehicle to connect to.");
+         g_pRenderEngine->drawText(fXTextStart, 0.3, g_idFontMenuLarge, "Info: No vehicle selected!");
+         g_pRenderEngine->drawText(fXTextStart, 0.34, g_idFontMenuLarge, "You have no vehicle selected as active.");
+         g_pRenderEngine->drawText(fXTextStart, 0.37, g_idFontMenuLarge, "Press [Menu] key and then select 'My Vehicles' to select the vehicle to connect to.");
       }
    }
 }
@@ -374,7 +378,7 @@ void _render_video_background()
       t_structure_vehicle_info* pRuntimeInfo = get_vehicle_runtime_info_for_vehicle_id(uVehicleIdFullVideo);
       if ( NULL != pRuntimeInfo )
       if ( pRuntimeInfo->bGotRubyTelemetryInfo )
-      if ( ! (pRuntimeInfo->headerRubyTelemetryExtended.flags & FLAG_RUBY_TELEMETRY_VEHICLE_HAS_CAMERA) )
+      if ( ! (pRuntimeInfo->headerRubyTelemetryExtended.uRubyFlags & FLAG_RUBY_TELEMETRY_VEHICLE_HAS_CAMERA) )
          bVehicleHasCamera = false;
 
       Model* pModel = findModelWithId(uVehicleIdFullVideo, 60);
@@ -428,7 +432,7 @@ void _render_video_background()
    g_pRenderEngine->drawText((1.0-width_text)*0.5, 0.45, g_idFontOSDBig, szText);
    g_pRenderEngine->drawText((1.0-width_text)*0.5, 0.45, g_idFontOSDBig, szText);
 
-   if ( (uVehicleSoftwareVersion >>16)  < 262 )
+   if ( (!g_bSearching) && ((uVehicleSoftwareVersion >>16)  < 262) )
    {
       float fHeight = 1.5*g_pRenderEngine->textHeight(g_idFontOSDBig);
       width_text = g_pRenderEngine->textRawWidth(g_idFontOSDBig, L("Video protocols have changed. You must update your vehicle"));
@@ -449,46 +453,36 @@ void _render_background_and_paddings(bool bForceBackground)
       g_bPlayIntro = false;
    }
 
-   bool showBg = true;
+   bool bShowBgPicture = false;
+   bool bShowBgVideo = true;
 
-   if ( ! g_bSearching )
-   if ( g_bIsRouterReady )
-   if ( link_has_received_main_vehicle_ruby_telemetry() )
-   if ( link_has_received_videostream(0) )
-      showBg = false;
-
-   if ( g_bSearching && (!g_bSearchFoundVehicle) )
+   if ( bForceBackground || g_bSearching || (! g_bIsRouterReady) || (! g_bFirstModelPairingDone) )
    {
-      showBg = true;
-      bForceBackground = true;
+      bShowBgPicture = true;
+      bShowBgVideo = false;
    }
 
-   if ( ! pairing_isStarted() )
-      showBg = true;
-   if ( link_has_received_main_vehicle_ruby_telemetry() && (g_TimeNow < pairing_getStartTime() + 1000) )
+   if ( (! pairing_isStarted()) || (! link_has_received_main_vehicle_ruby_telemetry()) || (g_TimeNow < pairing_getStartTime() + 1000) )
    {
-      bForceBackground = true;
-      showBg = true;
+      bShowBgPicture = true;
+      bShowBgVideo = false;
    }
-   if ( (!link_has_received_main_vehicle_ruby_telemetry()) && (g_TimeNow < pairing_getStartTime() + 3000) )
-   {
-      bForceBackground = true;
-      showBg = true;
-   }
-   if ( ! g_bFirstModelPairingDone )
-      bForceBackground = true;
-
    if ( NULL != g_pPopupLooking )
-      bForceBackground = true;
-
-   if ( showBg || bForceBackground || (! link_has_received_videostream(0)) )
    {
-      if ( bForceBackground || (! pairing_isStarted()) || (g_TimeNow < pairing_getStartTime() + 1000) )
-         _draw_background();
-      else
-         _render_video_background();
+      bShowBgPicture = true;
+      bShowBgVideo = false;
    }
 
+   if ( bShowBgPicture )
+   {
+      _draw_background_picture();
+      return;
+   }
+   if ( ! bShowBgVideo )
+      return;
+
+   _render_video_background();
+  
    float fScreenAspect = (float)(g_pRenderEngine->getScreenWidth())/(float)(g_pRenderEngine->getScreenHeight());
    if ( (!g_bSearching) || g_bSearchFoundVehicle )
    if ( (NULL != g_pCurrentModel) && (!bForceBackground) )
@@ -574,7 +568,7 @@ void render_all_with_menus(u32 timeNow, bool bRenderMenus, bool bForceBackground
       char szBuff[64];
       float yPos = osd_getMarginY() + osd_getBarHeight() + osd_getSecondBarHeight() + 0.01*osd_getScaleOSD();
       float xPos = osd_getMarginX() + 0.02*osd_getScaleOSD();
-      if ( NULL != g_pCurrentModel && osd_get_current_layout_index() >= 0 && osd_get_current_layout_index() < MODEL_MAX_OSD_PROFILES )
+      if ( NULL != g_pCurrentModel && osd_get_current_layout_index() >= 0 && osd_get_current_layout_index() < MODEL_MAX_OSD_SCREENS )
       if ( g_pCurrentModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_LEFT_RIGHT )
       {
          xPos = osd_getMarginX() + osd_getVerticalBarWidth() + 0.01*osd_getScaleOSD();
@@ -664,16 +658,7 @@ void* _thread_check_controller_cpu_state(void *argument)
    log_line("Started thread to check CPU state...");
    g_uControllerCPUFlags = hardware_get_flags();
    g_iControllerCPUSpeedMhz = hardware_get_cpu_speed();
-
-   int temp = 0;
-   FILE* fd = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
-   if ( NULL != fd )
-   {
-      fscanf(fd, "%d", &temp);
-      fclose(fd);
-      fd = NULL;
-   }
-   g_iControllerCPUTemp = temp/1000;
+   g_iControllerCPUTemp = hardware_get_cpu_temp();
    log_line("Finished thread to check CPU state.");
    return NULL;
 }
@@ -719,8 +704,19 @@ void compute_cpu_state()
    if ( g_TimeNow > s_TimeLastCPUComputeState + 10000 )
    {
       s_TimeLastCPUComputeState = g_TimeNow;
+
       pthread_t pth;
-      pthread_create(&pth, NULL, &_thread_check_controller_cpu_state, NULL);
+      pthread_attr_t attr;
+      struct sched_param params;
+
+      pthread_attr_init(&attr);
+      pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+      pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+      pthread_attr_setschedpolicy(&attr, SCHED_OTHER);
+      params.sched_priority = 0;
+      pthread_attr_setschedparam(&attr, &params);
+      pthread_create(&pth, &attr, &_thread_check_controller_cpu_state, NULL);
+      pthread_attr_destroy(&attr);
    }
 }
 
@@ -774,7 +770,7 @@ int ruby_start_recording()
    #ifdef HW_PLATFORM_RASPBERRY
    sprintf(szComm, "df -m %s | grep root", FOLDER_BINARIES);
    #endif
-   #ifdef HW_PLATFORM_RADXA_ZERO3
+   #ifdef HW_PLATFORM_RADXA
    sprintf(szComm, "df -m %s | grep mmc", FOLDER_BINARIES);
    #endif
    if ( 1 == hw_execute_bash_command_raw(szComm, szBuff) )
@@ -801,10 +797,16 @@ int ruby_start_recording()
    sem_close(s); 
 
    Preferences* p = get_Preferences();
-   if ( p->iRecordingLedAction == 1 )
-      hardware_recording_led_set_on();
-   if ( p->iRecordingLedAction == 2 )
-      hardware_recording_led_set_blinking();
+   if ( (p->iRecordingLedAction == 2) || (hardware_is_running_on_runcam_vrx()) )
+   {
+      if ( hardware_is_running_on_runcam_vrx() )
+         hardware_led_red_set_blinking(MAX_U32);
+      else
+         hardware_led_green_set_blinking(MAX_U32);
+   }
+   else if ( p->iRecordingLedAction == 1 )
+      hardware_led_green_set_on();
+
    g_bVideoRecordingStarted = true;
    
    notification_add_recording_start();
@@ -838,7 +840,10 @@ int ruby_stop_recording()
    sem_close(s); 
    g_bVideoRecordingStarted = false;
 
-   hardware_recording_led_set_off();
+   if ( hardware_is_running_on_runcam_vrx() )
+      hardware_led_red_set_on();
+   else
+      hardware_led_green_set_off();
 
    notification_add_recording_end();
    g_bVideoProcessing = true;
@@ -1240,6 +1245,93 @@ void _on_start_completed()
    g_bPlayIntro = false;
 }
 
+bool ruby_central_has_sdcard_update(bool bDoUpdateToo)
+{
+   if ( ! hardware_is_running_on_runcam_vrx() )
+      return false;
+   char szOutput[2048];
+   hw_execute_bash_command_raw("lsblk -l | grep mmcblk1p3", szOutput);
+   removeTrailingNewLines(szOutput);
+   log_line("[SDCard] Output of lsblk: [%s]", szOutput);
+   if ( (strlen(szOutput) < 10) || (NULL == strstr(szOutput, "mmcblk1p3")) )
+      return false;
+
+   // Already mounted? It's native SD card boot
+   if ( NULL != strstr(szOutput, "/") )
+   {
+      log_line("[SDCard] SD card already mounted as main Ruby instalation.");
+      return false;
+   }
+
+   // Try mount and look for Ruby files
+   bool bHasRuby = false;
+   hw_execute_bash_command("mkdir -p /mnt/tmp-ruby", NULL);
+   hw_execute_bash_command("mount /dev/mmcblk1p3 /mnt/tmp-ruby", NULL);
+   if ( access("/mnt/tmp-ruby/home/radxa/ruby/ruby_start", R_OK) == -1 )
+   {
+      log_line("[SDCard] ruby_start not found on SD card mount point.");
+      bHasRuby = false;
+   }
+   else
+   {
+      log_line("[SDCard] ruby_start found on SD card mount point.");
+      bHasRuby = true;
+   }
+
+   if ( bHasRuby )
+   {
+      szOutput[0] = 0;
+      hw_execute_bash_command_raw("/mnt/tmp-ruby/home/radxa/ruby/ruby_start -ver 2>&1", szOutput);
+      log_line("[SDCard] Ruby version on the SD card: [%s]", szOutput);
+      for( int i=0; i<(int)strlen(szOutput); i++ )
+      {
+         if ( szOutput[i] == '.' )
+            szOutput[i] = ' ';
+      }
+      int iMajor = 0;
+      int iMinor = 0;
+      log_line("[SDCard] Ruby version on the SD card formated: [%s]", szOutput);
+      if ( 2 != sscanf(szOutput, "%d %d", &iMajor, &iMinor) )
+         bHasRuby = false;
+      if ( bHasRuby )
+      {
+         log_line("[SDCard] Ruby version on the SD card parsed: %d.%d", iMajor, iMinor);
+         log_line("[SDCard] Ruby version running now: %d.%d", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR);
+         if ( iMinor < 10 )
+            iMinor *= 10;
+
+         if ( (iMajor < SYSTEM_SW_VERSION_MAJOR) ||
+              ((iMajor == SYSTEM_SW_VERSION_MAJOR) && (iMinor <= SYSTEM_SW_VERSION_MINOR)) )
+         {
+            log_line("[SDCard] SD card ruby binaries are older than current instalation.");
+            bHasRuby = false;
+         }
+      }
+   }
+
+   if ( bHasRuby )
+      log_line("[SDCard] Newer Ruby binaries found on SD card.");
+
+   if ( ! bDoUpdateToo )
+   {
+      log_line("[SDCard] No update asked for. Unmount.");
+      hw_execute_bash_command("umount /mnt/tmp-ruby", NULL);
+      hw_execute_bash_command("rm -rf /mnt/tmp-ruby", NULL);
+      return bHasRuby;
+   }
+
+   log_line("[SDCard] Updating Ruby binaries from SD card...");
+   hw_execute_bash_command("cp -rf /mnt/tmp-ruby/home/radxa/ruby/ruby_* /home/radxa/ruby/", NULL);
+   hw_execute_bash_command("cp -rf /mnt/tmp-ruby/home/radxa/ruby/res/* /home/radxa/ruby/res/", NULL);
+   hw_execute_bash_command("cp -rf /mnt/tmp-ruby/home/radxa/ruby/updates/* /home/radxa/ruby/updates/", NULL);
+   sync();
+   hardware_sleep_ms(500);
+   log_line("[SDCard] Done updating Ruby binaries from SD card.");
+   hw_execute_bash_command("umount /mnt/tmp-ruby", NULL);
+   hw_execute_bash_command("rm -rf /mnt/tmp-ruby", NULL);
+   return bHasRuby;
+}
+
 void start_loop()
 {
    hardware_sleep_ms(START_SEQ_DELAY);
@@ -1258,8 +1350,6 @@ void start_loop()
    }
    if ( s_StartSequence == START_SEQ_LOAD_CONFIG )
    {
-      if ( ! load_Preferences() )
-         save_Preferences();
       osd_apply_preferences();
 
       load_PluginsSettings();
@@ -1602,6 +1692,7 @@ void start_loop()
       char szPids[1024];
       bool procRunning = false;
       hw_execute_bash_command_silent("pidof ruby_video_proc", szPids);
+      removeTrailingNewLines(szPids);
       if ( strlen(szPids) > 2 )
          procRunning = true;
       if ( procRunning )
@@ -1707,13 +1798,16 @@ void start_loop()
          add_menu_to_stack(s_pMenuConfirmHDMI);
       }
 
+      bool bHasSDCardUpdate = ruby_central_has_sdcard_update(false);
+
       int iMajor = 0;
       int iMinor = 0;
       get_Ruby_BaseVersion(&iMajor, &iMinor);
       if ( (iMajor < 10) || ((iMajor == 10) && (iMinor < 1)) )
+      if ( ! bHasSDCardUpdate )
       {
-         MenuConfirmation* pMC = new MenuConfirmation(getString(0), getString(1), 0, true);
-         pMC->addTopLine(getString(3));
+         MenuConfirmation* pMC = new MenuConfirmation(L("Firmware Instalation"), L("Your controller needs to be fully flashed with the latest version of Ruby."), 0, true);
+         pMC->addTopLine(L("Instead of a regular OTA update, a full firmware instalation is required as there where changes in latest Ruby that require a complete update of the system."));
          pMC->setIconId(g_idIconWarning);
          pMC->m_yPos = 0.3;
          add_menu_to_stack(pMC);
@@ -1733,6 +1827,14 @@ void start_loop()
       }
       ruby_resume_watchdog();
 
+      if ( ! g_bIsReinit )
+      if ( ! g_bIsHDMIConfirmation )
+      if ( bHasSDCardUpdate )
+      {
+         MenuConfirmationSDCardUpdate* pMC = new MenuConfirmationSDCardUpdate();
+         pMC->m_yPos = 0.3;
+         add_menu_to_stack(pMC);
+      }
       log_line("Finished executing start up sequence step: %d", s_StartSequence);
       return;
    }
@@ -1866,7 +1968,7 @@ void synchronize_shared_mems()
    
    if ( pCS->iDeveloperMode )
    if ( NULL != g_pCurrentModel )
-   if ( g_pCurrentModel->osd_params.osd_flags[g_pCurrentModel->osd_params.iCurrentOSDLayout] & OSD_FLAG_SHOW_STATS_VIDEO_H264_FRAMES_INFO)
+   if ( g_pCurrentModel->osd_params.osd_flags[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG_SHOW_STATS_VIDEO_H264_FRAMES_INFO)
    {
       if ( NULL != g_pSM_VideoFramesStatsOutput )
       if ( g_TimeNow >= g_SM_VideoFramesStatsOutput.uLastTimeStatsUpdate + 200 )
@@ -1941,7 +2043,7 @@ void ruby_processing_loop(bool bNoKeys)
       g_iMustSendCurrentActiveOSDLayoutCounter--;
       g_TimeLastSentCurrentActiveOSDLayout = g_TimeNow;
       handle_commands_decrement_command_counter();
-      handle_commands_send_single_oneway_command(0, COMMAND_ID_SET_OSD_CURRENT_LAYOUT, (u32)g_pCurrentModel->osd_params.iCurrentOSDLayout, NULL, 0);
+      handle_commands_send_single_oneway_command(0, COMMAND_ID_SET_OSD_CURRENT_LAYOUT, (u32)g_pCurrentModel->osd_params.iCurrentOSDScreen, NULL, 0);
    }
 
    if ( g_bIsRouterReady )
@@ -1988,6 +2090,9 @@ void main_loop_r_central()
       menu_discard_all();
       ruby_reinit_hdmi_display();
    }
+
+   if ( pairing_isStarted() )
+      onEventCheckForPairPendingUIActionsToTake();
 
    compute_cpu_state();
 
@@ -2144,6 +2249,10 @@ int main(int argc, char *argv[])
 
    log_init("Central");
 
+   hardware_detectBoardAndSystemType();
+
+   initLocalizationData();
+
    check_licences();
    
    char szFile[MAX_FILE_PATH_SIZE];
@@ -2170,11 +2279,12 @@ int main(int argc, char *argv[])
 
    if ( ! load_Preferences() )
       save_Preferences();
+   Preferences* p = get_Preferences();
+   setActiveLanguage(p->iLanguage);
 
    if ( ! load_ControllerSettings() )
       save_ControllerSettings();
 
-   Preferences* p = get_Preferences();
    if ( p->nLogLevel != 0 )
       log_only_errors();
 
@@ -2184,7 +2294,7 @@ int main(int argc, char *argv[])
    hdmi_enum_modes();
    #endif
 
-   #if defined (HW_PLATFORM_RADXA_ZERO3)
+   #if defined (HW_PLATFORM_RADXA)
    ruby_drm_core_wait_for_display_connected();
    hdmi_enum_modes();
    int iHDMIIndex = hdmi_load_current_mode();
@@ -2204,30 +2314,26 @@ int main(int argc, char *argv[])
          g_bPlayIntro = false;
       else
       {
-         #ifdef HW_PLATFORM_RASPBERRY
-         char szComm[256];
-         strcpy(szFile, FOLDER_RUBY_TEMP);
-         strcat(szFile, FILE_TEMP_INTRO_PLAYING);
-         sprintf(szComm, "touch %s", szFile);
-         hw_execute_bash_command(szComm, NULL);
-         sprintf(szComm, "./%s res/intro.h264 15 -endexit&", VIDEO_PLAYER_OFFLINE);
-         hw_execute_bash_command_nonblock(szComm, NULL);
-         #endif
-         #ifdef HW_PLATFORM_RADXA_ZERO3
-         //for( int i=0; i<25; i++ )
-         //   hardware_sleep_ms(100);
-         //sprintf(szComm, "./%s -f res/intro.h264 20 -endexit&", VIDEO_PLAYER_OFFLINE);
-         //hw_execute_bash_command_nonblock(szComm, NULL);
-         #endif
+         strcpy(szFile, FOLDER_BINARIES);
+         strcat(szFile, "res/intro.h264");
+         if ( access(szFile, R_OK) == -1 )
+            g_bPlayIntro = false;
+         else
+         {
+            #ifdef HW_PLATFORM_RASPBERRY
+            char szComm[256];
+            strcpy(szFile, FOLDER_RUBY_TEMP);
+            strcat(szFile, FILE_TEMP_INTRO_PLAYING);
+            sprintf(szComm, "touch %s", szFile);
+            hw_execute_bash_command(szComm, NULL);
+            sprintf(szComm, "./%s res/intro.h264 15 -endexit&", VIDEO_PLAYER_OFFLINE);
+            hw_execute_bash_command_nonblock(szComm, NULL);
+            #endif
+         }
 
          hardware_enable_audio_output();
          hardware_set_audio_output_volume(pCS->iAudioOutputVolume);
-
-         //int iSample = 1 + (rand()%2);
-         //char szFileIntro[256];
-         //sprintf(szFileIntro, "res/intro%d.wav", iSample);
          hardware_audio_play_file_async("res/intro1.wav");
-
       }
    }
 
@@ -2260,7 +2366,7 @@ int main(int argc, char *argv[])
       
    save_ControllerInterfacesSettings();
 
-   #if defined (HW_PLATFORM_RADXA_ZERO3)
+   #if defined (HW_PLATFORM_RADXA)
    log_line("Ruby OLED Init...");
    if ( hardware_i2c_has_oled_screen() )
    {
@@ -2351,7 +2457,7 @@ int main(int argc, char *argv[])
    if ( ! g_bIsReinit )
       pairing_stop();
 
-   #if defined (HW_PLATFORM_RADXA_ZERO3)
+   #if defined (HW_PLATFORM_RADXA)
    oled_render_shutdown();
    #endif
    
@@ -2375,7 +2481,7 @@ int main(int argc, char *argv[])
 
    render_free_engine();
 
-   #if defined (HW_PLATFORM_RADXA_ZERO3)
+   #if defined (HW_PLATFORM_RADXA)
    ruby_drm_core_uninit();
    #endif
 
@@ -2425,7 +2531,7 @@ void ruby_reinit_hdmi_display()
    free_all_fonts();
    render_free_engine();
    
-   #if defined (HW_PLATFORM_RADXA_ZERO3)
+   #if defined (HW_PLATFORM_RADXA)
    ruby_drm_core_uninit();
    ruby_drm_core_wait_for_display_connected();
 

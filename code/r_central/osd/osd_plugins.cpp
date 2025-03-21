@@ -77,7 +77,7 @@ void _osd_plugins_populate_public_telemetry_info()
    if ( ! g_VehiclesRuntimeInfo[iVehicleIndex].bGotFCTelemetry )
       return;
 
-   g_VehicleTelemetryInfo.flags = g_VehiclesRuntimeInfo[iVehicleIndex].headerFCTelemetry.flags;
+   g_VehicleTelemetryInfo.uFCFlags = g_VehiclesRuntimeInfo[iVehicleIndex].headerFCTelemetry.uFCFlags;
    g_VehicleTelemetryInfo.flight_mode = g_VehiclesRuntimeInfo[iVehicleIndex].headerFCTelemetry.flight_mode;
    g_VehicleTelemetryInfo.arm_time = g_VehiclesRuntimeInfo[iVehicleIndex].headerFCTelemetry.arm_time;
    g_VehicleTelemetryInfo.throttle = g_VehiclesRuntimeInfo[iVehicleIndex].headerFCTelemetry.throttle;
@@ -231,7 +231,7 @@ SinglePluginSettings* osd_get_settings_for_plugin_for_model(const char* szPlugin
          if ( NULL == pPluginSettings2 )
             continue;
    
-         int osdLayoutIndex = g_pCurrentModel->osd_params.iCurrentOSDLayout;
+         int osdLayoutIndex = g_pCurrentModel->osd_params.iCurrentOSDScreen;
 
          if ( g_pRenderEngine->rectIntersect( x, y, w,h, pPluginSettings2->fXPos[iModelSettingsIndex][osdLayoutIndex],  pPluginSettings2->fYPos[iModelSettingsIndex][osdLayoutIndex], pPluginSettings2->fWidth[iModelSettingsIndex][osdLayoutIndex], pPluginSettings2->fHeight[iModelSettingsIndex][osdLayoutIndex] ) )
          {
@@ -253,7 +253,7 @@ SinglePluginSettings* osd_get_settings_for_plugin_for_model(const char* szPlugin
    }
 
 
-   for( int i=1; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=1; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       pPlugin->fWidth[iModelSettingsIndex][i] = pPlugin->fWidth[iModelSettingsIndex][0];
       pPlugin->fHeight[iModelSettingsIndex][i] = pPlugin->fHeight[iModelSettingsIndex][0];
@@ -276,7 +276,7 @@ SinglePluginSettings* osd_get_settings_for_plugin_for_model(const char* szPlugin
             int defValue = 0;
             if ( NULL != g_pPluginsOSD[iOSDPluginIndex]->pFunctionGetPluginSettingDefaultValue )
                defValue = (*(g_pPluginsOSD[iOSDPluginIndex]->pFunctionGetPluginSettingDefaultValue))(i);
-            for( int k=0; k<MODEL_MAX_OSD_PROFILES; k++ )
+            for( int k=0; k<MODEL_MAX_OSD_SCREENS; k++ )
                pPlugin->nSettings[iModelSettingsIndex][k][i] = defValue;
    }
    
@@ -482,7 +482,7 @@ void osd_plugins_render()
          continue;
 
       int iModelSettingsIndex = getPluginModelSettingsIndex(pPlugin, pModel);
-      int osdLayoutIndex = pModel->osd_params.iCurrentOSDLayout;
+      int osdLayoutIndex = pModel->osd_params.iCurrentOSDScreen;
 
 
       vehicle_and_telemetry_info_t telemetry_info;
@@ -494,7 +494,7 @@ void osd_plugins_render()
       telemetry_info2.uTimeNowVehicle = g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerRubyTelemetryExtraInfo.uTimeNow;
       telemetry_info2.uVehicleId = 0;
       telemetry_info2.uRelayedVehicleId = pModel->relay_params.uRelayedVehicleId;
-      telemetry_info2.uIsRelaing = g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerRubyTelemetryExtended.flags & FLAG_RUBY_TELEMETRY_IS_RELAYING;
+      telemetry_info2.uIsRelaing = g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerRubyTelemetryExtended.uRubyFlags & FLAG_RUBY_TELEMETRY_IS_RELAYING;
       telemetry_info2.uIsSpectatorMode = pModel->is_spectator;
 
       telemetry_info2.uWindHeading = 0xFFFF;

@@ -45,7 +45,7 @@
 #if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RASPBERRY)
 #include <wiringPiI2C.h>
 #endif
-#if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RADXA_ZERO3)
+#if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RADXA)
 #include "../base/wiringPiI2C_radxa.h"
 #endif
 #include <math.h>
@@ -959,10 +959,12 @@ int main(int argc, char *argv[])
    #if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RASPBERRY)
    log_line("Using Raspberry built in wiringPi library.");
    #endif
-   #if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RADXA_ZERO3)
+   #if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RADXA)
    log_line("Using Radxa custom wiringPi library.");
    #endif
 
+   hardware_detectBoardAndSystemType();
+   
    hardware_enumerate_i2c_busses();
 
    for( int i=0; i<MAX_I2C_DEVICES; i++ )

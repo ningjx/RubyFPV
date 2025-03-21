@@ -223,7 +223,7 @@ void MenuVehicleRadioConfig::populateFrequencies()
       int iRadioInterfaceId = g_pCurrentModel->getRadioInterfaceIndexForRadioLink(iRadioLinkId);
       if ( -1 == iRadioInterfaceId )
       {
-         log_softerror_and_alarm("Invalid radio link. No radio interfaces assigned to radio link %d.", iRadioLinkId+1);
+         log_softerror_and_alarm("MenuVehicleRadio: Invalid radio link. No radio interfaces assigned to radio link %d.", iRadioLinkId+1);
          continue;
       }
 
@@ -417,6 +417,7 @@ void MenuVehicleRadioConfig::populateTxPowers()
       selectMenuItemTxPowersValue(m_pItemsSelect[40+iLink], false, bBoost2W, bBoost4W, &(iLinkPowersMw[0]), iCountLinkInterfaces, iVehicleLinkPowerMaxMw);
 
    }
+   /*
    char szText[256];
    strcpy(szText, L("The Tx power is for the radio downlink(s).\nMaximum selectable Tx power is computed based on detected radio interfaces on the vehicle: "));
    char szBuff[256];
@@ -435,6 +436,7 @@ void MenuVehicleRadioConfig::populateTxPowers()
    MenuItemLegend* pLegend = new MenuItemLegend(L("Note"), szText, 0);
    pLegend->setExtraHeight(0.4*g_pRenderEngine->textHeight(g_idFontMenu));
    addMenuItem(pLegend);
+   */
 }
 
 void MenuVehicleRadioConfig::onShow()
