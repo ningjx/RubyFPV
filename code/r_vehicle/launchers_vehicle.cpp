@@ -165,7 +165,7 @@ void vehicle_stop_tx_router()
    hw_stop_process(szRouter);
 }
 
-#if defined (HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA_ZERO3)
+#if defined (HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 static void * _thread_audio_capture(void *argument)
 {
    s_bAudioCaptureIsStarted = true;
@@ -280,7 +280,6 @@ void vehicle_stop_audio_capture(Model* pModel)
    if ( NULL == pModel || (! pModel->audio_params.has_audio_device) )
       return;
 
-   //hw_execute_bash_command("kill -9 $(pidof arecord) 2>/dev/null", NULL);
    #if defined (HW_PLATFORM_RASPBERRY)
    hw_stop_process("arecord");
    #endif
@@ -310,7 +309,7 @@ static void * _thread_adjust_affinities_vehicle(void *argument)
    log_line("Started background thread to adjust processes affinities (arg: %p, veye: %d (%d))...", argument, (int)bVeYe, (int)s_bAdjustAffinitiesIsVeyeCamera);
    int iSelfPID = getpid();
    int iSelfId = 0;
-   #if defined(HW_PLATFORM_RADXA_ZERO3) || defined(HW_PLATFORM_OPENIPC_CAMERA)
+   #if defined(HW_PLATFORM_RADXA) || defined(HW_PLATFORM_OPENIPC_CAMERA)
    iSelfId = gettid();
    #endif
 

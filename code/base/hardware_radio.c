@@ -1288,7 +1288,7 @@ int hardware_radio_load_radio_modules(int iEchoToConsole)
    #if defined(HW_PLATFORM_OPENIPC_CAMERA)
    log_line("[HardwareRadio] Adding radio modules on OpenIPC for detected radio cards...");
    #endif
-   #if defined(HW_PLATFORM_RADXA_ZERO3)
+   #if defined(HW_PLATFORM_RADXA)
    log_line("[HardwareRadio] Adding radio modules on Radxa for detected radio cards...");
    #endif
 
@@ -1426,7 +1426,16 @@ int _hardware_try_install_rtl8812au(char* szSrcDriver)
    if ( access(szDriverFullPath, R_OK) == -1 )
    {
       log_softerror_and_alarm("[HardwareRadio] Can't access driver file: [%s]", szDriverFullPath);
-      return 0;
+      if ( ! hardware_is_running_on_runcam_vrx() )
+         return 0;
+
+      strcpy(szDriverFullPath, "/home/88XXau_wfb.ko");
+      log_line("[HardwareRadio] Driver file to use: [%s]", szDriverFullPath);
+      if ( access(szDriverFullPath, R_OK) == -1 )
+      {
+         log_softerror_and_alarm("[HardwareRadio] Can't access driver file: [%s]", szDriverFullPath);
+         return 0;
+      }
    }
 
    char szComm[256];
@@ -1496,7 +1505,7 @@ int hardware_install_driver_rtl8812au(int iEchoToConsole)
 
    #endif
 
-   #if defined HW_PLATFORM_RADXA_ZERO3
+   #if defined HW_PLATFORM_RADXA
    char szDriverFile[128];
    strcpy(szDriverFile, "88XXau-radxa.ko");
    return _hardware_try_install_rtl8812au(szDriverFile);
@@ -1526,7 +1535,16 @@ int _hardware_try_install_rtl8812eu(char* szSrcDriver)
    if ( access(szDriverFullPath, R_OK) == -1 )
    {
       log_softerror_and_alarm("[HardwareRadio] Can't access driver file: [%s]", szDriverFullPath);
-      return 0;
+      if ( ! hardware_is_running_on_runcam_vrx() )
+         return 0;
+
+      strcpy(szDriverFullPath, "/home/8812eu_radxa.ko");
+      log_line("[HardwareRadio] Driver file to use: [%s]", szDriverFullPath);
+      if ( access(szDriverFullPath, R_OK) == -1 )
+      {
+         log_softerror_and_alarm("[HardwareRadio] Can't access driver file: [%s]", szDriverFullPath);
+         return 0;
+      }
    }
 
    char szComm[256];
@@ -1596,7 +1614,7 @@ int hardware_install_driver_rtl8812eu(int iEchoToConsole)
    return _hardware_try_install_rtl8812eu(szDriverFile);
    #endif
 
-   #if defined HW_PLATFORM_RADXA_ZERO3
+   #if defined HW_PLATFORM_RADXA
    char szDriverFile[128];
    strcpy(szDriverFile, "8812eu-radxa.ko");
    return _hardware_try_install_rtl8812eu(szDriverFile);
@@ -1630,7 +1648,7 @@ void hardware_install_drivers(int iEchoToConsole)
    removeTrailingNewLines(szPlatform);
    log_line("Platform: [%s]", szPlatform);
 
-   log_line("[HardwareRadio] Installing drivers for platform: %s ...", szPlatform);
+   log_line("[HardwareRadio] Installing drivers for platform: %s, board: %s ...", szPlatform, str_get_hardware_board_name(hardware_getBoardType()));
    if ( iEchoToConsole )
    {
       printf("Ruby: Installing drivers for platform: %s ...\n", szPlatform);
@@ -1722,7 +1740,7 @@ void hardware_install_drivers(int iEchoToConsole)
       }
    }
 
-   #if defined HW_PLATFORM_RADXA_ZERO3
+   #if defined HW_PLATFORM_RADXA
 
    hw_execute_bash_command("lsusb", NULL);
    hw_execute_bash_command("sudo modprobe -r aic8800_fdrv 2>&1 1>/dev/null", NULL);

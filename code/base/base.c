@@ -374,6 +374,23 @@ char* removeLeadingWhiteSpace(char* szBuff)
    return p;
 }
 
+char* replaceNewLinesToSpaces(char* szBuff)
+{
+   if ( (NULL == szBuff) || (0 == szBuff[0]) )
+      return szBuff;
+      
+   removeTrailingNewLines(szBuff);
+
+   int iLen = strlen(szBuff);
+   for( int i=0; i<iLen; i++ )
+   {
+      if ( (szBuff[i] >= 10) && (szBuff[i] <= 14) )
+         szBuff[i] = ' ';
+   }
+   return szBuff;
+
+}
+
 int _log_check_for_service_log_access()
 {
    if ( 0 == s_logUseService )
@@ -531,7 +548,7 @@ void log_arguments(int argc, char *argv[])
    strcpy(szHWPlatform, "Linux");
    #elif defined(HW_PLATFORM_RASPBERRY)
    strcpy(szHWPlatform, "PI");
-   #elif defined(HW_PLATFORM_RADXA_ZERO3)
+   #elif defined(HW_PLATFORM_RADXA)
    strcpy(szHWPlatform, "RadxaZero3");
    #endif
    log_line_forced_to_file("Process version: %d.%d (b%d) HW: %s", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR/10, SYSTEM_SW_BUILD_NUMBER, szHWPlatform);
@@ -1172,7 +1189,7 @@ void log_dword_bits(const char* szText, u32 value)
 
 void log_error_and_alarm(const char* format, ...)
 {
-   //hardware_setCriticalErrorFlag();
+   //hardware_led_red_set_blinking_fast(2000);
 
    if ( s_logDisabled )
       return;
@@ -1272,7 +1289,7 @@ void log_error_and_alarm(const char* format, ...)
 
 void log_softerror_and_alarm(const char* format, ...)
 {
-   //hardware_setRecoverableErrorFlag();
+   //hardware_led_red_set_blinking(2000);
 
    if ( s_logDisabled )
       return;

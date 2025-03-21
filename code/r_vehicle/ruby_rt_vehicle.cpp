@@ -100,6 +100,7 @@
 #include "video_source_csi.h"
 #include "video_source_majestic.h"
 #include "video_tx_buffers.h"
+#include "negociate_radio.h"
 
 #define MAX_RECV_UPLINK_HISTORY 12
 #define SEND_ALARM_MAX_COUNT 5
@@ -788,7 +789,7 @@ int process_and_send_packets()
          {
             if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_LINK_STATS) )
                bMustInjectVideoDevStats = true;
-            if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->osd_params.osd_flags2[g_pCurrentModel->osd_params.iCurrentOSDLayout] & OSD_FLAG2_SHOW_ADAPTIVE_VIDEO_GRAPH) )
+            if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->osd_params.osd_flags2[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG2_SHOW_ADAPTIVE_VIDEO_GRAPH) )
                bMustInjectVideoDevStats = true;
             if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_LINK_GRAPHS) )
                bMustInjectVideoDevGraphs = true;
@@ -850,7 +851,7 @@ int process_and_send_packets()
 void _synchronize_shared_mems()
 {
    /*
-   if ( g_pCurrentModel->osd_params.osd_flags[g_pCurrentModel->osd_params.iCurrentOSDLayout] & OSD_FLAG_SHOW_STATS_VIDEO_H264_FRAMES_INFO)
+   if ( g_pCurrentModel->osd_params.osd_flags[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG_SHOW_STATS_VIDEO_H264_FRAMES_INFO)
    if ( g_TimeNow >= g_VideoInfoStatsCameraOutput.uTimeLastUpdate + 200 )
    {
       update_shared_mem_video_frames_stats( &g_VideoInfoStatsCameraOutput, g_TimeNow);
@@ -869,7 +870,7 @@ void _synchronize_shared_mems()
    */
 
    /*
-   if ( g_pCurrentModel->osd_params.osd_flags[g_pCurrentModel->osd_params.iCurrentOSDLayout] & OSD_FLAG_SHOW_STATS_VIDEO_H264_FRAMES_INFO)
+   if ( g_pCurrentModel->osd_params.osd_flags[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG_SHOW_STATS_VIDEO_H264_FRAMES_INFO)
    if ( g_TimeNow >= g_VideoInfoStatsRadioOut.uTimeLastUpdate + 200 )
    {
       update_shared_mem_video_frames_stats( &g_VideoInfoStatsRadioOut, g_TimeNow);
@@ -1210,6 +1211,8 @@ int main(int argc, char *argv[])
       test_majestic();
       return 0;
    }
+
+   hardware_detectBoardAndSystemType();
 
    g_uControllerId = vehicle_utils_getControllerId();
    load_VehicleSettings();
@@ -1921,7 +1924,7 @@ void _main_loop()
       if ( g_bHasLinkToController )
       {
          g_bHasLinkToController = false;
-         if ( g_pCurrentModel->osd_params.osd_preferences[g_pCurrentModel->osd_params.iCurrentOSDLayout] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM )
+         if ( g_pCurrentModel->osd_params.osd_preferences[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM )
             send_alarm_to_controller(ALARM_ID_LINK_TO_CONTROLLER_LOST, 0, 0, 5);
       }
 

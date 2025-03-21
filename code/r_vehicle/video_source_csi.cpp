@@ -91,7 +91,7 @@ static void * _thread_watchdog_video_capture(void *ignored_argument)
    {
       for( int i=0; i<100; i++)
       {
-         hardware_sleep_ms(20);
+         hardware_sleep_ms(40);
          if ( g_bQuit || s_bStopThreadWatchDogVideoCapture )
          {
             s_bStopThreadWatchDogVideoCapture = false;
@@ -135,9 +135,10 @@ static void * _thread_watchdog_video_capture(void *ignored_argument)
          {
             log_line("[VideoCaptureCSITh] Can't find the running video capture program. Search for it.");
             char szOutput[2048];
-            hw_execute_bash_command("pidof ruby_capture_raspi", szOutput);
+            hw_process_get_pids("ruby_capture_raspi", szOutput);
+            removeTrailingNewLines(szOutput);
             log_line("[VideoCaptureCSITh] PID of ruby capture: [%s]", szOutput);
-            hw_execute_bash_command_raw("ps -aef | grep ruby 2>&1", szOutput);
+            hw_execute_bash_command_raw("ps -ef | grep ruby 2>&1", szOutput);
             log_line("[VideoCaptureCSITh] Current running Ruby processes: [%s]", szOutput);
             if ( NULL != strstr(szOutput, "ruby_capture_") )
             {
@@ -408,13 +409,25 @@ void video_source_csi_start_program()
 
    s_bStopThreadWatchDogVideoCapture = false;
    s_bHasThreadWatchDogVideoCapture = false;
-   if ( 0 != pthread_create(&s_pThreadWatchDogVideoCapture, NULL, &_thread_watchdog_video_capture, NULL) )
+
+   pthread_attr_t attr;
+   struct sched_param params;
+
+   pthread_attr_init(&attr);
+   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+   pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+   pthread_attr_setschedpolicy(&attr, SCHED_OTHER);
+   params.sched_priority = 0;
+   pthread_attr_setschedparam(&attr, &params);
+   
+   if ( 0 != pthread_create(&s_pThreadWatchDogVideoCapture, &attr, &_thread_watchdog_video_capture, NULL) )
       log_softerror_and_alarm("[VideoSourceCSI] Failed to create thread for watchdog.");
    else
    {
       s_bHasThreadWatchDogVideoCapture = true;
       log_line("[VideoSourceCSI] Created thread for watchdog.");
    }
+   pthread_attr_destroy(&attr);
    adaptive_video_on_capture_restarted();
    s_uRaspiVidStartTimeMs = g_TimeNow;
    s_bDidSentRaspividBitrateRefresh = false;
@@ -477,8 +490,10 @@ bool video_source_csi_is_restart_requested()
 void video_source_csi_send_control_message(u8 parameter, u16 value1, u16 value2)
 {
    if ( (NULL == g_pCurrentModel) || (! g_pCurrentModel->hasCamera()) || (-1 == s_fInputVideoStreamCSIPipe) )
+   {
+      log_softerror_and_alarm("[VideoSourceCSI] Tried to send a raspi CSI command with no model or pipe opened.");
       return;
-
+   }
    #ifdef HW_PLATFORM_RASPBERRY
 
    if ( (! g_pCurrentModel->isActiveCameraCSICompatible()) && (! g_pCurrentModel->isActiveCameraVeye()) )
@@ -489,13 +504,13 @@ void video_source_csi_send_control_message(u8 parameter, u16 value1, u16 value2)
 
    if ( s_bRequestedVideoCSICaptureRestart )
    {
-      log_line("[VideoSourceCSI] Video capture is restarting, do not send command (%d) to video capture program.", parameter);
+      log_softerror_and_alarm("[VideoSourceCSI] Video capture is restarting, do not send command (%d) to video capture program.", parameter);
       return;
    }
 
    if ( ! s_bVideoCSICaptureProgramStarted )
    {
-      log_line("[VideoSourceCSI] Video capture is not started, do not send command (%d) to video capture program.", parameter);
+      log_softerror_and_alarm("[VideoSourceCSI] Video capture is not started, do not send command (%d) to video capture program.", parameter);
       return;
    }
 

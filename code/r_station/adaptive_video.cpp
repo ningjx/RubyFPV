@@ -365,7 +365,7 @@ void _adaptive_keyframe_check_vehicle(Model* pModel, type_global_state_vehicle_r
 
 void adaptive_video_periodic_loop(bool bForceSyncNow)
 {
-   if ( (g_TimeNow < g_TimeStart + 4000) || g_bNegociatingRadioLinks || test_link_is_in_progress() )
+   if ( (g_TimeNow < g_TimeStart + 4000) || g_bNegociatingRadioLinks || test_link_is_in_progress() || g_bUpdateInProgress )
       return;
 
    if ( 0 != s_uTimePauseAdaptiveVideoUntil )
@@ -388,6 +388,9 @@ void adaptive_video_periodic_loop(bool bForceSyncNow)
       if ( (NULL == pModel) || pModel->isVideoLinkFixedOneWay() || (! pModel->hasCamera()) || (get_sw_version_build(pModel) < 242) )
          continue;
 
+      if ( ! is_sw_version_atleast(pModel, 10, 6) )
+         continue;
+        
       shared_mem_video_stream_stats* pSMVideoStreamInfo = get_shared_mem_video_stream_stats_for_vehicle(&g_SM_VideoDecodeStats, g_State.vehiclesRuntimeInfo[i].uVehicleId);
       ProcessorRxVideo* pProcessorRxVideo = ProcessorRxVideo::getVideoProcessorForVehicleId(pModel->uVehicleId, 0);
 

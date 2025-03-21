@@ -101,6 +101,56 @@ void update_openipc_cpu(Model* pModel)
 }
 
 
+void do_update_to_108()
+{
+   log_line("Doing update to 10.8");
+ 
+   if ( ! s_isVehicle )
+   {
+      load_ControllerSettings();
+      ControllerSettings* pCS = get_ControllerSettings();
+      pCS->iNiceRXVideo = DEFAULT_PRIORITY_PROCESS_VIDEO_RX;
+      save_ControllerSettings();
+      load_Preferences();
+      Preferences* pP = get_Preferences();
+      pP->nLogLevel = 1;
+      save_Preferences();
+   }
+
+   Model* pModel = getCurrentModel();
+   if ( NULL == pModel )
+      return;
+
+   pModel->processesPriorities.iNiceVideo = DEFAULT_PRIORITY_PROCESS_VIDEO_TX;
+   
+   log_line("Updated model VID %u (%s) to v10.8", pModel->uVehicleId, pModel->getLongName());
+}
+
+
+void do_update_to_107()
+{
+   log_line("Doing update to 10.7");
+ 
+   if ( ! s_isVehicle )
+   {
+      load_ControllerSettings();
+      ControllerSettings* pCS = get_ControllerSettings();
+      save_ControllerSettings();
+      load_Preferences();
+      Preferences* pP = get_Preferences();
+      pP->nLogLevel = 1;
+      save_Preferences();
+   }
+
+   Model* pModel = getCurrentModel();
+   if ( NULL == pModel )
+      return;
+
+   pModel->osd_params.uFlags |= OSD_BIT_FLAGS_MUST_CHOOSE_PRESET;
+
+   log_line("Updated model VID %u (%s) to v10.7", pModel->uVehicleId, pModel->getLongName());
+}
+
 
 void do_update_to_106()
 {
@@ -139,7 +189,7 @@ void do_update_to_106()
    pModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS;
    pModel->resetOSDStatsFlags();
 
-   if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
    {
       for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
          pModel->video_link_profiles[i].fps = DEFAULT_VIDEO_FPS_OIPC;
@@ -218,7 +268,7 @@ void do_update_to_104()
    if ( NULL == pModel )
       return;
 
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
       pModel->osd_params.osd_flags3[i] &= ~((u32)(((u32)0x01)<<12));
 
 
@@ -239,11 +289,11 @@ void do_update_to_104()
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
    {
       pModel->video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE;
-      if ( (hardware_getOnlyBoardType() == BOARD_TYPE_PIZERO) ||
-           (hardware_getOnlyBoardType() == BOARD_TYPE_PIZEROW) ||
-           hardware_board_is_goke(hardware_getOnlyBoardType()) )
+      if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
+           ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
+           hardware_board_is_goke(hardware_getBoardType()) )
          pModel->video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
          pModel->video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
    }
 
@@ -316,7 +366,7 @@ void do_update_to_103()
    }
    pModel->video_link_profiles[VIDEO_PROFILE_BEST_PERF].uProfileFlags = 0; // lowest
 
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
       pModel->osd_params.osd_preferences[i] &= ~(OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM); // controller link lost alarm disabled
 
    pModel->osd_params.osd_flags2[0] |= OSD_FLAG2_LAYOUT_ENABLED;
@@ -324,8 +374,8 @@ void do_update_to_103()
    pModel->osd_params.osd_flags2[2] &= ~ OSD_FLAG2_LAYOUT_ENABLED;
    pModel->osd_params.osd_flags2[3] |= OSD_FLAG2_LAYOUT_ENABLED;
    pModel->osd_params.osd_flags2[4] &= ~ OSD_FLAG2_LAYOUT_ENABLED;
-   if ( (pModel->osd_params.iCurrentOSDLayout != 0) && (pModel->osd_params.iCurrentOSDLayout != 3) )
-      pModel->osd_params.iCurrentOSDLayout = 0;
+   if ( (pModel->osd_params.iCurrentOSDScreen != 0) && (pModel->osd_params.iCurrentOSDScreen != 3) )
+      pModel->osd_params.iCurrentOSDScreen = 0;
    
    pModel->uModelFlags |= MODEL_FLAG_PRIORITIZE_UPLINK;
 
@@ -336,7 +386,7 @@ void do_update_to_103()
 
    #if defined (HW_PLATFORM_OPENIPC_CAMERA)
    update_openipc_cpu(pModel);
-   if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
    {
       pModel->processesPriorities.iFreqARM = DEFAULT_FREQ_OPENIPC_SIGMASTAR;
       pModel->processesPriorities.iFreqGPU = 0;
@@ -349,7 +399,7 @@ void do_update_to_103()
    pModel->rxtx_sync_type = RXTX_SYNC_TYPE_BASIC;
   
    pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
-   if ( hardware_board_is_openipc(hardware_getOnlyBoardType()) )
+   if ( hardware_board_is_openipc(hardware_getBoardType()) )
       pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
 
    pModel->enc_flags = MODEL_ENC_FLAGS_NONE;
@@ -399,7 +449,7 @@ void do_update_to_102()
       pModel->radioLinksParams.uDownlinkDataDataRateType[i] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO;
    }
 
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       pModel->osd_params.osd_preferences[i] &= 0xFFFFFF00;
       pModel->osd_params.osd_preferences[i] |= 2;
@@ -412,7 +462,7 @@ void do_update_to_102()
          for( int k=0; k<MODEL_CAMERA_PROFILES-1; k++ )
          {
             pModel->camera_params[i].profiles[k].shutterspeed = 0; // auto
-            if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+            if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
                pModel->camera_params[i].profiles[k].shutterspeed = 8; //milisec
          }
       }   
@@ -424,9 +474,9 @@ void do_update_to_102()
          pModel->video_link_profiles[i].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
 
       pModel->video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME;
-      if ( hardware_board_is_goke(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_goke(hardware_getBoardType()) )
          pModel->video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME_OIPC_GOKE;
-      if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
          pModel->video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME_OIPC_SIGMASTAR;
    }
 
@@ -474,7 +524,7 @@ void do_update_to_101()
    }
    pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
 
-   if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
       pModel->video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
    
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
@@ -490,9 +540,9 @@ void do_update_to_101()
          pModel->video_link_profiles[i].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
 
       pModel->video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME;
-      if ( hardware_board_is_goke(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_goke(hardware_getBoardType()) )
          pModel->video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME_OIPC_GOKE;
-      if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
          pModel->video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME_OIPC_SIGMASTAR;
 
       pModel->video_link_profiles[i].h264profile = 2; // high
@@ -557,7 +607,7 @@ void do_update_to_100()
       }
    }
 
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       pModel->osd_params.osd_flags[i] |= OSD_FLAG_SHOW_FLIGHT_MODE_CHANGE;
    }
@@ -589,7 +639,7 @@ void do_update_to_98()
       //Preferences* pP = get_Preferences();
       save_Preferences();
 
-      #if defined (HW_PLATFORM_RADXA_ZERO3)
+      #if defined (HW_PLATFORM_RADXA)
       hardware_set_default_radxa_cpu_freq();
       hw_execute_bash_command("sed -i '/98:03:cf/d' /etc/udev/rules.d/98-custom-wifi.rules", NULL);
       #endif
@@ -623,7 +673,7 @@ void do_update_to_98()
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
    {
       pModel->video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME;
-      if ( hardware_board_is_goke(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_goke(hardware_getBoardType()) )
          pModel->video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME_OIPC_GOKE;
 
       pModel->video_link_profiles[i].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
@@ -715,7 +765,7 @@ void do_update_to_97()
       pModel->video_link_profiles[i].video_data_length = DEFAULT_VIDEO_DATA_LENGTH;
    }
 
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       pModel->osd_params.osd_flags3[i] |= OSD_FLAG3_RENDER_MSP_OSD;
    }
@@ -769,7 +819,7 @@ void do_update_to_96()
          pModel->video_link_profiles[i].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;   
    }
 
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       pModel->osd_params.osd_flags2[i] &= (~OSD_FLAG2_SHOW_STATS_RADIO_LINKS);
    }
@@ -804,7 +854,7 @@ void do_update_to_95()
       pModel->video_link_profiles[i].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH;
 
       #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-      if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
       {
          if ( pModel->video_link_profiles[i].fps < DEFAULT_VIDEO_FPS_OIPC )
             pModel->video_link_profiles[i].fps = DEFAULT_VIDEO_FPS_OIPC;
@@ -831,7 +881,7 @@ void do_update_to_94()
       pCS->iNiceRXVideo = DEFAULT_PRIORITY_PROCESS_VIDEO_RX;
       save_ControllerSettings();
 
-      #ifdef HW_PLATFORM_RADXA_ZERO3
+      #ifdef HW_PLATFORM_RADXA
       char szOutput[2048];
       szOutput[0] = 0;
       hw_execute_bash_command_raw("cat /etc/NetworkManager/NetworkManager.conf | grep unmanaged-devices", szOutput);
@@ -931,13 +981,13 @@ void do_update_to_91()
          for( int k=0; k<MODEL_CAMERA_PROFILES-1; k++ )
          {
             pModel->camera_params[i].profiles[k].shutterspeed = 0; // auto
-            if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+            if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
                pModel->camera_params[i].profiles[k].shutterspeed = 10; //milisec
          }
       }   
    }
 
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       //pModel->osd_params.osd_flags2[i] |= OSD_FLAG2_FLASH_OSD_ON_TELEMETRY_DATA_LOST;
    }
@@ -1011,7 +1061,7 @@ void do_update_to_90()
 
    pModel->rc_params.rc_frames_per_second = DEFAULT_RC_FRAMES_PER_SECOND;
    
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       pModel->osd_params.osd_flags3[i] |= OSD_FLAG3_HIGHLIGHT_CHANGING_ELEMENTS;
    }
@@ -1047,7 +1097,7 @@ void do_generic_update()
    #if defined (HW_PLATFORM_RASPBERRY)
    hw_execute_bash_command("cp -rf ruby_update.log /boot/", NULL);
    #endif
-   #if defined (HW_PLATFORM_RADXA_ZERO3)
+   #if defined (HW_PLATFORM_RADXA)
    hw_execute_bash_command("cp -rf ruby_update.log /config/", NULL);
    #endif
    #if defined (HW_PLATFORM_OPENIPC_CAMERA)
@@ -1085,6 +1135,8 @@ int main(int argc, char *argv[])
 
    log_init("RubyUpdate");
 
+   hardware_detectBoardAndSystemType();
+
    if ( argc >= 3 )
    {
       iMajor = atoi(argv[1]);
@@ -1111,7 +1163,6 @@ int main(int argc, char *argv[])
       return 0;
    }
 
-   init_hardware_only_status_led();
    getSystemType();
 
    u32 uCurrentVersion = 0;
@@ -1227,6 +1278,10 @@ int main(int argc, char *argv[])
       do_update_to_105();
    if ( (iMajor < 10) || (iMajor == 10 && iMinor <= 6) )
       do_update_to_106();
+   if ( (iMajor < 10) || (iMajor == 10 && iMinor <= 7) )
+      do_update_to_107();
+   if ( (iMajor < 10) || (iMajor == 10 && iMinor <= 8) )
+      do_update_to_108();
 
 
    saveCurrentModel();

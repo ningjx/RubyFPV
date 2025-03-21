@@ -31,6 +31,7 @@
 */
 
 #include "../base/alarms.h"
+#include "../base/hardware.h"
 #include "../base/hw_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/ctrl_interfaces.h"
@@ -196,6 +197,8 @@ int send_packet_to_router(u8* pPacket, int nLength)
       log_softerror_and_alarm("[Router COMM] No IPC to router to send message to.");
       return 0; 
    }
+   if ( hardware_is_running_on_runcam_vrx() )
+      hardware_led_green_set_blinking_fast(1000);
    int iRes = ruby_ipc_channel_send_message(s_fIPCToRouter, pPacket, nLength);
    if ( iRes != nLength )
       log_softerror_and_alarm("[Router COM] Failed to send message to router (msg size: %d bytes), error: %d", nLength, iRes);
@@ -268,7 +271,7 @@ void _process_received_ruby_telemetry_extended(u8* pPacketBuffer)
       iTelemetryVersion = 4;
    if ( pPH->total_length == ((u16)sizeof(t_packet_header)+(u16)sizeof(t_packet_header_ruby_telemetry_extended_v4) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions)) )
       iTelemetryVersion = 4;
-      
+
    if ( iTelemetryVersion == 0 )
    {
       log_softerror_and_alarm("Received unknown ruby telemetry version from vehicle id %u", pPH->vehicle_id_src);
@@ -288,7 +291,6 @@ void _process_received_ruby_telemetry_extended(u8* pPacketBuffer)
             break;
          }
       }
-      pRuntimeInfo->bGotRubyTelemetryInfo = true;
       if ( g_bSearching )
          log_line("Start receiving Ruby telemetry (version %d) from router for vehicle id %u, runtime index: search", iTelemetryVersion, pRuntimeInfo->uVehicleId);
       else
@@ -296,6 +298,7 @@ void _process_received_ruby_telemetry_extended(u8* pPacketBuffer)
       log_current_runtime_vehicles_info();
    }
 
+   pRuntimeInfo->bGotRubyTelemetryInfo = true;
    pRuntimeInfo->uTimeLastRecvRubyTelemetry = g_TimeNow;
    pRuntimeInfo->uTimeLastRecvRubyTelemetryExtended = g_TimeNow;
    pRuntimeInfo->uTimeLastRecvAnyRubyTelemetry = g_TimeNow;
@@ -310,7 +313,7 @@ void _process_received_ruby_telemetry_extended(u8* pPacketBuffer)
       int dx = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v3);
       int totalLength = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v3);
    
-      if ( pPHRTE->flags & FLAG_RUBY_TELEMETRY_HAS_EXTENDED_INFO )
+      if ( pPHRTE->uRubyFlags & FLAG_RUBY_TELEMETRY_HAS_EXTENDED_INFO )
       {
          t_packet_header_ruby_telemetry_extended_extra_info* pPHRTExtraInfo = (t_packet_header_ruby_telemetry_extended_extra_info*)(pPacketBuffer + dx);
          dx += sizeof(t_packet_header_ruby_telemetry_extended_extra_info);
@@ -345,7 +348,7 @@ void _process_received_ruby_telemetry_extended(u8* pPacketBuffer)
       int dx = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v4);
       int totalLength = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v4);
    
-      if ( pPHRTE->flags & FLAG_RUBY_TELEMETRY_HAS_EXTENDED_INFO )
+      if ( pPHRTE->uRubyFlags & FLAG_RUBY_TELEMETRY_HAS_EXTENDED_INFO )
       {
          t_packet_header_ruby_telemetry_extended_extra_info* pPHRTExtraInfo = (t_packet_header_ruby_telemetry_extended_extra_info*)(pPacketBuffer + dx);
          dx += sizeof(t_packet_header_ruby_telemetry_extended_extra_info);
@@ -374,7 +377,7 @@ void _process_received_ruby_telemetry_extended(u8* pPacketBuffer)
    if ( bFirstTimeGotTelemetry )
    {
       log_line("Received telemetry has camera flag set? %s",
-          (pRuntimeInfo->headerRubyTelemetryExtended.flags & FLAG_RUBY_TELEMETRY_VEHICLE_HAS_CAMERA)?"yes":"no");
+          (pRuntimeInfo->headerRubyTelemetryExtended.uRubyFlags & FLAG_RUBY_TELEMETRY_VEHICLE_HAS_CAMERA)?"yes":"no");
       onEventPairingStartReceivingData();
    }
    
@@ -867,11 +870,12 @@ int _process_received_message_from_router(u8* pPacketBuffer)
       pRuntimeInfo->tmp_iCountFCTelemetryPacketsShort++;
 
       t_packet_header_fc_telemetry PHFCT;
-      if ( pRuntimeInfo->bGotFCTelemetry )
+      if ( pRuntimeInfo->bGotFCTelemetryFull )
          memcpy((u8*)&PHFCT, &(pRuntimeInfo->headerFCTelemetry), sizeof(t_packet_header_fc_telemetry));
       else
          memset((u8*)&PHFCT, 0, sizeof(t_packet_header_fc_telemetry));
 
+      PHFCT.uFCFlags = pPHRTS->uFCFlags;
       PHFCT.flight_mode = pPHRTS->flight_mode;
       PHFCT.throttle = pPHRTS->throttle;
       PHFCT.voltage = pPHRTS->voltage; // 1/1000 volts
@@ -930,6 +934,7 @@ int _process_received_message_from_router(u8* pPacketBuffer)
          log_line("Start receiving FC telemetry from router for vehicle id %u.", pRuntimeInfo->uVehicleId);
          log_current_runtime_vehicles_info();
       }
+      pRuntimeInfo->bGotFCTelemetryFull = true;
       pRuntimeInfo->uTimeLastRecvFCTelemetry = g_TimeNow;
       pRuntimeInfo->uTimeLastRecvFCTelemetryFull = g_TimeNow;
       pRuntimeInfo->tmp_iCountFCTelemetryPacketsFull++;
@@ -949,12 +954,13 @@ int _process_received_message_from_router(u8* pPacketBuffer)
          log_line("Start receiving FC telemetry extended from router for vehicle id %u.", pRuntimeInfo->uVehicleId);
          log_current_runtime_vehicles_info();
       }
+      pRuntimeInfo->bGotFCTelemetryFull = true;
       pRuntimeInfo->uTimeLastRecvFCTelemetry = g_TimeNow;
       pRuntimeInfo->uTimeLastRecvFCTelemetryFull = g_TimeNow;
       pRuntimeInfo->tmp_iCountFCTelemetryPacketsFull++;      
       memcpy(&(pRuntimeInfo->headerFCTelemetry), pPacketBuffer+sizeof(t_packet_header), sizeof(t_packet_header_fc_telemetry) );
       
-      if ( pRuntimeInfo->headerFCTelemetry.flags & FC_TELE_FLAGS_HAS_MESSAGE )
+      if ( pRuntimeInfo->headerFCTelemetry.uFCFlags & FC_TELE_FLAGS_HAS_MESSAGE )
       {
          memcpy(&(pRuntimeInfo->headerFCTelemetryExtra), pPacketBuffer+sizeof(t_packet_header) + sizeof(t_packet_header_fc_telemetry), sizeof(t_packet_header_fc_extra) );
          pRuntimeInfo->bGotFCTelemetryExtra = true;
@@ -1241,7 +1247,7 @@ int _process_received_message_from_router(u8* pPacketBuffer)
             bool bShowAlarm = true;
             t_structure_vehicle_info* pRuntimeInfo = _get_runtime_info_for_packet(pPacketBuffer);
             if ( (NULL != pRuntimeInfo) && (NULL != pRuntimeInfo->pModel) )
-            if ( ! (pRuntimeInfo->pModel->osd_params.osd_preferences[pRuntimeInfo->pModel->osd_params.iCurrentOSDLayout] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM) )
+            if ( ! (pRuntimeInfo->pModel->osd_params.osd_preferences[pRuntimeInfo->pModel->osd_params.iCurrentOSDScreen] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM) )
                bShowAlarm = false;
 
             if ( bShowAlarm )
@@ -1437,9 +1443,9 @@ int try_read_messages_from_router(u32 uMaxMiliseconds)
          else
              _process_received_message_from_router(pResult);
 
-         if ( iCountMessagesProcessed > 15 )
+         if ( iCountMessagesProcessed > MAX_ROUTER_MESSAGES/3 )
          {
-            log_softerror_and_alarm("Processing too many messages from router.");
+            log_softerror_and_alarm("Processing too many messages from router (%d messages)", iCountMessagesProcessed);
             return iCountMessagesProcessed;
          }
       }

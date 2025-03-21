@@ -266,7 +266,7 @@ int _replace_runtime_binary_files()
    #ifdef HW_PLATFORM_RASPBERRY
    snprintf(szSrcBinariesFolder, sizeof(szSrcBinariesFolder)/sizeof(szSrcBinariesFolder[0]), "%s%s", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
    #endif
-   #ifdef HW_PLATFORM_RADXA_ZERO3
+   #ifdef HW_PLATFORM_RADXA
    snprintf(szSrcBinariesFolder, sizeof(szSrcBinariesFolder)/sizeof(szSrcBinariesFolder[0]), "%s%s", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_RADXA);
    #endif
    #ifdef HW_PLATFORM_OPENIPC_CAMERA
@@ -398,7 +398,7 @@ int _copy_plugin_files()
    #ifdef HW_PLATFORM_RASPBERRY
    snprintf(szSrcPluginsFolder, sizeof(szSrcPluginsFolder)/sizeof(szSrcPluginsFolder[0]), "%s%splugins/", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
    #endif
-   #ifdef HW_PLATFORM_RADXA_ZERO3
+   #ifdef HW_PLATFORM_RADXA
    snprintf(szSrcPluginsFolder, sizeof(szSrcPluginsFolder)/sizeof(szSrcPluginsFolder[0]), "%s%splugins/", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_RADXA);
    #endif
    #ifdef HW_PLATFORM_OPENIPC_CAMERA
@@ -595,6 +595,9 @@ int main(int argc, char *argv[])
    }
    
    log_init("RubyUpdateWorker");
+
+   hardware_detectBoardAndSystemType();
+
    hardware_sleep_ms(500);
 
    char szComm[MAX_FILE_PATH_SIZE];
@@ -681,6 +684,6 @@ int main(int argc, char *argv[])
    for( int i=0; i<10; i++ )
       hardware_sleep_ms(200);
    _write_return_code(1, "Completed");
-
+   log_line("Process finished.");
    return (0);
 } 

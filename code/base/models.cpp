@@ -577,7 +577,7 @@ bool Model::loadVersion10(FILE* fd)
    if ( video_params.iH264Slices < 1 || video_params.iH264Slices > 16 )
    {
       video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
-      if ( hardware_board_is_openipc(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_openipc(hardware_getBoardType()) )
          video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
    }
    video_params.videoAdjustmentStrength = tmp2;
@@ -777,7 +777,7 @@ bool Model::loadVersion10(FILE* fd)
    //----------------------------------------
    // OSD
 
-   if ( 5 != fscanf(fd, "%*s %d %d %f %d %d", &osd_params.iCurrentOSDLayout, &tmp1, &osd_params.voltage_alarm, &tmp2, &tmp3) )
+   if ( 5 != fscanf(fd, "%*s %d %d %f %d %d", &osd_params.iCurrentOSDScreen, &tmp1, &osd_params.voltage_alarm, &tmp2, &tmp3) )
       { log_softerror_and_alarm("Load model8: Error on line 29"); return false; }
    osd_params.voltage_alarm_enabled = (bool)tmp1;
    osd_params.altitude_relative = (bool)tmp2;
@@ -1007,6 +1007,18 @@ bool Model::loadVersion10(FILE* fd)
    }
    audio_params.uECScheme = (u8)tmp1;
    audio_params.uPacketLength = (u16)tmp2;
+
+   if ( bOk )
+   {
+      for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
+      {
+         if ( 1 != fscanf(fd, "%d", &tmp1) )
+            osd_params.osd_layout_preset[i] = OSD_PRESET_DEFAULT;
+         else
+            osd_params.osd_layout_preset[i] = (u8)tmp1;
+      }
+   }
+
    //--------------------------------------------------
    // End reading file;
    //----------------------------------------
@@ -1375,13 +1387,13 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
    //----------------------------------------
    // OSD 
 
-   sprintf(szSetting, "osd: %d %d %f %d %d\n", osd_params.iCurrentOSDLayout, osd_params.voltage_alarm_enabled, osd_params.voltage_alarm, osd_params.altitude_relative, osd_params.show_gps_position); 
+   sprintf(szSetting, "osd: %d %d %f %d %d\n", osd_params.iCurrentOSDScreen, osd_params.voltage_alarm_enabled, osd_params.voltage_alarm, osd_params.altitude_relative, osd_params.show_gps_position); 
    strcat(szModel, szSetting);
    sprintf(szSetting, "%d %d %d %d %d\n", osd_params.battery_show_per_cell, osd_params.battery_cell_count, osd_params.battery_capacity_percent_alarm, osd_params.invert_home_arrow, osd_params.home_arrow_rotate); 
    strcat(szModel, szSetting);
    sprintf(szSetting, "%d %d %d %d %d %d %d\n", osd_params.show_overload_alarm, osd_params.show_stats_rx_detailed, osd_params.show_stats_decode, osd_params.show_stats_rc, osd_params.show_full_stats, osd_params.show_instruments, osd_params.ahi_warning_angle);
    strcat(szModel, szSetting);
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       sprintf(szSetting, "%u %u %u %u %u\n", osd_params.osd_flags[i], osd_params.osd_flags2[i], osd_params.osd_flags3[i], osd_params.instruments_flags[i], osd_params.osd_preferences[i]);
       strcat(szModel, szSetting);
@@ -1501,8 +1513,18 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
    sprintf(szSetting, "%d %d %d\n", video_params.iRemovePPSVideoFrames, video_params.iInsertPPSVideoFrames, video_params.iInsertSPTVideoFramesTimings);
    strcat(szModel, szSetting);
 
-   sprintf(szSetting, "%d %d %u", (int)audio_params.uECScheme, (int)audio_params.uPacketLength, audio_params.uDummyA1);
+   sprintf(szSetting, "%d %d %u\n", (int)audio_params.uECScheme, (int)audio_params.uPacketLength, audio_params.uDummyA1);
    strcat(szModel, szSetting);
+
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
+   {
+      sprintf(szSetting, "%u", osd_params.osd_layout_preset[i]);
+      strcat(szModel, szSetting);
+      if ( i < MODEL_MAX_OSD_SCREENS-1 )
+         strcat(szModel, " ");
+      else
+         strcat(szModel, "\n");
+   }
 
    // End writing values to file
    // ---------------------------------------------------
@@ -1518,7 +1540,7 @@ void Model::resetVideoParamsToDefaults()
 
    video_params.user_selected_video_link_profile = VIDEO_PROFILE_HIGH_QUALITY;
    video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
-   if ( hardware_board_is_openipc(hardware_getOnlyBoardType()) )
+   if ( hardware_board_is_openipc(hardware_getBoardType()) )
       video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
    video_params.iRemovePPSVideoFrames = 0;
    video_params.iInsertPPSVideoFrames = 1;
@@ -1556,23 +1578,23 @@ void Model::resetVideoLinkProfiles(int iProfile)
       video_link_profiles[i].video_data_length = DEFAULT_VIDEO_DATA_LENGTH;
 
       video_link_profiles[i].fps = DEFAULT_VIDEO_FPS;
-      if ( hardware_board_is_openipc(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_openipc(hardware_getBoardType()) )
          video_link_profiles[i].fps = DEFAULT_VIDEO_FPS_OIPC;
-      if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
          video_link_profiles[i].fps = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
         
       video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME;
-      if ( hardware_board_is_goke(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_goke(hardware_getBoardType()) )
          video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME_OIPC_GOKE;
-      if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
          video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME_OIPC_SIGMASTAR;
 
       video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE;
-      if ( (hardware_getOnlyBoardType() == BOARD_TYPE_PIZERO) ||
-           (hardware_getOnlyBoardType() == BOARD_TYPE_PIZEROW) ||
-           hardware_board_is_goke(hardware_getOnlyBoardType()) )
+      if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
+           ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
+           hardware_board_is_goke(hardware_getBoardType()) )
          video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
          video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
 
       if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
@@ -1595,9 +1617,9 @@ void Model::resetVideoLinkProfiles(int iProfile)
       video_link_profiles[VIDEO_PROFILE_BEST_PERF].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
       video_link_profiles[VIDEO_PROFILE_BEST_PERF].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HP<<8);
       video_link_profiles[VIDEO_PROFILE_BEST_PERF].bitrate_fixed_bps = DEFAULT_HP_VIDEO_BITRATE;
-      if ( (hardware_getOnlyBoardType() == BOARD_TYPE_PIZERO) ||
-           (hardware_getOnlyBoardType() == BOARD_TYPE_PIZEROW) ||
-           hardware_board_is_goke(hardware_getOnlyBoardType()) )
+      if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
+           ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
+           hardware_board_is_goke(hardware_getBoardType()) )
          video_link_profiles[VIDEO_PROFILE_BEST_PERF].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
 
       video_link_profiles[VIDEO_PROFILE_BEST_PERF].block_packets = DEFAULT_VIDEO_BLOCK_PACKETS_HP;
@@ -2746,12 +2768,17 @@ bool Model::validate_settings()
       }
    }
 
-   if ( osd_params.iCurrentOSDLayout < osdLayout1 || osd_params.iCurrentOSDLayout >= osdLayoutLast )
-      osd_params.iCurrentOSDLayout = osdLayout1;
+   if ( osd_params.iCurrentOSDScreen < osdLayout1 || osd_params.iCurrentOSDScreen >= osdLayoutLast )
+      osd_params.iCurrentOSDScreen = osdLayout1;
 
-   
-   int nOSDFlagsIndex = osd_params.iCurrentOSDLayout;
-   if ( nOSDFlagsIndex < 0 || nOSDFlagsIndex >= MODEL_MAX_OSD_PROFILES )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
+   {
+      if ( (osd_params.osd_layout_preset[i] < 0) || (osd_params.osd_layout_preset[i] > OSD_PRESET_CUSTOM) )
+         osd_params.osd_layout_preset[i] = OSD_PRESET_DEFAULT;
+   }
+
+   int nOSDFlagsIndex = osd_params.iCurrentOSDScreen;
+   if ( nOSDFlagsIndex < 0 || nOSDFlagsIndex >= MODEL_MAX_OSD_SCREENS )
       nOSDFlagsIndex = 0;
    if ( osd_params.show_stats_rc || (osd_params.osd_flags[nOSDFlagsIndex] & OSD_FLAG_SHOW_HID_IN_OSD) )
       rc_params.dummy1 = true;
@@ -2966,7 +2993,7 @@ void Model::resetToDefaults(bool generateId)
 
    hwCapabilities.uBoardType = 0;
    if ( hardware_is_vehicle() )
-      hwCapabilities.uBoardType = hardware_getOnlyBoardType();
+      hwCapabilities.uBoardType = hardware_getBoardType();
    resetHWCapabilities();
 
    if ( generateId )
@@ -3038,7 +3065,7 @@ void Model::resetToDefaults(bool generateId)
       processesPriorities.iNiceRouter = DEFAULT_PRIORITY_PROCESS_ROUTER_OPIC;
    processesPriorities.ioNiceRouter = DEFAULT_IO_PRIORITY_ROUTER;
    processesPriorities.iNiceVideo = DEFAULT_PRIORITY_PROCESS_VIDEO_TX;
-   if ( hardware_board_is_openipc(hardware_getOnlyBoardType()) )
+   if ( hardware_board_is_openipc(hardware_getBoardType()) )
       processesPriorities.iNiceVideo = 0;
    processesPriorities.iNiceOthers = DEFAULT_PRIORITY_PROCESS_OTHERS;
    processesPriorities.ioNiceVideo = DEFAULT_IO_PRIORITY_VIDEO_TX;
@@ -3109,7 +3136,7 @@ void Model::resetHWCapabilities()
    hwCapabilities.iMaxTxVideoBlockPackets = MAX_TOTAL_PACKETS_IN_BLOCK;
    hwCapabilities.uFlags = 0;
 
-   if ( hardware_board_is_goke( hardware_getOnlyBoardType() ) )
+   if ( hardware_board_is_goke( hardware_getBoardType() ) )
       hwCapabilities.uFlags &= ~MODEL_HW_CAP_FLAG_OTA;
    else
       hwCapabilities.uFlags |= MODEL_HW_CAP_FLAG_OTA;
@@ -3169,7 +3196,7 @@ void Model::resetOSDFlags(int iScreen)
    {
       memset(&osd_params, 0, sizeof(osd_params));
 
-      osd_params.iCurrentOSDLayout = osdLayout1;
+      osd_params.iCurrentOSDScreen = osdLayout1;
       osd_params.voltage_alarm_enabled = true;
       osd_params.voltage_alarm = 3.2;
       osd_params.battery_show_per_cell = 1;
@@ -3187,19 +3214,19 @@ void Model::resetOSDFlags(int iScreen)
       osd_params.ahi_warning_angle = 45;
       osd_params.show_gps_position = false;
       
-      osd_params.uFlags = OSD_BIT_FLAGS_SHOW_FLIGHT_END_STATS;
+      osd_params.uFlags = OSD_BIT_FLAGS_SHOW_FLIGHT_END_STATS | OSD_BIT_FLAGS_MUST_CHOOSE_PRESET;
    }
 
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       if ( (iScreen != -1) && (iScreen != i) )
          continue;
+      osd_params.osd_layout_preset[i] = OSD_PRESET_DEFAULT;
       osd_params.osd_flags[i] = 0;
       osd_params.osd_flags2[i] = 0;
       osd_params.osd_flags3[i] = 0;
       osd_params.instruments_flags[i] = 0;
       osd_params.osd_preferences[i] = 0;
-
    }
 
    if ( (iScreen = -1) || (iScreen == 0) )
@@ -3228,7 +3255,7 @@ void Model::resetOSDFlags(int iScreen)
       osd_params.osd_flags2[4] = OSD_FLAG2_SHOW_BGBARS | OSD_FLAG2_SHOW_RC_RSSI;
    }
 
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       if ( (iScreen != -1) && (iScreen != i) )
          continue;
@@ -3284,12 +3311,69 @@ void Model::resetOSDFlags(int iScreen)
 
 void Model::resetOSDStatsFlags(int iScreen)
 {
-   for( int i=0; i<MODEL_MAX_OSD_PROFILES; i++ )
+   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       if ( (iScreen != -1) && (iScreen != i) )
          continue;
+
       osd_params.osd_flags2[i] |= OSD_FLAG2_SHOW_STATS_VIDEO | OSD_FLAG2_SHOW_MINIMAL_VIDEO_DECODE_STATS;// | OSD_FLAG2_SHOW_MINIMAL_RADIO_INTERFACES_STATS;
       osd_params.osd_preferences[i] |= OSD_PREFERENCES_BIT_FLAG_ARANGE_STATS_WINDOWS_RIGHT;
+   }
+}
+
+void Model::resetOSDScreenToLayout(int iScreen, int iLayout)
+{
+   if ( (iScreen < 0) || (iScreen >= MODEL_MAX_OSD_SCREENS) || (iLayout < 0) || (iLayout > OSD_PRESET_CUSTOM) )
+      return;
+
+   log_line("Reset OSD screen %d layout to %d", iScreen, iLayout);
+
+   osd_params.uFlags &= ~(OSD_BIT_FLAGS_MUST_CHOOSE_PRESET);
+
+   osd_params.osd_layout_preset[iScreen] = iLayout;
+   osd_params.osd_flags[iScreen] = 0;
+   osd_params.osd_flags2[iScreen] = OSD_FLAG2_LAYOUT_ENABLED;
+   osd_params.osd_flags2[iScreen] |= OSD_FLAG2_RELATIVE_ALTITUDE | OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY;
+   osd_params.osd_flags3[iScreen] = 0;
+   osd_params.osd_preferences[iScreen] |= OSD_PREFERENCES_BIT_FLAG_ARANGE_STATS_WINDOWS_RIGHT;
+
+   osd_params.osd_flags3[iScreen] |= OSD_FLAG3_HIGHLIGHT_CHANGING_ELEMENTS;
+   osd_params.osd_flags3[iScreen] |= OSD_FLAG3_RENDER_MSP_OSD;
+
+   if ( iLayout <= OSD_PRESET_NONE )
+     return;
+
+   if ( (iScreen == 3) || (iScreen == 4) )
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_BGBARS;
+
+   if ( iLayout >= OSD_PRESET_MINIMAL )
+   {
+      osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_BATTERY | OSD_FLAG_SHOW_RADIO_LINKS;
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_BARS;
+   }
+
+   if ( iLayout >= OSD_PRESET_COMPACT )
+   {
+      osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_ALTITUDE;
+      osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_FLIGHT_MODE | OSD_FLAG_SHOW_FLIGHT_MODE_CHANGE;      
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_NUMBERS;
+
+      if ( iScreen < 3 )
+         osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_VIDEO_MODE | OSD_FLAG_SHOW_VIDEO_MBPS | OSD_FLAG_SHOW_VIDEO_MODE_EXTENDED;
+   }
+
+   if ( iLayout >= OSD_PRESET_DEFAULT )
+   {
+      osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_VEHICLE_RADIO_LINKS | OSD_FLAG_SHOW_RADIO_INTERFACES_INFO;
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_NUMBERS | OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_BARS;
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_GROUND_SPEED;
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_RC_RSSI;
+
+      osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_DISTANCE | OSD_FLAG_SHOW_HOME;
+      osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_GPS_INFO;
+
+      if ( iScreen < 3 )
+         osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_STATS_VIDEO | OSD_FLAG2_SHOW_MINIMAL_VIDEO_DECODE_STATS;// | OSD_FLAG2_SHOW_MINIMAL_RADIO_INTERFACES_STATS;
    }
 }
 
@@ -3297,7 +3381,7 @@ void Model::resetTelemetryParams()
 {
    memset(&telemetry_params, 0, sizeof(telemetry_params));
 
-   telemetry_params.fc_telemetry_type = TELEMETRY_TYPE_MAVLINK;
+   telemetry_params.fc_telemetry_type = TELEMETRY_TYPE_MSP;
    
    telemetry_params.iVideoBitrateHistoryGraphSampleInterval = 200;
    telemetry_params.dummy5 = 0;
@@ -3315,21 +3399,15 @@ void Model::resetTelemetryParams()
    
    if ( 0 < hardwareInterfacesInfo.serial_port_count )
    {
-      hardwareInterfacesInfo.serial_port_supported_and_usage[0] &= 0xFFFFFF00;
-      hardwareInterfacesInfo.serial_port_supported_and_usage[0] |= SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
-      hardwareInterfacesInfo.serial_port_speed[0] = DEFAULT_FC_TELEMETRY_SERIAL_SPEED;
-
-      if ( hardware_is_vehicle() )
-      if ( hardware_get_serial_ports_count() > 0 )
-      {
-         hw_serial_port_info_t* pPortInfo = hardware_get_serial_port_info(0);
-         if ( NULL != pPortInfo )
-         {
-            pPortInfo->lPortSpeed = DEFAULT_FC_TELEMETRY_SERIAL_SPEED;
-            pPortInfo->iPortUsage = SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
-            hardware_serial_save_configuration();
-         }
-      }
+      int iPort = 0;
+      if ( isRunningOnOpenIPCHardware() && (hardware_get_serial_ports_count() >= 2) )
+         iPort = 2;
+      setTelemetryTypeAndPort(telemetry_params.fc_telemetry_type, iPort, DEFAULT_FC_TELEMETRY_SERIAL_SPEED);
+   }
+   if ( hardware_is_vehicle() )
+   {
+      syncModelSerialPortsToHardwareSerialPorts();
+      hardware_serial_save_configuration();
    }
 }
 
@@ -3437,7 +3515,7 @@ void Model::resetCameraProfileToDefaults(camera_profile_parameters_t* pCamParams
    pCamParams->sharpness = 110;
    pCamParams->exposure = 3; // sports   2; //backlight
    pCamParams->shutterspeed = 0; // auto
-   if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
      pCamParams->shutterspeed = DEFAULT_OIPC_SHUTTERSPEED; //milisec
 
    pCamParams->whitebalance = 1; //auto
@@ -4273,7 +4351,7 @@ void Model::setDefaultVideoBitrate()
       video_link_profiles[VIDEO_PROFILE_BEST_PERF].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
       video_link_profiles[VIDEO_PROFILE_USER].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
    }
-   if ( hardware_board_is_sigmastar(hardware_getOnlyBoardType()) )
+   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
    {
       video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
       video_link_profiles[VIDEO_PROFILE_USER].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
@@ -4535,9 +4613,9 @@ void Model::populateVehicleTelemetryData_v4(t_packet_header_ruby_telemetry_exten
       }
    }
    if ( telemetry_params.flags & TELEMETRY_FLAGS_SPECTATOR_ENABLE )
-      pPHRTE->flags |= FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY;
+      pPHRTE->uRubyFlags |= FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY;
    else
-      pPHRTE->flags &= ~FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY;
+      pPHRTE->uRubyFlags &= ~FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY;
 }
 
 void Model::populateFromVehicleTelemetryData_v3(t_packet_header_ruby_telemetry_extended_v3* pPHRTE)
@@ -4547,7 +4625,7 @@ void Model::populateFromVehicleTelemetryData_v3(t_packet_header_ruby_telemetry_e
    vehicle_name[MAX_VEHICLE_NAME_LENGTH-1] = 0;
    vehicle_type = pPHRTE->vehicle_type;
 
-   if ( pPHRTE->flags & FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY )
+   if ( pPHRTE->uRubyFlags & FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY )
       telemetry_params.flags |= TELEMETRY_FLAGS_SPECTATOR_ENABLE;
    else
       telemetry_params.flags &= ~TELEMETRY_FLAGS_SPECTATOR_ENABLE;
@@ -4672,7 +4750,7 @@ void Model::populateFromVehicleTelemetryData_v4(t_packet_header_ruby_telemetry_e
    vehicle_name[MAX_VEHICLE_NAME_LENGTH-1] = 0;
    vehicle_type = pPHRTE->vehicle_type;
 
-   if ( pPHRTE->flags & FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY )
+   if ( pPHRTE->uRubyFlags & FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY )
       telemetry_params.flags |= TELEMETRY_FLAGS_SPECTATOR_ENABLE;
    else
       telemetry_params.flags &= ~TELEMETRY_FLAGS_SPECTATOR_ENABLE;
@@ -4787,6 +4865,65 @@ void Model::populateFromVehicleTelemetryData_v4(t_packet_header_ruby_telemetry_e
        radioLinksParams.links_count, szFreq1, szFreq2, szFreq3, radioInterfacesParams.interfaces_count);
    log_line("populateFromVehicleTelemetryData (v4) radio info after update:");
    logVehicleRadioInfo();
+}
+
+void Model::setTelemetryTypeAndPort(int iTelemetryType, int iSerialPort, int iSerialSpeed)
+{
+   // Remove serial port used for telemetry
+   for( int i=0; i<hardwareInterfacesInfo.serial_port_count; i++ )
+   {
+      u32 uPortTelemetryType = hardwareInterfacesInfo.serial_port_supported_and_usage[i] & 0xFF;
+      if ( (uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK) ||
+           (uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY_LTM) ||
+           (uPortTelemetryType == SERIAL_PORT_USAGE_MSP_OSD) )
+      {
+         // Remove serial port usage (set it to none)
+         hardwareInterfacesInfo.serial_port_supported_and_usage[i] &= 0xFFFFFF00;
+         log_line("Model: did set serial port %d to type None as it was used for telemetry.");
+      }
+   }
+
+   if ( (iTelemetryType <= 0) || (iSerialPort < 0) || (iSerialSpeed <= 0) )
+   {
+      log_line("Model: No new telemetry type or port to set.");
+      return;
+   }
+   
+   telemetry_params.fc_telemetry_type = iTelemetryType;
+   if ( iSerialPort >= hardwareInterfacesInfo.serial_port_count )
+   {
+      log_softerror_and_alarm("Model: Tried to set invalid serial port (%d out of %d) for telemetry.", iSerialPort, hardwareInterfacesInfo.serial_port_count);
+      return;
+   }
+
+   hardwareInterfacesInfo.serial_port_speed[iSerialPort] = iSerialSpeed;
+   hardwareInterfacesInfo.serial_port_supported_and_usage[iSerialPort] &= 0xFFFFFF00;
+   if ( telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MAVLINK )
+      hardwareInterfacesInfo.serial_port_supported_and_usage[iSerialPort] |= SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
+   if ( telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_LTM )
+      hardwareInterfacesInfo.serial_port_supported_and_usage[iSerialPort] |= SERIAL_PORT_USAGE_TELEMETRY_LTM;
+   if ( telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MSP )
+      hardwareInterfacesInfo.serial_port_supported_and_usage[iSerialPort] |= SERIAL_PORT_USAGE_MSP_OSD;
+}
+
+void Model::syncModelSerialPortsToHardwareSerialPorts()
+{
+   if ( ! hardware_is_vehicle() )
+   {
+      log_softerror_and_alarm("Model: tried to sync model serial ports to hardware serial ports on a controller.");
+      return;
+   }
+
+   for( int i=0; i<hardwareInterfacesInfo.serial_port_count; i++ )
+   {
+      hw_serial_port_info_t* pPortInfo = hardware_get_serial_port_info(i);
+      if ( NULL == pPortInfo )
+         continue;
+
+      pPortInfo->lPortSpeed = hardwareInterfacesInfo.serial_port_speed[i];
+      pPortInfo->iPortUsage = (int)(hardwareInterfacesInfo.serial_port_supported_and_usage[i] & 0xFF);
+   }
+   log_line("Model: Synced model serial ports config to hardware serial ports config.");
 }
 
 int Model::get_video_profile_total_levels(int iProfile)

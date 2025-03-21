@@ -116,7 +116,7 @@ void _check_set_fixed_ip()
    #ifdef HW_PLATFORM_RASPBERRY
    sprintf(szBuff, "ifconfig %s %d.%d.%d.%d up &", pszETH, (pCS->uFixedIP >> 24 ) & 0xFF, (pCS->uFixedIP >> 16 ) & 0xFF, (pCS->uFixedIP >> 8 ) & 0xFF, pCS->uFixedIP & 0xFF );
    #endif
-   #ifdef HW_PLATFORM_RADXA_ZERO3
+   #ifdef HW_PLATFORM_RADXA
    sprintf(szBuff, "ip addr add %d.%d.%d.%d/24 dev %s", (pCS->uFixedIP >> 24 ) & 0xFF, (pCS->uFixedIP >> 16 ) & 0xFF, (pCS->uFixedIP >> 8 ) & 0xFF, pCS->uFixedIP & 0xFF, pszETH );
    #endif
    if ( 0 != szBuff[0] )
@@ -148,6 +148,8 @@ int main(int argc, char *argv[])
    }
 
    log_line("Finished waiting. Checking DHCP...");
+
+   hardware_detectBoardAndSystemType();
 
    char szOutput[4096];
    hw_execute_bash_command_raw("ls /sys/class/net/", szOutput);
@@ -188,7 +190,7 @@ int main(int argc, char *argv[])
       return 0;
    }
 
-   #if defined HW_PLATFORM_RADXA_ZERO3
+   #if defined HW_PLATFORM_RADXA
    _check_set_fixed_ip();
    #endif
 
@@ -218,9 +220,12 @@ int main(int argc, char *argv[])
    log_line("ifconfig:");
    log_line(szOutput);
 
-   hw_execute_bash_command_raw("ps -aef | grep pump | grep -v grep", szOutput);
+   hw_execute_bash_command_raw("pidof pump", szOutput);
    removeTrailingNewLines(szOutput);
-   log_line("pump: (%s)", szOutput);
+   log_line("pump proc: (%s)", szOutput);
+   hw_execute_bash_command_raw("pgrep pump", szOutput);
+   removeTrailingNewLines(szOutput);
+   log_line("pump proc: (%s)", szOutput);
    log_line("Done DHCP config process.");
    return (0);
 } 

@@ -63,7 +63,7 @@ void* _thread_audio_test_async(void *argument)
    {
       log_line("[BGThreadAudio] Waiting for vehicle audio to stop...");
       char szPIDs[256];
-      hw_execute_bash_command("pidof aplay", szPIDs);
+      hw_process_get_pids("aplay", szPIDs);
       removeTrailingNewLines(szPIDs);
       u32 uTimeStart = get_current_timestamp_ms();
       while ( (strlen(szPIDs) > 2) && (! s_bStopAudioTest) )
@@ -71,7 +71,7 @@ void* _thread_audio_test_async(void *argument)
          if ( get_current_timestamp_ms() > uTimeStart + 3000 )
             break;
          hardware_sleep_ms(50);
-         hw_execute_bash_command("pidof aplay", szPIDs);
+         hw_process_get_pids("aplay", szPIDs);
          removeTrailingNewLines(szPIDs);
       }
       log_line("[BGThreadAudio] Stopped vehicle audio.");
@@ -282,7 +282,7 @@ void MenuControllerVideo::onReturnFromChild(int iChildMenuId, int returnValue)
 {
    Menu::onReturnFromChild(iChildMenuId, returnValue);
 
-   #if defined (HW_PLATFORM_RADXA_ZERO3)
+   #if defined (HW_PLATFORM_RADXA)
    if ( 2 == iChildMenuId/1000 )
    {
       ruby_mark_reinit_hdmi_display();
@@ -302,7 +302,7 @@ void MenuControllerVideo::onReturnFromChild(int iChildMenuId, int returnValue)
 
 int MenuControllerVideo::onBack()
 {
-   #if defined (HW_PLATFORM_RADXA_ZERO3)
+   #if defined (HW_PLATFORM_RADXA)
    if ( m_hdmigroupOrg != hdmi_get_current_resolution_group() ||
         m_hdmimodeOrg != hdmi_get_current_resolution_mode() )
    {

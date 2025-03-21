@@ -149,9 +149,15 @@ int menu_init()
 
 void menu_discard_all()
 {
+   menu_discard_all_except(NULL);
+}
+
+void menu_discard_all_except(Menu* pMenu)
+{
+   log_line("[Menu] Discarding all menus...");
    for( int i=MAX_MENU_STACK-1; i>=0; i-- )
    {
-      if ( NULL != g_pMenuStack[i] )
+      if ( (NULL != g_pMenuStack[i]) && (g_pMenuStack[i] != pMenu) )
       {
          g_pMenuStack[i]->setParent(NULL);
          delete g_pMenuStack[i];
@@ -161,7 +167,8 @@ void menu_discard_all()
       g_iMenuReturnValue[i] = -1;
       g_iMenuDisableStackingFlag[i] = 0;
    }
-   g_iMenuStackTopIndex = 0;
+   g_iMenuStackTopIndex = 0; 
+   log_line("[Menu] Discarded all menus.");
 }
 
 
@@ -296,6 +303,21 @@ void menu_stack_pop(int returnValue)
    delete g_pMenuStack[g_iMenuStackTopIndex];
    g_pMenuStack[g_iMenuStackTopIndex] = NULL;
 }
+
+void menu_stack_pop_no_delete(int returnValue)
+{
+   if ( g_iMenuStackTopIndex <= 0 )
+      return;
+
+   log_line("[Menu] (loop %u): doing stack pop. %d menus in stack. Top menu id before pop: %d-%d, name: [%s]", s_uMenuLoopCounter%100, g_iMenuStackTopIndex, g_pMenuStack[g_iMenuStackTopIndex-1]->m_MenuId%1000, g_pMenuStack[g_iMenuStackTopIndex-1]->m_MenuId/1000, g_pMenuStack[g_iMenuStackTopIndex-1]->m_szTitle);
+   g_iMenuStackTopIndex--;
+
+   g_iMenuDisableStackingFlag[g_iMenuStackTopIndex] = g_pMenuStack[g_iMenuStackTopIndex]->m_bDisableStacking;
+   g_iMenuReturnValue[g_iMenuStackTopIndex] = returnValue;
+   g_pMenuStack[g_iMenuStackTopIndex]->setParent(NULL);
+   g_pMenuStack[g_iMenuStackTopIndex] = NULL;
+}
+
 
 void _menu_check_rotary_encoders_buttons( bool* pbSelect, bool* pbCancel, bool* pbRotatedCW, bool* pbRotatedCCW, bool* pbRotatedFastCW, bool* pbRotatedFastCCW, bool* pbSelect2, bool* pbCancel2, bool* pbRotatedCW2, bool* pbRotatedCCW2, bool* pbRotatedFastCW2, bool* pbRotatedFastCCW2)
 {
@@ -606,6 +628,7 @@ void menu_loop_parse_input_events()
       }
       //system("omxplayer -p -o hdmi res/sound_menu_click2.wav");
       if ( g_iMenuStackTopIndex > 0 )
+      if ( (! g_pMenuStack[g_iMenuStackTopIndex-1]->hasDisabledBackAction()) || g_pMenuStack[g_iMenuStackTopIndex-1]->isEditingItem() )
          g_pMenuStack[g_iMenuStackTopIndex-1]->onBack();
       return;
    }
@@ -619,10 +642,14 @@ void menu_loop_parse_input_events()
          return;
       }
       bool bHasModalMenu = false;
-      for( int i=0; i<g_iMenuStackTopIndex; i++ )
+      for( int i=g_iMenuStackTopIndex-1; i>=0; i-- )
       {
+         if ( NULL == g_pMenuStack[i] )
+            continue;
          bHasModalMenu |= g_pMenuStack[i]->isModal();
-         if ( NULL != g_pMenuStack[i] )
+         if ( g_pMenuStack[i]->hasDisabledBackAction() )
+            bHasModalMenu = true;
+         else if ( ! bHasModalMenu )
             g_pMenuStack[i]->onBack();
       }
       if ( ! bHasModalMenu )

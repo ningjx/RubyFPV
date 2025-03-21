@@ -609,8 +609,8 @@ void link_watch_loop_telemetry()
          // RC failsafe changed ?
 
          #ifdef FEATURE_ENABLE_RC
-         if ( ( g_VehiclesRuntimeInfo[i].headerFCTelemetry.flags & FC_TELE_FLAGS_RC_FAILSAFE ) ||
-              (g_VehiclesRuntimeInfo[i].bGotRubyTelemetryInfo && (g_VehiclesRuntimeInfo[i].headerRubyTelemetryExtended.flags & FLAG_RUBY_TELEMETRY_RC_FAILSAFE) ) )
+         if ( ( g_VehiclesRuntimeInfo[i].headerFCTelemetry.uFCFlags & FC_TELE_FLAGS_RC_FAILSAFE ) ||
+              (g_VehiclesRuntimeInfo[i].bGotRubyTelemetryInfo && (g_VehiclesRuntimeInfo[i].headerRubyTelemetryExtended.uRubyFlags & FLAG_RUBY_TELEMETRY_RC_FAILSAFE) ) )
          {
             if ( ! g_VehiclesRuntimeInfo[i].bRCFailsafeState )
                notification_add_rc_failsafe(g_VehiclesRuntimeInfo[i].uVehicleId);
@@ -624,22 +624,22 @@ void link_watch_loop_telemetry()
          #endif
 
          // FC telemetry flags changed ?
-         if ( g_VehiclesRuntimeInfo[i].headerFCTelemetry.flags != g_VehiclesRuntimeInfo[i].uLastFCFlags )
+         if ( g_VehiclesRuntimeInfo[i].headerFCTelemetry.uFCFlags != g_VehiclesRuntimeInfo[i].uLastFCFlags )
          {
             if ( 0 != g_VehiclesRuntimeInfo[i].uLastFCFlags )
             {
-               if ( g_VehiclesRuntimeInfo[i].headerFCTelemetry.flags & FC_TELE_FLAGS_ARMED )
+               if ( g_VehiclesRuntimeInfo[i].headerFCTelemetry.uFCFlags & FC_TELE_FLAGS_ARMED )
                if ( !(g_VehiclesRuntimeInfo[i].uLastFCFlags & FC_TELE_FLAGS_ARMED) )
                {
                   onEventArmed(g_VehiclesRuntimeInfo[i].uVehicleId);
                }
-               if ( !(g_VehiclesRuntimeInfo[i].headerFCTelemetry.flags & FC_TELE_FLAGS_ARMED) )
+               if ( !(g_VehiclesRuntimeInfo[i].headerFCTelemetry.uFCFlags & FC_TELE_FLAGS_ARMED) )
                if ( g_VehiclesRuntimeInfo[i].uLastFCFlags & FC_TELE_FLAGS_ARMED )
                {
                   onEventDisarmed(g_VehiclesRuntimeInfo[i].uVehicleId);
                }
             }
-            g_VehiclesRuntimeInfo[i].uLastFCFlags = g_VehiclesRuntimeInfo[i].headerFCTelemetry.flags;
+            g_VehiclesRuntimeInfo[i].uLastFCFlags = g_VehiclesRuntimeInfo[i].headerFCTelemetry.uFCFlags;
          }
       }
 
@@ -764,28 +764,30 @@ int link_watch_loop_processes()
             failureCountMax = 8;
          if ( (int)s_CountProcessRouterFailures > failureCountMax )
          {
-            log_error_and_alarm("Router process has failed. Current router PIDS: [%s].", hw_process_get_pid("ruby_rt_station"));
+            log_error_and_alarm("Router process has failed. Current router PIDS: [%s].", hw_process_get_pids_inline("ruby_rt_station"));
             warnings_add(0, "Controller router process is malfunctioning! Restarting it.", g_idIconCPU, get_Color_IconError());
             bNeedsRestart = true;
          }
          if ( (int)s_CountProcessTelemetryFailures > failureCountMax )
          {
-            log_softerror_and_alarm("Telemetry process has failed. Current router PIDS: [%s].", hw_process_get_pid("ruby_rx_telemetry"));
+            log_softerror_and_alarm("Telemetry process has failed. Current router PIDS: [%s].", hw_process_get_pids_inline("ruby_rx_telemetry"));
             warnings_add(0, "Controller telemetry process is malfunctioning! Restarting it.", g_idIconCPU, get_Color_IconError());
             bNeedsRestart = true;
          }
 
          static int s_iCheckUSBCount = 0;
          s_iCheckUSBCount++;
+         bool bUSBDisconnected = false;
 
          // To fix make faster or execute in bg
-         if ( (s_iCheckUSBCount % 4) == 0 )
+         if ( ((s_iCheckUSBCount % 4) == 0) || bNeedsRestart )
          {
             szOutput[0] = 0;
             hw_execute_bash_command_silent("dmesg | grep \"USB disconnect\"", szOutput);
             if ( NULL != strstr(szOutput, "USB disconnect") )
             {
                log_line("USB disconnect detected. Check radio iterfaces...");
+               bUSBDisconnected = true;
                int iCurrentRadioInterfacesCount = hardware_get_radio_interfaces_count();
                int iCurrentRadioInterfacesIEEECount = 0;
                for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
@@ -820,20 +822,20 @@ int link_watch_loop_processes()
          {
             log_line("Will restart processes.");
             menu_discard_all();
-            char szPids[1024];
-            szPids[0] = 0;
-            hw_execute_bash_command("pidof ruby_rx_telemetry", szPids);
-            removeTrailingNewLines(szPids);
-            if ( strlen(szPids) > 2 )
-               log_line("Process ruby_rx_telemetry is still present, pid: %s.", szPids);
+            char szPIDs[1024];
+            szPIDs[0] = 0;
+            hw_process_get_pids("ruby_rx_telemetry", szPIDs);
+            removeTrailingNewLines(szPIDs);
+            if ( strlen(szPIDs) > 2 )
+               log_line("Process ruby_rx_telemetry is still present, pid: %s.", szPIDs);
             else
                log_line("Process ruby_rx_telemetry is not present, has crashed.");
 
-            szPids[0] = 0;
-            hw_execute_bash_command("pidof ruby_rt_station", szPids);
-            removeTrailingNewLines(szPids);
-            if ( strlen(szPids) > 2 )
-               log_line("Process ruby_rt_station is still present, pid: %s.", szPids);
+            szPIDs[0] = 0;
+            hw_process_get_pids("ruby_rt_station", szPIDs);
+            removeTrailingNewLines(szPIDs);
+            if ( strlen(szPIDs) > 2 )
+               log_line("Process ruby_rt_station is still present, pid: %s.", szPIDs);
             else
                log_line("Process ruby_rt_station is not present, has crashed.");
 
@@ -842,19 +844,19 @@ int link_watch_loop_processes()
             else
                log_line("Router SM process stats is invalid.");
             #if defined HW_PLATFORM_RASPBERRY
-            szPids[0] = 0;
-            hw_execute_bash_command("pidof ruby_player_p", szPids);
-            removeTrailingNewLines(szPids);
-            if ( strlen(szPids) > 2 )
-               log_line("Video player (pipe) is still present, pid: %s.", szPids);
+            szPIDs[0] = 0;
+            hw_process_get_pids("ruby_player_p", szPIDs);
+            removeTrailingNewLines(szPIDs);
+            if ( strlen(szPIDs) > 2 )
+               log_line("Video player (pipe) is still present, pid: %s.", szPIDs);
             else
                log_line("Video player (pipe) is not present, has crashed.");
 
-            szPids[0] = 0;
-            hw_execute_bash_command("pidof ruby_player_s", szPids);
-            removeTrailingNewLines(szPids);
-            if ( strlen(szPids) > 2 )
-               log_line("Video player (sm) is still present, pid: %s.", szPids);
+            szPIDs[0] = 0;
+            hw_process_get_pids("ruby_player_s", szPIDs);
+            removeTrailingNewLines(szPIDs);
+            if ( strlen(szPIDs) > 2 )
+               log_line("Video player (sm) is still present, pid: %s.", szPIDs);
             else
                log_line("Video player (sm) is not present, has crashed.");
 
@@ -908,9 +910,13 @@ int link_watch_loop_processes()
             */
 
             if ( (iNewRadioInterfacesIEEECount != iCurrentRadioInterfacesIEEECount) ||
-                 (iNewRadioInterfacesCount != iCurrentRadioInterfacesCount) )
+                 (iNewRadioInterfacesCount != iCurrentRadioInterfacesCount) || bUSBDisconnected )
             {
-               log_error_and_alarm("Radio interfaces count has changed. One or more radio interfaces broke.");
+               if ( (iNewRadioInterfacesIEEECount != iCurrentRadioInterfacesIEEECount) ||
+                    (iNewRadioInterfacesCount != iCurrentRadioInterfacesCount) )
+                  log_error_and_alarm("Radio interfaces count has changed. One or more radio interfaces broke.");
+               else
+                  log_error_and_alarm("One or more radio interfaces disconnected.");
 
                link_watch_reset();
                popups_remove_all();
@@ -1016,11 +1022,11 @@ void link_watch_loop_recording()
 
    if ( g_bVideoProcessing )
    {
-      char szPids[1024];
+      char szPIDs[1024];
       bool procRunning = false;
-      hw_execute_bash_command_silent("pidof ruby_video_proc", szPids);
-      removeTrailingNewLines(szPids);
-      if ( strlen(szPids) > 2 )
+      hw_process_get_pids("ruby_video_proc", szPIDs);
+      removeTrailingNewLines(szPIDs);
+      if ( strlen(szPIDs) > 2 )
          procRunning = true;
       if ( ! procRunning )
       {

@@ -43,6 +43,9 @@
 #include "../base/ctrl_settings.h"
 #include "first_boot.h"
 #include "r_start_vehicle.h"
+#if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
+#include "../base/ctrl_preferences.h"
+#endif
 
 Model s_ModelFirstBoot;
 
@@ -62,12 +65,13 @@ void do_first_boot_pre_initialization()
    fflush(stdout);
    #endif
 
-   #if defined HW_PLATFORM_RADXA_ZERO3
+   #if defined HW_PLATFORM_RADXA
 
    printf("\nRuby: Doing first time ever initialization on Radxa. Please wait...\n");
    fflush(stdout);
    hardware_install_drivers(1);
-   hw_execute_bash_command_raw("echo 'performance' | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor", NULL);
+   if ( ! hardware_is_running_on_runcam_vrx() )
+      hw_execute_bash_command_raw("echo 'performance' | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor", NULL);
 
    hw_execute_bash_command_silent("mkdir -p /tmp/ruby/", NULL);
    log_init_local_only("RubyStartFirst");
@@ -83,6 +87,16 @@ void do_first_boot_pre_initialization()
    
    hw_execute_bash_command("sync", NULL);
    
+   #if defined (HW_PLATFORM_RADXA)
+   if ( hardware_is_running_on_runcam_vrx() )
+   {
+      // Disable joystick left action as a QA for RunCam VRx
+      load_Preferences();
+      Preferences* pP = get_Preferences();
+      pP->iActionQuickButton2 = quickActionNone;
+      save_Preferences();
+   }
+   #endif
    printf("\nRuby: Done doing first time ever initialization on Radxa.\n");
    fflush(stdout);
    hw_execute_bash_command("echo \"\nRuby: Done doing first time ever initialization on Radxa.\n\" > /tmp/ruby/log_first_radxa.log", NULL);
@@ -177,7 +191,7 @@ void do_first_boot_initialization(bool bIsVehicle, u32 uBoardType)
    #ifdef HW_PLATFORM_RASPBERRY
    do_first_boot_initialization_raspberry(bIsVehicle, uBoardType);
    #endif
-   #ifdef HW_PLATFORM_RADXA_ZERO3
+   #ifdef HW_PLATFORM_RADXA
    do_first_boot_initialization_radxa(bIsVehicle, uBoardType);
    #endif
    #ifdef HW_PLATFORM_OPENIPC_CAMERA
@@ -232,7 +246,7 @@ void do_first_boot_initialization(bool bIsVehicle, u32 uBoardType)
       }
       #endif
 
-      #if defined (HW_PLATFORM_RADXA_ZERO3)
+      #if defined (HW_PLATFORM_RADXA)
       ControllerSettings* pcs = get_ControllerSettings();
       if ( NULL != pcs )
          pcs->iFreqARM = hardware_get_cpu_speed();

@@ -57,6 +57,7 @@
 #include "launchers_vehicle.h"
 #include "video_source_csi.h"
 #include "adaptive_video.h"
+#include "negociate_radio.h"
 
 extern u32 s_uTemporaryVideoBitrateBeforeNegociateRadio;
 
@@ -622,7 +623,7 @@ void _update_videobitrate_history_data()
 {
    if ( g_bVideoPaused )
       return;
-   if ( ! (g_pCurrentModel->osd_params.osd_flags3[g_pCurrentModel->osd_params.iCurrentOSDLayout] & OSD_FLAG3_SHOW_VIDEO_BITRATE_HISTORY) )
+   if ( ! (g_pCurrentModel->osd_params.osd_flags3[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG3_SHOW_VIDEO_BITRATE_HISTORY) )
       return;
 
    g_SM_DevVideoBitrateHistory.uGraphSliceInterval = g_pCurrentModel->telemetry_params.iVideoBitrateHistoryGraphSampleInterval;
@@ -701,7 +702,7 @@ void _periodic_update_radio_stats()
       // Send them to controller if needed
       bool bSend = false;
       if ( NULL != g_pCurrentModel )
-      if ( g_pCurrentModel->osd_params.osd_flags2[g_pCurrentModel->osd_params.iCurrentOSDLayout] & OSD_FLAG2_SHOW_VEHICLE_RADIO_INTERFACES_STATS )
+      if ( g_pCurrentModel->osd_params.osd_flags2[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG2_SHOW_VEHICLE_RADIO_INTERFACES_STATS )
           bSend = true;
 
       static u32 sl_uLastTimeSentRadioInterfacesStats = 0;
@@ -930,15 +931,7 @@ int periodicLoop()
    process_camera_periodic_loop();
 
    _periodic_update_radio_stats();
-   
-
-   if ( g_bNegociatingRadioLinks )
-   if ( (g_TimeNow > g_uTimeStartNegociatingRadioLinks + 60*2*1000) || (g_TimeNow > g_uTimeLastNegociateRadioLinksCommand + 8000) )
-   {
-      adaptive_video_set_bitrate(s_uTemporaryVideoBitrateBeforeNegociateRadio);
-      g_uTimeStartNegociatingRadioLinks = 0;
-      g_bNegociatingRadioLinks = false;
-   }
+   negociate_radio_periodic_loop();
 
    //_periodic_loop_check_ping();
 
