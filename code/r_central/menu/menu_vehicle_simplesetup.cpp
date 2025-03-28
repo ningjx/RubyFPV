@@ -40,6 +40,9 @@
 #include "menu_item_legend.h"
 #include "menu_tx_raw_power.h"
 #include "menu_vehicle.h"
+#include "menu_vehicle_camera.h"
+#include "menu_vehicle_video.h"
+#include "menu_vehicle_osd.h"
 #include "../osd/osd_common.h"
 #include "../link_watch.h"
 #include "../warnings.h"
@@ -57,6 +60,10 @@ MenuVehicleSimpleSetup::MenuVehicleSimpleSetup()
    m_iIndexMenuOk = -1;
    m_iIndexMenuCancel = -1;
    m_iIndexFullConfig = -1;
+   m_iIndexCamera = -1;
+   m_iIndexVideo = -1;
+   m_iIndexOSDLayout = -1;
+   m_iIndexOSDSettings = -1;
 
    m_iCurrentSerialPortIndexUsedForTelemetry = -1;
    m_bSearchingTelemetry = false;
@@ -64,6 +71,8 @@ MenuVehicleSimpleSetup::MenuVehicleSimpleSetup()
    m_iSearchTelemetryPort = 0;
    m_iSearchTelemetrySpeed = 0;
    m_uTimeStartCurrentTelemetrySearch = 0;
+
+   m_pItemsSelect[0] = m_pItemsSelect[1] = m_pItemsSelect[2] = NULL;
 
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
    {
@@ -144,7 +153,7 @@ void MenuVehicleSimpleSetup::setPairingSetup()
       m_bSearchingTelemetry = false;
    m_xPos = 0.27;
    m_Width = 0.46;
-   setTitle("Quick Pairing Setup");
+   setTitle(L("Quick Pairing Setup"));
    disableBackAction();
 }
 
@@ -168,7 +177,7 @@ void MenuVehicleSimpleSetup::addRegularItems()
    if ( NULL == g_pCurrentModel )
    {
       addMenuItem(new MenuItemText(L("Missing vehicle configuration.")));
-      m_iIndexMenuOk = addMenuItem( new MenuItem("Cancel", "Closes this settings."));
+      m_iIndexMenuOk = addMenuItem( new MenuItem(L("Cancel"), L("Closes this settings.")));
       return;
    }
 
@@ -189,30 +198,45 @@ void MenuVehicleSimpleSetup::addRegularItems()
    }
 
    if ( ! m_bPairingSetup )
+   {
       addRadioItems();
+      m_iIndexCamera = addMenuItem(new MenuItem(L("Camera settings"), L("Change camera settings: brightness, constrast, saturation, hue, etc.")));
+      m_pMenuItems[m_iIndexCamera]->showArrow();
 
+      m_iIndexVideo = addMenuItem(new MenuItem(L("Video settings"), L("Change video settings: resolution, FPS, bitrate, etc.")));
+      m_pMenuItems[m_iIndexVideo]->showArrow();
+   }
+   
+   m_iIndexOSDLayout = -1;
    if ( m_bPairingSetup )
    {
       pItem = new MenuItemText(L("Select the OSD layout you want, how many OSD elements to show by default on your screen:"), true);
       pItem->setExtraHeight(fVSpacing*0.6);
       addMenuItem(pItem);
-   }
-   m_pItemsSelect[2] = new MenuItemSelect("OSD Layout", "Set the default layout of this OSD screen (what elements are shown on this screen).");  
-   m_pItemsSelect[2]->addSelection("None");
-   m_pItemsSelect[2]->addSelection("Minimal");
-   m_pItemsSelect[2]->addSelection("Compact");
-   m_pItemsSelect[2]->addSelection("Default");
-   if ( (! m_bPairingSetup) && (g_pCurrentModel->osd_params.osd_layout_preset[iScreenIndex] == OSD_PRESET_CUSTOM) )
-      m_pItemsSelect[2]->addSelection("Custom");
-   if ( m_bPairingSetup )
-      m_pItemsSelect[2]->setUseMultiViewLayout();
-   else
-      m_pItemsSelect[2]->setIsEditable();
-   m_iIndexOSDLayout = addMenuItem(m_pItemsSelect[2]);
-   m_pItemsSelect[2]->setSelectedIndex(g_pCurrentModel->osd_params.osd_layout_preset[iScreenIndex]);
-   if ( m_bPairingSetup )
-      m_pItemsSelect[2]->setExtraHeight(fVSpacing);
 
+      m_pItemsSelect[2] = new MenuItemSelect(L("OSD Layout"), L("Set the default layout of this OSD screen (what elements are shown on this screen)."));
+      m_pItemsSelect[2]->addSelection(L("None"));
+      m_pItemsSelect[2]->addSelection(L("Minimal"));
+      m_pItemsSelect[2]->addSelection(L("Compact"));
+      m_pItemsSelect[2]->addSelection(L("Default"));
+      if ( (! m_bPairingSetup) && (g_pCurrentModel->osd_params.osd_layout_preset[iScreenIndex] == OSD_PRESET_CUSTOM) )
+         m_pItemsSelect[2]->addSelection(L("Custom"));
+      if ( m_bPairingSetup )
+         m_pItemsSelect[2]->setUseMultiViewLayout();
+      else
+         m_pItemsSelect[2]->setIsEditable();
+      m_iIndexOSDLayout = addMenuItem(m_pItemsSelect[2]);
+      m_pItemsSelect[2]->setSelectedIndex(g_pCurrentModel->osd_params.osd_layout_preset[iScreenIndex]);
+      if ( m_bPairingSetup )
+         m_pItemsSelect[2]->setExtraHeight(fVSpacing);
+   }
+
+   m_iIndexOSDSettings = -1;
+   if ( ! m_bPairingSetup )
+   {
+      m_iIndexOSDSettings = addMenuItem(new MenuItem(L("OSD settings"), L("Change OSD type, layout and settings.")));
+      m_pMenuItems[m_iIndexOSDSettings]->showArrow();
+   }
 
    if ( m_bPairingSetup )
    {
@@ -262,7 +286,7 @@ void MenuVehicleSimpleSetup::addRegularItems()
          pItem->setEnabled(false);
       addMenuItem(pItem);
    }
-   m_pItemsSelect[1] = new MenuItemSelect("Telemetry Port", "The Ruby vehicle port at which the flight controller telemetry connects to.");
+   m_pItemsSelect[1] = new MenuItemSelect(L("Telemetry Port"), L("The Ruby vehicle port at which the flight controller telemetry connects to."));
    m_pItemsSelect[1]->addSelection(L("None"));
    for( int i=0; i<g_pCurrentModel->hardwareInterfacesInfo.serial_port_count; i++ )
       m_pItemsSelect[1]->addSelection(g_pCurrentModel->hardwareInterfacesInfo.serial_port_names[i]);
@@ -283,10 +307,10 @@ void MenuVehicleSimpleSetup::addRegularItems()
       m_pItemsSelect[1]->setEnabled(false);
 
    if ( m_bPairingSetup )
-      m_iIndexMenuOk = addMenuItem( new MenuItem("Looks Good! Done", "Applies the selections and closes this settings page."));
+      m_iIndexMenuOk = addMenuItem( new MenuItem(L("Looks Good! Done"), L("Applies the selections and closes this settings page.")));
    else
    {
-      m_iIndexFullConfig = addMenuItem( new MenuItem("Full Vehicle Settings", "Configure/change all vehicle settings."));
+      m_iIndexFullConfig = addMenuItem( new MenuItem(L("Full Vehicle Settings"), L("Configure/change all vehicle settings.")));
       m_pMenuItems[m_iIndexFullConfig]->showArrow();
    }
 }
@@ -340,7 +364,7 @@ void MenuVehicleSimpleSetup::addRadioItems()
       if ( g_pCurrentModel->radioLinksParams.links_count > 1 )
          sprintf(szTmp, "Radio Link %d Frequency", iRadioLinkId+1 );
 
-      strcpy(szTooltip, "Sets the radio link frequency for this radio link.");
+      strcpy(szTooltip, L("Sets the radio link frequency for this radio link."));
       snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), " Radio type: %s.", str_get_radio_card_model_string(g_pCurrentModel->radioInterfacesParams.interface_card_model[iRadioInterfaceId]));
       strcat(szTooltip, szBuff);
       
@@ -489,14 +513,18 @@ void MenuVehicleSimpleSetup::addItems()
    m_iIndexMenuOk = -1;
    m_iIndexMenuCancel = -1;
    m_iIndexOSDLayout = -1;
+   m_iIndexOSDSettings = -1;
    m_iIndexTelemetryType = -1;
    m_iIndexTelemetryPort = -1;
    m_iIndexFullConfig = -1;
+   m_iIndexCamera = -1;
+   m_iIndexVideo = -1;
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
    {
       m_iIndexFreq[i] = -1;
       m_iIndexTxPowers[i] = -1;
    }   
+   m_pItemsSelect[0] = m_pItemsSelect[1] = m_pItemsSelect[2] = NULL;
 
    if ( m_bSearchingTelemetry )
       addSearchItems();
@@ -527,7 +555,11 @@ void MenuVehicleSimpleSetup::renderSearch()
 {
    float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
 
-   float yPos = m_pItemsSelect[2]->getItemRenderYPos();
+   float yPos = m_RenderYPos + m_RenderTitleHeight;
+   if ( NULL != m_pItemsSelect[2] )
+     yPos = m_pItemsSelect[2]->getItemRenderYPos();
+   else if ( NULL != m_pItemsSelect[0] )
+     yPos = m_pItemsSelect[0]->getItemRenderYPos();
    yPos += height_text*1.5;
 
    float xPos = m_RenderXPos + m_sfMenuPaddingX;
@@ -816,7 +848,7 @@ void MenuVehicleSimpleSetup::sendTelemetryPortToVehicle()
       u8 uCurrentUsage = new_info.serial_port_supported_and_usage[iSerialPort-1] & 0xFF;
       if ( uCurrentUsage == SERIAL_PORT_USAGE_DATA_LINK )
       {
-         MenuConfirmation* pMC = new MenuConfirmation("User Data Link Disabled", "The serial port was used by your custom data link. It was reasigned to the telemetry link.",1, true);
+         MenuConfirmation* pMC = new MenuConfirmation(L("User Data Link Disabled"), L("The serial port was used by your custom data link. It was reasigned to the telemetry link."), 1, true);
          pMC->m_yPos = 0.3;
          pMC->disablePairingUIActions();
          add_menu_to_stack(pMC);      
@@ -901,7 +933,7 @@ void MenuVehicleSimpleSetup::sendNewRadioLinkFrequency(int iVehicleLinkIndex, u3
    send_packet_to_router(buffer, PH.total_length);
 
    link_set_is_reconfiguring_radiolink(iVehicleLinkIndex);
-   warnings_add_configuring_radio_link(iVehicleLinkIndex, "Changing Frequency");
+   warnings_add_configuring_radio_link(iVehicleLinkIndex, L("Changing Frequency"));
 }
 
 
@@ -986,6 +1018,30 @@ void MenuVehicleSimpleSetup::onSelectItem()
    if ( (NULL == g_pCurrentModel) || (m_SelectedIndex < 0) )
       return;
 
+   if ( (-1 != m_iIndexCamera) && (m_iIndexCamera == m_SelectedIndex) )
+   {
+      MenuVehicleCamera* pMenuCam = new MenuVehicleCamera();
+      pMenuCam->showCompact();
+      add_menu_to_stack(pMenuCam);
+      return;
+   }
+
+   if ( (-1 != m_iIndexVideo) && (m_iIndexVideo == m_SelectedIndex) )
+   {
+      MenuVehicleVideo* pMenuVid = new MenuVehicleVideo();
+      pMenuVid->showCompact();
+      add_menu_to_stack(pMenuVid);
+      return;
+   }
+
+   if ( (-1 != m_iIndexOSDSettings) && (m_iIndexOSDSettings == m_SelectedIndex) )
+   {
+      MenuVehicleOSD* pMenuOSD = new MenuVehicleOSD();
+      pMenuOSD->showCompact();
+      add_menu_to_stack(pMenuOSD);
+      return;
+   }
+
    if ( m_iIndexTelemetryType == m_SelectedIndex )
    {
       sendTelemetryTypeToVehicle();
@@ -998,13 +1054,13 @@ void MenuVehicleSimpleSetup::onSelectItem()
       return;
    }
 
-   if ( m_iIndexOSDLayout == m_SelectedIndex )
+   if ( (-1 != m_iIndexOSDLayout) && (m_iIndexOSDLayout == m_SelectedIndex) )
    {
       sendOSDToVehicle();
       return;
    }
 
-   if ( m_iIndexMenuOk == m_SelectedIndex )
+   if ( (-1 != m_iIndexMenuOk) && (m_iIndexMenuOk == m_SelectedIndex) )
    {
       sendOSDToVehicle();
       menu_refresh_all_menus_except(this);
@@ -1021,7 +1077,7 @@ void MenuVehicleSimpleSetup::onSelectItem()
       if ( (NULL == g_pCurrentModel) || (0 == g_uActiveControllerModelVID) ||
         (g_bFirstModelPairingDone && (0 == getControllerModelsCount()) && (0 == getControllerModelsSpectatorCount())) )
       {
-         addMessage2(0, "Not paired with any vehicle.", "Search for vehicles to find one and connect to.");
+         addMessage2(0, L("Not paired with any vehicle."), L("Search for vehicles to find one and connect to."));
          return;
       }
       add_menu_to_stack(new MenuVehicle());
@@ -1045,7 +1101,7 @@ void MenuVehicleSimpleSetup::onSelectItem()
 
          if ( link_is_reconfiguring_radiolink() )
          {
-            add_menu_to_stack(new MenuConfirmation("Configuration In Progress","Another radio link configuration change is in progress. Please wait.", 0, true));
+            add_menu_to_stack(new MenuConfirmation(L("Configuration In Progress"), L("Another radio link configuration change is in progress. Please wait."), 0, true));
             valuesToUI();
             return;
          }
@@ -1066,7 +1122,7 @@ void MenuVehicleSimpleSetup::onSelectItem()
          if ( NULL != szError && 0 != szError[0] )
          {
             log_line(szError);
-            add_menu_to_stack(new MenuConfirmation("Invalid option",szError, 0, true));
+            add_menu_to_stack(new MenuConfirmation(L("Invalid option"), szError, 0, true));
             valuesToUI();
             return;
          }
@@ -1087,7 +1143,7 @@ void MenuVehicleSimpleSetup::onSelectItem()
          {
             char szBuff[128];
             sprintf(szBuff, "%s frequency is not supported by your controller.", str_format_frequency(freq));
-            add_menu_to_stack(new MenuConfirmation("Invalid option",szBuff, 0, true));
+            add_menu_to_stack(new MenuConfirmation(L("Invalid option"), szBuff, 0, true));
             valuesToUI();
             return;
          }
@@ -1095,13 +1151,13 @@ void MenuVehicleSimpleSetup::onSelectItem()
          {
             char szBuff[256];
             sprintf(szBuff, "Not all radio interfaces on your controller support %s frequency. Some radio interfaces on the controller will not be used to communicate with this vehicle.", str_format_frequency(freq));
-            add_menu_to_stack(new MenuConfirmation("Confirmation",szBuff, 0, true));
+            add_menu_to_stack(new MenuConfirmation(L("Confirmation"), szBuff, 0, true));
          }
 
          if ( (get_sw_version_major(g_pCurrentModel) < 9) ||
               ((get_sw_version_major(g_pCurrentModel) == 9) && (get_sw_version_minor(g_pCurrentModel) <= 20)) )
          {
-            addMessageWithTitle(0, "Can't update radio links", "You need to update your vehicle to version 9.2 or newer");
+            addMessageWithTitle(0, L("Can't update radio links"), L("You need to update your vehicle to version 9.2 or newer"));
             return;
          }
 

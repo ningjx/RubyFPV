@@ -103,7 +103,6 @@ void _do_player_mode()
    ControllerSettings* pCS = get_ControllerSettings();
 
    ruby_drm_core_wait_for_display_connected(); 
-   
    if ( hdmi_enum_modes() < 0 )
    {
       log_error_and_alarm("Failed to enumerate HDMI modes. Exit player.");
@@ -113,6 +112,8 @@ void _do_player_mode()
    if ( iHDMIIndex < 0 )
       iHDMIIndex = hdmi_get_best_resolution_index_for(DEFAULT_RADXA_DISPLAY_WIDTH, DEFAULT_RADXA_DISPLAY_HEIGHT, DEFAULT_RADXA_DISPLAY_REFRESH);
    log_line("HDMI mode to use: %d (%d x %d @ %d)", iHDMIIndex, hdmi_get_current_resolution_width(), hdmi_get_current_resolution_height(), hdmi_get_current_resolution_refresh() );
+
+   hw_increase_current_thread_priority("RubyPlayer", 10);
 
    RenderEngine* pRenderEngine = NULL;
    if ( g_bInitUILayerToo || g_bPlayingIntro )
@@ -149,6 +150,13 @@ void _do_player_mode()
       ruby_drm_core_uninit();
       return;
    }
+
+   if ( g_bPlayingIntro )
+   {
+      for( int i=0; i<10; i++ )
+         hardware_sleep_ms(50);
+   }
+
    FILE* fp = fopen(g_szPlayFileName,"rb");
    if ( NULL == fp )
    {
@@ -159,6 +167,7 @@ void _do_player_mode()
    }
 
    log_line("Opened input video file (%s), has %d FPS", g_szPlayFileName, g_iFileFPS);
+   mpp_enable_vsync(pCS->iHDMIVSync?true:false);
    mpp_start_decoding_thread();
 
 
@@ -351,6 +360,7 @@ void _do_stream_mode_pipe()
    }
 
    log_line("Opened input video stream fifo (%s)", FIFO_RUBY_STATION_VIDEO_STREAM_DISPLAY);
+   mpp_enable_vsync(pCS->iHDMIVSync?true:false);
    mpp_start_decoding_thread();
 
    u32 uTimeLastCheck = get_current_timestamp_ms();
@@ -601,6 +611,7 @@ void _do_stream_mode_sm()
    close(fdSMem); 
    log_line("Mapped shared mem: %s", SM_STREAMER_NAME);
 
+   mpp_enable_vsync(pCS->iHDMIVSync?true:false);
    mpp_start_decoding_thread();
 
    u32 uTimeLastCheck = get_current_timestamp_ms();
@@ -795,6 +806,7 @@ void _do_stream_mode_udp()
    }
 
    log_line("Opened input video stream udp socket on port %d", DEFAULT_LOCAL_VIDEO_PLAYER_UDP_PORT);
+   mpp_enable_vsync(pCS->iHDMIVSync?true:false);
    mpp_start_decoding_thread();
 
    u32 uTimeLastCheck = get_current_timestamp_ms();

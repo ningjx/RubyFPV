@@ -106,7 +106,8 @@ bool hardware_board_has_audio_builtin(u32 uBoardType)
    if ( hardware_board_is_sigmastar(uBoardType) )
    if ( hardware_board_is_openipc(uBoardType & BOARD_TYPE_MASK) )
    if ( (((uBoardType & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT) == BOARD_SUBTYPE_OPENIPC_AIO_MARIO) ||
-        (((uBoardType & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT) == BOARD_SUBTYPE_OPENIPC_AIO_RUNCAM) ||
+        (((uBoardType & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT) == BOARD_SUBTYPE_OPENIPC_AIO_RUNCAM_V1) ||
+        (((uBoardType & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT) == BOARD_SUBTYPE_OPENIPC_AIO_RUNCAM_V2) ||
         (((uBoardType & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT) == BOARD_SUBTYPE_OPENIPC_AIO_THINKER) ||
         (((uBoardType & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT) == BOARD_SUBTYPE_OPENIPC_AIO_THINKER_E) )
       return true;
@@ -222,14 +223,7 @@ int hardware_audio_play_file_async(const char* szFile)
    strcpy(s_szAudioFilePlayAsync, szFile);
 
    pthread_attr_t attr;
-   struct sched_param params;
-
-   pthread_attr_init(&attr);
-   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-   pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
-   pthread_attr_setschedpolicy(&attr, SCHED_OTHER);
-   params.sched_priority = 0;
-   pthread_attr_setschedparam(&attr, &params);
+   hw_init_worker_thread_attrs(&attr);
    if ( 0 != pthread_create(&s_pThreadAudioPlayAsync, &attr, &_thread_audio_play_async, NULL) )
    {
       pthread_attr_destroy(&attr);

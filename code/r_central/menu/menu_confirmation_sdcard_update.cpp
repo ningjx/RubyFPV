@@ -44,7 +44,7 @@
 #include "../osd/osd_common.h"
 
 MenuConfirmationSDCardUpdate::MenuConfirmationSDCardUpdate()
-:Menu(MENU_ID_CONFIRMATION_SDCARD_UPDATE, "Update from SD card", NULL)
+:Menu(MENU_ID_CONFIRMATION_SDCARD_UPDATE, L("Update from SD card"), NULL)
 {
    m_xPos = 0.35; m_yPos = 0.35;
    m_Width = 0.3;
@@ -52,10 +52,10 @@ MenuConfirmationSDCardUpdate::MenuConfirmationSDCardUpdate()
    m_bUpdateFinished = false;
 
    setIconId(g_idIconSDCard);
-   addTopLine("A Ruby update is present on the SD card.");
-   addTopLine("Do you want to update Ruby from the SD card?");
-   addMenuItem(new MenuItem("No"));
-   addMenuItem(new MenuItem("Yes"));
+   addTopLine(L("A Ruby update is present on the SD card."));
+   addTopLine(L("Do you want to update Ruby from the SD card?"));
+   addMenuItem(new MenuItem(L("No")));
+   addMenuItem(new MenuItem(L("Yes")));
    m_SelectedIndex = 1;
 }
 
@@ -147,19 +147,12 @@ void MenuConfirmationSDCardUpdate::onSelectItem()
       m_bDoingUpdate = true;
       m_bUpdateFinished = false;
       pthread_attr_t attr;
-      struct sched_param params;
-
-      pthread_attr_init(&attr);
-      pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-      pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
-      pthread_attr_setschedpolicy(&attr, SCHED_OTHER);
-      params.sched_priority = 0;
-      pthread_attr_setschedparam(&attr, &params);
+      hw_init_worker_thread_attrs(&attr);
       if ( 0 != pthread_create(&m_pThreadUpdate, &attr, &_thread_sdcard_update, (void*)&m_bUpdateFinished) )
       {
          log_softerror_and_alarm("MenuSDCardUpdate: Failed to create update thread.");
          m_bDoingUpdate = false;
-         addMessage("Failed to do the SD card update.");
+         addMessage(L("Failed to do the SD card update."));
       }
       pthread_attr_destroy(&attr);
 

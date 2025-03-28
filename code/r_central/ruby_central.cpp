@@ -82,7 +82,7 @@
 #endif
 
 #include "../common/string_utils.h"
-#include "../common/strings_table.h"
+#include "../common/strings_loc.h"
 #include "../common/relay_utils.h"
 #include "../common/favorites.h"
 
@@ -455,6 +455,7 @@ void _render_background_and_paddings(bool bForceBackground)
 
    bool bShowBgPicture = false;
    bool bShowBgVideo = true;
+   u32 uPairingStartBufferTime = 1000;
 
    if ( bForceBackground || g_bSearching || (! g_bIsRouterReady) || (! g_bFirstModelPairingDone) )
    {
@@ -462,7 +463,7 @@ void _render_background_and_paddings(bool bForceBackground)
       bShowBgVideo = false;
    }
 
-   if ( (! pairing_isStarted()) || (! link_has_received_main_vehicle_ruby_telemetry()) || (g_TimeNow < pairing_getStartTime() + 1000) )
+   if ( (! pairing_isStarted()) || (! link_has_received_main_vehicle_ruby_telemetry()) || (g_TimeNow < pairing_getStartTime() + uPairingStartBufferTime) )
    {
       bShowBgPicture = true;
       bShowBgVideo = false;
@@ -471,6 +472,13 @@ void _render_background_and_paddings(bool bForceBackground)
    {
       bShowBgPicture = true;
       bShowBgVideo = false;
+   }
+
+   if ( pairing_isStarted() && (g_TimeNow >= pairing_getStartTime() + uPairingStartBufferTime) )
+   if ( (NULL != osd_get_current_data_source_vehicle_model()) && link_has_received_videostream(osd_get_current_data_source_vehicle_model()->uVehicleId) )
+   {
+      bShowBgPicture = false;
+      bShowBgVideo = true;
    }
 
    if ( bShowBgPicture )
@@ -707,14 +715,7 @@ void compute_cpu_state()
 
       pthread_t pth;
       pthread_attr_t attr;
-      struct sched_param params;
-
-      pthread_attr_init(&attr);
-      pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-      pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
-      pthread_attr_setschedpolicy(&attr, SCHED_OTHER);
-      params.sched_priority = 0;
-      pthread_attr_setschedparam(&attr, &params);
+      hw_init_worker_thread_attrs(&attr);
       pthread_create(&pth, &attr, &_thread_check_controller_cpu_state, NULL);
       pthread_attr_destroy(&attr);
    }
@@ -1247,6 +1248,9 @@ void _on_start_completed()
 
 bool ruby_central_has_sdcard_update(bool bDoUpdateToo)
 {
+   // Disable MMC update from SD card
+   return false;
+
    if ( ! hardware_is_running_on_runcam_vrx() )
       return false;
    char szOutput[2048];
@@ -1753,6 +1757,7 @@ void start_loop()
          return;
       }
       onMainVehicleChanged(true);
+      _on_start_completed();
 
       if ( 0 < hardware_get_radio_interfaces_count() )
          pairing_start_normal();
@@ -1769,7 +1774,7 @@ void start_loop()
       else
          log_line("Opened shared mem to video rx process watchdog stats for reading.");
 
-      if ( NULL != g_pCurrentModel && g_pCurrentModel->rc_params.rc_enabled )
+      if ( (NULL != g_pCurrentModel) && g_pCurrentModel->rc_params.rc_enabled )
       {
          g_pProcessStatsRC = shared_mem_process_stats_open_read(SHARED_MEM_WATCHDOG_RC_TX);
          if ( NULL == g_pProcessStatsRC )
@@ -1790,7 +1795,6 @@ void start_loop()
       popupStartup.resetTimer();
 
       s_TimeCentralInitializationComplete = g_TimeNow;
-      _on_start_completed();
       if ( g_bIsHDMIConfirmation )
       {
          s_pMenuConfirmHDMI = new MenuConfirmationHDMI("HDMI Output Configuration Updated","Does the HDMI output looks ok? Select [Yes] to keep the canges or select [No] to revert to the old HDMI configuration.", 0);
@@ -2303,6 +2307,7 @@ int main(int argc, char *argv[])
    log_line("HDMI mode to use: %d (%d x %d @ %d)", iHDMIIndex, hdmi_get_current_resolution_width(), hdmi_get_current_resolution_height(), hdmi_get_current_resolution_refresh() );
    ruby_drm_core_init(0, DRM_FORMAT_ARGB8888, hdmi_get_current_resolution_width(), hdmi_get_current_resolution_height(), hdmi_get_current_resolution_refresh());
    ruby_drm_core_set_plane_properties_and_buffer(ruby_drm_core_get_main_draw_buffer_id());
+   ruby_drm_enable_vsync(pCS->iHDMIVSync);
    #endif
 
    g_pRenderEngine = render_init_engine();
@@ -2542,6 +2547,8 @@ void ruby_reinit_hdmi_display()
    log_line("HDMI mode to use: %d (%d x %d @ %d)", iHDMIIndex, hdmi_get_current_resolution_width(), hdmi_get_current_resolution_height(), hdmi_get_current_resolution_refresh() );
    ruby_drm_core_init(0, DRM_FORMAT_ARGB8888, hdmi_get_current_resolution_width(), hdmi_get_current_resolution_height(), hdmi_get_current_resolution_refresh());
    ruby_drm_core_set_plane_properties_and_buffer(ruby_drm_core_get_main_draw_buffer_id());
+   ControllerSettings* pCS = get_ControllerSettings();
+   ruby_drm_enable_vsync(pCS->iHDMIVSync);
    #endif
 
    g_pRenderEngine = render_init_engine();

@@ -44,7 +44,7 @@
 
 
 MenuVehicleManagement::MenuVehicleManagement(void)
-:Menu(MENU_ID_VEHICLE_MANAGEMENT, "Vehicle Management", NULL)
+:Menu(MENU_ID_VEHICLE_MANAGEMENT, L("Vehicle Management"), NULL)
 {
    m_Width = 0.17;
    m_xPos = menu_get_XStartPos(m_Width); m_yPos = 0.18;
@@ -61,17 +61,17 @@ void MenuVehicleManagement::onShow()
    m_Height = 0.0;
    removeAllItems();
 
-   m_IndexHWInfo = addMenuItem(new MenuItem("Get Hardware Info", "Gets the hardware capabilities of the vehicle."));
-   m_IndexConfig = addMenuItem(new MenuItem("Get Config Info", "Gets the current configuration of the vehicle."));
-   m_IndexModules = addMenuItem(new MenuItem("Get Modules Info", "Gets the current detected and loaded modules on the vehicle."));
-   m_IndexPlugins = addMenuItem(new MenuItem("Core Plugins", "Manage the core plugins on this vehicle."));
-   m_IndexExport = addMenuItem(new MenuItem("Export Model Settings","Exports the model settings to a USB stick."));
-   m_IndexImport = addMenuItem(new MenuItem("Import Model Settings","Imports the model settings from a USB stick."));
-   m_IndexUpdate = addMenuItem(new MenuItem("Update Software","Updates the software on the vehicle."));
-   m_IndexReset  = addMenuItem(new MenuItem("Reset to defaults", "Resets all parameters for this vehicle to the default configuration (except for frequency, vehicle ID and name)."));
-   m_IndexFactoryReset = addMenuItem(new MenuItem("Factory Reset", "Resets the vehicle as it comes after a fresh install. All settings (including vehicle name, frequency, etc) will be reset to default values."));
-   m_IndexReboot = addMenuItem(new MenuItem("Restart", "Restarts the vehicle."));
-   m_IndexDelete = addMenuItem(new MenuItem("Delete","Delete this vehicle from your control list."));
+   m_IndexHWInfo = addMenuItem(new MenuItem(L("Get Hardware Info"), L("Gets the hardware capabilities of the vehicle.")));
+   m_IndexConfig = addMenuItem(new MenuItem(L("Get Config Info"), L("Gets the current configuration of the vehicle.")));
+   m_IndexModules = addMenuItem(new MenuItem(L("Get Modules Info"), L("Gets the current detected and loaded modules on the vehicle.")));
+   m_IndexPlugins = addMenuItem(new MenuItem(L("Core Plugins"), L("Manage the core plugins on this vehicle.")));
+   m_IndexExport = addMenuItem(new MenuItem(L("Export Model Settings"),L("Exports the model settings to a USB stick.")));
+   m_IndexImport = addMenuItem(new MenuItem(L("Import Model Settings"), L("Imports the model settings from a USB stick.")));
+   m_IndexUpdate = addMenuItem(new MenuItem(L("Update Software"), L("Updates the software on the vehicle.")));
+   m_IndexReset  = addMenuItem(new MenuItem(L("Reset to defaults"), L("Resets all parameters for this vehicle to the default configuration (except for frequency, vehicle ID and name).")));
+   m_IndexFactoryReset = addMenuItem(new MenuItem(L("Factory Reset"), L("Resets the vehicle as it comes after a fresh install. All settings (including vehicle name, frequency, etc) will be reset to default values.")));
+   m_IndexReboot = addMenuItem(new MenuItem(L("Restart"), L("Restarts the vehicle.")));
+   m_IndexDelete = addMenuItem(new MenuItem(L("Delete"), L("Delete this vehicle from your control list.")));
 
    bool bConnected = false;
    if ( g_bIsRouterReady && link_has_received_main_vehicle_ruby_telemetry() )
@@ -160,8 +160,8 @@ void MenuVehicleManagement::onReturnFromChild(int iChildMenuId, int returnValue)
          saveControllerModel(g_pCurrentModel);
 
          char szTextW[256];
-         sprintf(szTextW, "Your %s was updated. It will reboot now.", g_pCurrentModel->getVehicleTypeString());
-         MenuConfirmation* pm = new MenuConfirmation("Upload Succeeded", szTextW, 3, true);
+         sprintf(szTextW, L("Your %s was updated. It will reboot now."), g_pCurrentModel->getVehicleTypeString());
+         MenuConfirmation* pm = new MenuConfirmation( L("Upload Succeeded"), szTextW, 3, true);
          pm->m_xPos = 0.4; pm->m_yPos = 0.4;
          pm->m_Width = 0.36;
          pm->m_bDisableStacking = true;
@@ -215,7 +215,7 @@ void MenuVehicleManagement::onReturnFromChild(int iChildMenuId, int returnValue)
          //pm->m_xPos = 0.4; pm->m_yPos = 0.4;
          //pm->m_Width = 0.36;
          //pm->addTopLine("Your vehicle was reseted to default settings. It will reboot now.");
-         MenuConfirmation* pM = new MenuConfirmation("Reset Complete", "Your vehicle was reseted to default settings. It will reboot now.", 3, true);
+         MenuConfirmation* pM = new MenuConfirmation( L("Reset Complete"), L("Your vehicle was reseted to default settings. It will reboot now."), 3, true);
          add_menu_to_stack(pM);
       }
       return;
@@ -238,7 +238,7 @@ void MenuVehicleManagement::onSelectItem()
 {
    if ( NULL == g_pCurrentModel )
    {
-      Popup* p = new Popup("Vehicle is offline", 0.3, 0.3, 0.5, 4 );
+      Popup* p = new Popup( L("Vehicle is offline"), 0.3, 0.3, 0.5, 4 );
       p->setIconId(g_idIconError, get_Color_IconError());
       popups_add_topmost(p);
       valuesToUI();
@@ -247,7 +247,7 @@ void MenuVehicleManagement::onSelectItem()
 
    if ( NULL != g_pCurrentModel && g_pCurrentModel->is_spectator )
    {
-      Popup* p = new Popup("Vehicle Settings can not be changed on a spectator vehicle.", 0.3, 0.3, 0.5, 4 );
+      Popup* p = new Popup( L("Vehicle settings can not be changed on a spectator vehicle."), 0.3, 0.3, 0.5, 4 );
       p->setIconId(g_idIconError, get_Color_IconError());
       popups_add_topmost(p);
       valuesToUI();
@@ -291,7 +291,7 @@ void MenuVehicleManagement::onSelectItem()
       if ( ((g_pCurrentModel->sw_version >>8) & 0xFF) == 6 )
       if ( ((g_pCurrentModel->sw_version & 0xFF) < 9) || ( (g_pCurrentModel->sw_version & 0xFF) >= 10 && (g_pCurrentModel->sw_version & 0xFF) < 90) )
       {
-         addMessage("You need to update your vehicle sowftware to be able to use core plugins.");
+         addMessage(L("You need to update your vehicle sowftware to be able to use core plugins."));
          return;
       }
       handle_commands_reset_has_received_vehicle_core_plugins_info();
@@ -310,9 +310,9 @@ void MenuVehicleManagement::onSelectItem()
       if ( 1 != iMountRes )
       {
          log_line("No USB memory stick available.");
-         Popup* p = new Popup("Please insert a USB memory stick.",0.28, 0.32, 0.32, 3);
+         Popup* p = new Popup(L("Please insert a USB memory stick."), 0.28, 0.32, 0.32, 3);
          if ( 0 != iMountRes )
-            p->setTitle("USB memory stick invalid. Please try again.");
+            p->setTitle(L("USB memory stick invalid. Please try again."));
          p->setCentered();
          p->setIconId(g_idIconInfo, get_Color_IconWarning());
          popups_add_topmost(p);
@@ -331,10 +331,10 @@ void MenuVehicleManagement::onSelectItem()
       ruby_signal_alive();
       sync();
       ruby_signal_alive();
-      Menu* pm = new Menu(MENU_ID_SIMPLE_MESSAGE+10*1000,"Export Succeeded",NULL);
+      Menu* pm = new Menu(MENU_ID_SIMPLE_MESSAGE+10*1000, L("Export Succeeded"), NULL);
       pm->m_xPos = 0.4; pm->m_yPos = 0.4;
       pm->m_Width = 0.36;
-      pm->addTopLine("Your vehicle settings have been stored to the USB stick. You can now remove the USB stick.");
+      pm->addTopLine(L("Your vehicle settings have been stored to the USB stick. You can now remove the USB stick."));
       add_menu_to_stack(pm);
       return;
    }
@@ -347,9 +347,9 @@ void MenuVehicleManagement::onSelectItem()
       if ( 1 != iMountRes )
       {
          log_line("No USB memory stick available.");
-         Popup* p = new Popup("Please insert a USB memory stick.",0.28, 0.32, 0.32, 3);
+         Popup* p = new Popup(L("Please insert a USB memory stick."), 0.28, 0.32, 0.32, 3);
          if ( 0 != iMountRes )
-            p->setTitle("USB memory stick invalid. Please try again.");
+            p->setTitle(L("USB memory stick invalid. Please try again."));
          p->setCentered();
          p->setIconId(g_idIconInfo, get_Color_IconWarning());
          popups_add_topmost(p);
@@ -368,7 +368,7 @@ void MenuVehicleManagement::onSelectItem()
          Menu* pm = new Menu(MENU_ID_SIMPLE_MESSAGE+10*1000,"No settings files",NULL);
          pm->m_xPos = 0.4; pm->m_yPos = 0.4;
          pm->m_Width = 0.36;
-         pm->addTopLine("There are no vehicle settings files on the USB stick.");
+         pm->addTopLine(L("There are no vehicle settings files on the USB stick."));
          add_menu_to_stack(pm);
          return;
       }
@@ -391,7 +391,7 @@ void MenuVehicleManagement::onSelectItem()
 
       if ( ! bSupportsOTA )
       {
-         addMessageWithTitle(0, "Can't update", "This vehicle does not support OTA (over the air) updates.");
+         addMessageWithTitle(0, L("Can't update"), L("This vehicle does not support OTA (over the air) updates."));
          return;
       }
       
@@ -412,7 +412,7 @@ void MenuVehicleManagement::onSelectItem()
       {
          char szBuff[256];
          sprintf(szBuff, "Your %s already has the latest version of the software (version %s). Do you still want to upgrade?", g_pCurrentModel->getVehicleTypeString(), szBuff2);
-         MenuConfirmation* pMC = new MenuConfirmation("Upgrade Confirmation",szBuff, 4);
+         MenuConfirmation* pMC = new MenuConfirmation( L("Upgrade Confirmation"), szBuff, 4);
          add_menu_to_stack(pMC);
          //pMC->addTopLine(" ");
          //pMC->addTopLine("Note: Do not keep the vehicle very close to the controller as the radio power might be too powerfull and generate noise.");
@@ -422,7 +422,7 @@ void MenuVehicleManagement::onSelectItem()
       char szBuff3[64];
       getSystemVersionString(szBuff3, (SYSTEM_SW_VERSION_MAJOR<<8) | SYSTEM_SW_VERSION_MINOR);
       sprintf(szBuff, "Your %s has software version %s (b%d) and software version %s (b%d) is available on the controller. Do you want to upgrade?", g_pCurrentModel->getVehicleTypeString(), szBuff2, (int)(g_pCurrentModel->sw_version >> 16), szBuff3, SYSTEM_SW_BUILD_NUMBER);
-      MenuConfirmation* pMC = new MenuConfirmation("Upgrade Confirmation",szBuff, 2);
+      MenuConfirmation* pMC = new MenuConfirmation( L("Upgrade Confirmation"), szBuff, 2);
       add_menu_to_stack(pMC);
    }
         
@@ -432,7 +432,7 @@ void MenuVehicleManagement::onSelectItem()
          return;
       char szBuff[256];
       sprintf(szBuff, "Are you sure you want to reset all parameters for %s?", g_pCurrentModel->getLongName());
-      MenuConfirmation* pMC = new MenuConfirmation("Confirmation",szBuff, 20);
+      MenuConfirmation* pMC = new MenuConfirmation(L("Confirmation"), szBuff, 20);
       add_menu_to_stack(pMC);
    }
  
@@ -442,9 +442,9 @@ void MenuVehicleManagement::onSelectItem()
          return;
       char szBuff[256];
       sprintf(szBuff, "Factory reset %s", g_pCurrentModel->getLongName());
-      MenuConfirmation* pMC = new MenuConfirmation("Confirmation",szBuff, 21);
-      pMC->addTopLine("All parameters (including vehicle name, radio frequency, etc) and state will be reset to default values as after a fresh instalation.");
-      pMC->addTopLine("You will need to search and pair with the vehicle again after that.");
+      MenuConfirmation* pMC = new MenuConfirmation(L("Confirmation"), szBuff, 21);
+      pMC->addTopLine(L("All parameters (including vehicle name, radio frequency, etc) and state will be reset to default values as after a fresh instalation."));
+      pMC->addTopLine(L("You will need to search and pair with the vehicle again after that."));
       sprintf(szBuff, "Are you sure you want to factory reset %s?", g_pCurrentModel->getLongName());
       pMC->addTopLine(szBuff);
       add_menu_to_stack(pMC);
@@ -456,7 +456,7 @@ void MenuVehicleManagement::onSelectItem()
          return;
       char szBuff[64];
       sprintf(szBuff, "Are you sure you want to delete %s?", g_pCurrentModel->getLongName());
-      add_menu_to_stack(new MenuConfirmation("Confirmation",szBuff, 1));
+      add_menu_to_stack(new MenuConfirmation(L("Confirmation"), szBuff, 1));
    }
 
    if ( m_IndexReboot == m_SelectedIndex )
@@ -466,11 +466,11 @@ void MenuVehicleManagement::onSelectItem()
       {
          char szTextW[256];
          sprintf(szTextW, "Your %s is armed. Are you sure you want to reboot it?", g_pCurrentModel->getVehicleTypeString());
-         MenuConfirmation* pMC = new MenuConfirmation("Warning! Reboot Confirmation", szTextW, 10);
+         MenuConfirmation* pMC = new MenuConfirmation(L("Warning! Reboot Confirmation"), szTextW, 10);
          if ( g_pCurrentModel->rc_params.rc_enabled )
          {
             pMC->addTopLine(" ");
-            pMC->addTopLine("Warning: You have the RC link enabled, the vehicle flight controller will go into RC failsafe mode during reboot.");
+            pMC->addTopLine(L("Warning: You have the RC link enabled, the vehicle flight controller will go into RC failsafe mode during reboot."));
          }
          add_menu_to_stack(pMC);
          return;

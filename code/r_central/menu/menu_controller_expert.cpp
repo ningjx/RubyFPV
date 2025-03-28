@@ -44,7 +44,7 @@
 
 
 MenuControllerExpert::MenuControllerExpert(void)
-:Menu(MENU_ID_CONTROLLER_EXPERT, "CPU and Processes Settings", NULL)
+:Menu(MENU_ID_CONTROLLER_EXPERT, L("CPU and Processes Settings"), NULL)
 {
    m_Width = 0.34;
    m_xPos = menu_get_XStartPos(m_Width); m_yPos = 0.15;
@@ -72,49 +72,49 @@ MenuControllerExpert::MenuControllerExpert(void)
    #if defined(HW_PLATFORM_RASPBERRY)
    addMenuItem(new MenuItemSection("CPU"));
 
-   m_pItemsSelect[2] = new MenuItemSelect("Enable CPU Overclocking", "Enables overclocking of the main ARM CPU.");  
-   m_pItemsSelect[2]->addSelection("No");
-   m_pItemsSelect[2]->addSelection("Yes");
+   m_pItemsSelect[2] = new MenuItemSelect(L("Enable CPU Overclocking"), L("Enables overclocking of the main CPU."));
+   m_pItemsSelect[2]->addSelection(L("No"));
+   m_pItemsSelect[2]->addSelection(L("Yes"));
    m_pItemsSelect[2]->setIsEditable();
    m_IndexCPUEnabled = addMenuItem(m_pItemsSelect[2]);
 
-   m_pItemsSlider[5] = new MenuItemSlider("CPU Speed (Mhz)", "Sets the main CPU frequency. Requires a reboot.", 700,1600, 1050, fSliderWidth);
+   m_pItemsSlider[5] = new MenuItemSlider(L("CPU Speed (Mhz)"), L("Sets the main CPU frequency. Requires a reboot."), 700,1600, 1050, fSliderWidth);
    m_pItemsSlider[5]->setStep(25);
    m_IndexCPUSpeed = addMenuItem(m_pItemsSlider[5]);
 
-   m_pItemsSelect[3] = new MenuItemSelect("Enable GPU Overclocking", "Enables overclocking of the GPU cores.");  
-   m_pItemsSelect[3]->addSelection("No");
-   m_pItemsSelect[3]->addSelection("Yes");
+   m_pItemsSelect[3] = new MenuItemSelect(L("Enable GPU Overclocking"), L("Enables overclocking of the GPU cores."));  
+   m_pItemsSelect[3]->addSelection(L("No"));
+   m_pItemsSelect[3]->addSelection(L("Yes"));
    m_pItemsSelect[3]->setIsEditable();
    m_IndexGPUEnabled = addMenuItem(m_pItemsSelect[3]);
 
-   m_pItemsSlider[6] = new MenuItemSlider("GPU Speed (Mhz)", "Sets the GPU frequency. Requires a reboot.", 200,1000,600, fSliderWidth);
+   m_pItemsSlider[6] = new MenuItemSlider(L("GPU Speed (Mhz)"), L("Sets the GPU frequency. Requires a reboot."), 200,1000,600, fSliderWidth);
    m_pItemsSlider[6]->setStep(25);
    m_IndexGPUSpeed = addMenuItem(m_pItemsSlider[6]);
 
-   m_pItemsSelect[4] = new MenuItemSelect("Enable Overvoltage", "Enables overvotage on the CPU and GPU cores. You need to increase voltage as you increase speed.");  
-   m_pItemsSelect[4]->addSelection("No");
-   m_pItemsSelect[4]->addSelection("Yes");
+   m_pItemsSelect[4] = new MenuItemSelect(L("Enable Overvoltage"), L("Enables overvotage on the CPU and GPU cores. You need to increase voltage as you increase speed."));  
+   m_pItemsSelect[4]->addSelection(L("No"));
+   m_pItemsSelect[4]->addSelection(L("Yes"));
    m_IndexVoltageEnabled = addMenuItem(m_pItemsSelect[4]);
 
-   m_pItemsSlider[7] = new MenuItemSlider("Overvoltage (steps)", "Sets the overvoltage value, in 0.025V increments. Requires a reboot.", 1,8,4, fSliderWidth);
+   m_pItemsSlider[7] = new MenuItemSlider(L("Overvoltage (steps)"), L("Sets the overvoltage value, in 0.025V increments. Requires a reboot."), 1,8,4, fSliderWidth);
    m_pItemsSlider[7]->setStep(1);
    m_IndexVoltage = addMenuItem(m_pItemsSlider[7]);
 
-   m_IndexReset = addMenuItem(new MenuItem("Reset CPU Freq", "Resets the controller CPU and GPU frequencies to default values."));
+   m_IndexReset = addMenuItem(new MenuItem(L("Reset CPU Freq"), L("Resets the controller CPU and GPU frequencies to default values.")));
    #endif
 
-   addMenuItem(new MenuItemSection("Priorities"));
+   addMenuItem(new MenuItemSection(L("Priorities")));
 
-   m_pItemsSelect[10] = new MenuItemSelect("Enable CPU Cores Auto Adjustment", "Automatically adjust the work load on each CPU core.");
-   m_pItemsSelect[10]->addSelection("No");
-   m_pItemsSelect[10]->addSelection("Yes");
+   m_pItemsSelect[10] = new MenuItemSelect(L("Enable CPU Cores Auto Adjustment"), L("Automatically adjust the work load on each CPU core."));
+   m_pItemsSelect[10]->addSelection(L("No"));
+   m_pItemsSelect[10]->addSelection(L("Yes"));
    m_pItemsSelect[10]->setIsEditable();
    m_iIndexCoresAdjustment = addMenuItem(m_pItemsSelect[10]);
 
    m_pItemsSelect[11] = new MenuItemSelect("Enable Priorities Adjustment", "Enable adjustment of processes priorities or use default priorities.");
-   m_pItemsSelect[11]->addSelection("No");
-   m_pItemsSelect[11]->addSelection("Yes");
+   m_pItemsSelect[11]->addSelection(L("No"));
+   m_pItemsSelect[11]->addSelection(L("Yes"));
    m_pItemsSelect[11]->setIsEditable();
    m_iIndexPrioritiesAdjustment = addMenuItem(m_pItemsSelect[11]);
 
@@ -122,8 +122,8 @@ MenuControllerExpert::MenuControllerExpert(void)
    m_IndexNiceRouter = addMenuItem(m_pItemsSlider[0]);
 
    m_pItemsSelect[0] = new MenuItemSelect("Core I/O Boost", "Sets a higher priority for the I/O operations and data flows for the core Ruby components. Other components might work slower.");  
-   m_pItemsSelect[0]->addSelection("No");
-   m_pItemsSelect[0]->addSelection("Yes");
+   m_pItemsSelect[0]->addSelection(L("No"));
+   m_pItemsSelect[0]->addSelection(L("Yes"));
    m_pItemsSelect[0]->setUseMultiViewLayout();
    m_IndexIONiceRouter = addMenuItem(m_pItemsSelect[0]);
 
@@ -132,8 +132,8 @@ MenuControllerExpert::MenuControllerExpert(void)
    m_IndexIONiceRouterValue = addMenuItem(m_pItemsSlider[1]);
 
    m_pItemsSelect[5] = new MenuItemSelect("Video Priority", "Sets a manual CPU and IO priority for the video renderer process.");  
-   m_pItemsSelect[5]->addSelection("Auto");
-   m_pItemsSelect[5]->addSelection("Manual");
+   m_pItemsSelect[5]->addSelection(L("Auto"));
+   m_pItemsSelect[5]->addSelection(L("Manual"));
    m_pItemsSelect[5]->setIsEditable();
    m_IndexAutoRxVideo = addMenuItem(m_pItemsSelect[5]);
 
@@ -141,8 +141,8 @@ MenuControllerExpert::MenuControllerExpert(void)
    m_IndexNiceRXVideo = addMenuItem(m_pItemsSlider[2]);
 
    m_pItemsSelect[1] = new MenuItemSelect("   Video I/O Boost", "Sets a higher priority for the I/O operations and data flows for the received video stream. Other components might work slower.");  
-   m_pItemsSelect[1]->addSelection("No");
-   m_pItemsSelect[1]->addSelection("Yes");
+   m_pItemsSelect[1]->addSelection(L("No"));
+   m_pItemsSelect[1]->addSelection(L("Yes"));
    m_pItemsSelect[1]->setUseMultiViewLayout();
    m_IndexIONiceRXVideo = addMenuItem(m_pItemsSelect[1]);
 
@@ -168,9 +168,9 @@ MenuControllerExpert::MenuControllerExpert(void)
    m_IndexRadioTxPriority = addMenuItem(m_pItemsSlider[9]);
 
 
-   m_IndexVersions = addMenuItem(new MenuItem("Modules versions", "Get all modules versions."));
-   m_IndexResetPriorities = addMenuItem(new MenuItem("Reset Priorities", "Resets all controller priorities."));
-   m_IndexReboot = addMenuItem(new MenuItem("Restart", "Restarts the controller."));
+   m_IndexVersions = addMenuItem(new MenuItem(L("Modules versions"), L("Get all modules versions.")));
+   m_IndexResetPriorities = addMenuItem(new MenuItem(L("Reset Priorities"), L("Resets all controller priorities.")));
+   m_IndexReboot = addMenuItem(new MenuItem(L("Restart"), L("Restarts the controller.")));
 }
 
 void MenuControllerExpert::valuesToUI()
