@@ -162,10 +162,10 @@ extern "C"
       float yt[3] = {(float)(yCenter + planeWidth * 0.5), (float)(yCenter + planeWidth * 0.5), (float)(yCenter + planeWidth * 0.1)};
 
       // Draw the triangle Outline
-      //g_pEngine->setColors(g_pEngine->getColorOSDOutline());
-      //g_pEngine->setStrokeSize(pCurrentSettings->fOutlineThicknessPx);
-      //g_pEngine->drawPolyLine(xt, yt, 3);
-      //g_pEngine->fillPolygon(xt, yt, 3);
+      g_pEngine->setColors(g_pEngine->getColorOSDOutline());
+      g_pEngine->setStrokeSize(pCurrentSettings->fOutlineThicknessPx);
+      g_pEngine->drawPolyLine(xt, yt, 3);
+      g_pEngine->fillPolygon(xt, yt, 3);
       // Draw the triangle
       g_pEngine->setColors(roll_warning ? g_pEngine->getColorOSDWarning() : g_pEngine->getColorOSDInstruments());
       g_pEngine->setStrokeSize(pCurrentSettings->fLineThicknessPx);
