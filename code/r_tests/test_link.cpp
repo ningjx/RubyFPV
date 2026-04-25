@@ -25,7 +25,6 @@ int g_iPacketsCount = 3;
 int g_iPacketSize = 100;
 int g_iDatarate = 18;
 
-u32 g_TimeNow = 0;
 fd_set g_Readset;
 
 u32 g_uTimeLastPingSent = 0;
@@ -289,7 +288,7 @@ void _try_receive_packets()
    do
    {
       nLength = 0;
-      pBuffer = radio_process_wlan_data_in(0, &nLength, g_TimeNow); 
+      pBuffer = radio_process_wlan_data_in(0, &nLength, NULL, g_TimeNow); 
       if ( NULL == pBuffer )
          break;
 
@@ -398,14 +397,14 @@ int main(int argc, char *argv[])
       g_iPacketsCount, g_iPacketsInterval, g_iPacketSize,
       8000 * (g_iPacketsCount * g_iPacketSize / g_iPacketsInterval));
 
-   radio_set_out_datarate(6);
-   radio_set_out_datarate(12);
+   radio_set_out_datarate(6, 0, get_current_timestamp_ms());
+   radio_set_out_datarate(12, 0, get_current_timestamp_ms());
    if ( g_iDatarate > 0 )
-      radio_set_out_datarate(g_iDatarate*1000*1000);
+      radio_set_out_datarate(g_iDatarate*1000*1000, 0, get_current_timestamp_ms());
    else
-      radio_set_out_datarate(g_iDatarate);
+      radio_set_out_datarate(g_iDatarate, 0, get_current_timestamp_ms());
 
-   radio_set_frames_flags(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_FRAME_TYPE_DATA);
+   radio_set_frames_flags(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_FRAME_TYPE_DATA, get_current_timestamp_ms());
     
    while ( ! g_bQuit )
    {

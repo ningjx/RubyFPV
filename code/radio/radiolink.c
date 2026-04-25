@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -42,7 +42,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_radio.h"
 #include "../base/hardware_radio_serial.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../common/string_utils.h"
 #include "radiotap.h"
 #include <time.h>
@@ -65,9 +65,8 @@ u8 sPayloadBufferRead[MAX_PACKET_LENGTH_PCAP];
 int sEnableCRCGen = 0;
 
 int sRadioDataRate_bps = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS; // positive: clasic in bps; negative MCS (starts from -1)
-u32 sRadioFrameFlags = 0;
-u32 s_uTemporaryRadioFrameFlags = 0;
-int s_iUseTemporaryRadioFrameFlags = 0;
+u32 sRadioFrameFlags = RADIO_FLAGS_FRAME_TYPE_DATA;
+int s_iLastRadioDataRatesPerPackets[256];
 
 int sAutoIncrementPacketCounter = 1;
 u32 sRadioReceivedFramesType = RADIO_FLAGS_FRAME_TYPE_DATA;
@@ -152,6 +151,7 @@ void radio_init_link_structures()
 {
    log_line("[Radio] Initialize.");
 
+   radio_packets_log_sizes();
    radio_packets_short_init();
 
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
@@ -161,6 +161,7 @@ void radio_init_link_structures()
 
    for( int i=0; i<256; i++ )
    {
+      s_iLastRadioDataRatesPerPackets[i] = 0;
       for( int k=0; k<MAX_RADIO_INTERFACES; k++ )
          s_uTimesLastRadioPacketsOnSlowLink[i][k] = 0;
    }
@@ -219,8 +220,7 @@ void radio_reset_packets_default_frequencies(int iRCEnabled)
 
    s_uFrequencyRadioPacketsOnSlowLinkControllerToVehicle[PACKET_TYPE_RUBY_PAIRING_REQUEST] = 200;
    s_uFrequencyRadioPacketsOnSlowLinkControllerToVehicle[PACKET_TYPE_COMMAND] = 200;
-   s_uFrequencyRadioPacketsOnSlowLinkControllerToVehicle[PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL] = 50;
-   s_uFrequencyRadioPacketsOnSlowLinkControllerToVehicle[PACKET_TYPE_VIDEO_SWITCH_VIDEO_KEYFRAME_TO_VALUE] = 50;
+   s_uFrequencyRadioPacketsOnSlowLinkControllerToVehicle[PACKET_TYPE_VIDEO_ADAPTIVE_VIDEO_PARAMS] = 50;
    s_uFrequencyRadioPacketsOnSlowLinkControllerToVehicle[PACKET_TYPE_RC_FULL_FRAME] = 50;
 
    
@@ -241,8 +241,7 @@ void radio_reset_packets_default_frequencies(int iRCEnabled)
    
    s_uFrequencyRadioPacketsOnSlowLinkVehicleToController[PACKET_TYPE_RUBY_ALARM] = 100;
 
-   s_uFrequencyRadioPacketsOnSlowLinkVehicleToController[PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL_ACK] = 50;
-   s_uFrequencyRadioPacketsOnSlowLinkVehicleToController[PACKET_TYPE_VIDEO_SWITCH_VIDEO_KEYFRAME_TO_VALUE_ACK] = 50;
+   s_uFrequencyRadioPacketsOnSlowLinkVehicleToController[PACKET_TYPE_VIDEO_ADAPTIVE_VIDEO_PARAMS_ACK] = 50;
 
    s_uFrequencyRadioPacketsOnSlowLinkVehicleToController[PACKET_TYPE_RUBY_MODEL_SETTINGS] = 0; // Send at any rate
 
@@ -269,10 +268,10 @@ void radio_enable_crc_gen(int enable)
 }
 
 
-void radio_set_debug_flag()
+void radio_set_debug_flag(int iDebugFlag)
 {
-   s_bRadioDebugFlag = 1;
-   log_line("Set radio link debug flag");
+   s_bRadioDebugFlag = iDebugFlag;
+   log_line("Set radio link debug flag: %d", s_bRadioDebugFlag);
 }
 
 void radio_set_link_clock_delta(int iVehicleBehindMilisec)
@@ -382,35 +381,48 @@ int radio_get_last_500ms_sent_bps_for_radio_interface(int iInterfaceIndex, u32 u
    return iTotalBPS;
 }
 
-int radio_set_out_datarate(int rate_bps)
+int radio_set_out_datarate(int rate_bps, u8 uPacketType, u32 uTimeNow)
 {
    int nReturn = 0;
 
    if ( rate_bps == 0 )
       rate_bps = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS;
 
-   if ( (sRadioDataRate_bps != rate_bps) || (s_iLogCount_RadioRate == 0) )
-   if ( s_iLogCount_RadioRate < 6 || (s_uLastTimeLog_RadioRate + 20000) < get_current_timestamp_ms() )
+   if ( s_iLastRadioDataRatesPerPackets[uPacketType] != rate_bps )
    {
-      if ( s_iLogCount_RadioRate == 6 )
-         s_iLogCount_RadioRate = 0;
-      char szBuff[64];
-      char szBuff2[64];
-      str_getDataRateDescription(rate_bps, 0, szBuff);
-      str_getDataRateDescription(sRadioDataRate_bps, 0, szBuff2);
-      log_line("Radio: Set TX DR (%d) to: %s (prev was: %s, %u pckts sent on it), current radio frame flags: %s = %s", s_iLogCount_RadioRate, szBuff, szBuff2, s_uPacketsSentUsingCurrent_RadioRate, str_format_binary_number(sRadioFrameFlags), str_get_radio_frame_flags_description2(sRadioFrameFlags));
-      if ( s_iLogCount_RadioRate == 3 )
-         log_line("Radio: Too many radio datarate changes, pausing log.");
-      s_iLogCount_RadioRate++;
-      if ( get_current_timestamp_ms() > s_uLastTimeLog_RadioRate + 1000 )
-         s_iLogCount_RadioRate = 0;
-      s_uLastTimeLog_RadioRate = get_current_timestamp_ms();
+      s_iLastRadioDataRatesPerPackets[uPacketType] = rate_bps;
+      //char szBuff[64];
+      //str_getDataRateDescription(rate_bps, 0, szBuff);
+      //log_line("[Radio] Radio Tx DR has changed to %s for %s", szBuff, str_get_packet_type(uPacketType));
    }
 
    if ( sRadioDataRate_bps != rate_bps )
    {
+      if ( uTimeNow > s_uLastTimeLog_RadioRate + 2000 )
+         s_iLogCount_RadioRate = 0;
+      if ( s_iLogCount_RadioRate < 6 )
+      {
+         s_uLastTimeLog_RadioRate = get_current_timestamp_ms();
+         char szBuff[64];
+         char szBuff2[64];
+         str_getDataRateDescription(rate_bps, 0, szBuff);
+         str_getDataRateDescription(sRadioDataRate_bps, 0, szBuff2);
+         log_line("[Radio] Set Tx DR (%d) to: %s (to send %s) (prev was: %s, %u pckts sent on it), current radio frame flags: %s",
+           s_iLogCount_RadioRate, szBuff, str_get_packet_type(uPacketType), szBuff2, s_uPacketsSentUsingCurrent_RadioRate, str_get_radio_frame_flags_description2(sRadioFrameFlags));
+         if ( s_iLogCount_RadioRate == 5 )
+            log_line("[Radio] Too many radio datarate changes, pausing log.");
+         s_iLogCount_RadioRate++;
+      }
       s_uPacketsSentUsingCurrent_RadioRate = 0;
       nReturn = 1;
+   }
+   else if ( uTimeNow > s_uLastTimeLog_RadioRate + 5000 )
+   {
+      char szBuff[64];
+      str_getDataRateDescription(sRadioDataRate_bps, 0, szBuff);
+      log_line("[Radio] Tx DR is unchanged: %s", szBuff);
+
+      s_uLastTimeLog_RadioRate = uTimeNow;
    }
 
    sRadioDataRate_bps = rate_bps;
@@ -450,13 +462,6 @@ u32 radio_get_current_frames_flags()
 
 u32 radio_get_current_frames_flags_datarate()
 {
-   if ( s_iUseTemporaryRadioFrameFlags )
-   {
-      if ( s_uTemporaryRadioFrameFlags & RADIO_FLAGS_USE_LEGACY_DATARATES )
-         return RADIO_FLAGS_USE_LEGACY_DATARATES;
-      if ( s_uTemporaryRadioFrameFlags & RADIO_FLAGS_USE_MCS_DATARATES )
-         return RADIO_FLAGS_USE_MCS_DATARATES;    
-   }
    if ( sRadioFrameFlags & RADIO_FLAGS_USE_LEGACY_DATARATES )
       return RADIO_FLAGS_USE_LEGACY_DATARATES;
    if ( sRadioFrameFlags & RADIO_FLAGS_USE_MCS_DATARATES )
@@ -464,12 +469,10 @@ u32 radio_get_current_frames_flags_datarate()
    return 0;
 }
 
-void radio_set_frames_flags(u32 frameFlags)
+void radio_set_frames_flags(u32 frameFlags, u32 uTimeNow)
 {
-   u32 uFrameFlagsToSet = frameFlags;
-   if ( s_iUseTemporaryRadioFrameFlags )
-      uFrameFlagsToSet = s_uTemporaryRadioFrameFlags;
-
+   u32 uFrameFlagsToSet = frameFlags | RADIO_FLAGS_FRAME_TYPE_DATA;
+   
    if ( sRadioDataRate_bps > 0 )
    {
       uFrameFlagsToSet &= ~RADIO_FLAGS_USE_MCS_DATARATES;
@@ -489,93 +492,46 @@ void radio_set_frames_flags(u32 frameFlags)
       int mcsRate = -sRadioDataRate_bps-1;
       if ( mcsRate < 0 )
          mcsRate = 0;
-
-      if ( hardware_is_station() )
-      {
-         if ( uFrameFlagsToSet & RADIO_FLAG_HT40_CONTROLLER )
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_40;
-         else
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_20;
-
-         if ( uFrameFlagsToSet & RADIO_FLAG_LDPC_CONTROLLER )
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_FEC_LDPC; 
-         if ( uFrameFlagsToSet & RADIO_FLAG_SGI_CONTROLLER )
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_SGI;
-         if ( uFrameFlagsToSet & RADIO_FLAG_STBC_CONTROLLER )
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_STBC_1 << IEEE80211_RADIOTAP_MCS_STBC_SHIFT;
-      }
+     
+      if ( uFrameFlagsToSet & RADIO_FLAG_HT40 )
+         mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_40;
       else
-      {
-         if ( uFrameFlagsToSet & RADIO_FLAG_HT40_VEHICLE )
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_40;
-         else
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_20;
+         mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_BW_20;
 
-         if ( uFrameFlagsToSet & RADIO_FLAG_LDPC_VEHICLE )
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_FEC_LDPC; 
-         if ( uFrameFlagsToSet & RADIO_FLAG_SGI_VEHICLE )
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_SGI;
-         if ( uFrameFlagsToSet & RADIO_FLAG_STBC_VEHICLE )
-            mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_STBC_1 << IEEE80211_RADIOTAP_MCS_STBC_SHIFT;       
-      }
+      if ( uFrameFlagsToSet & RADIO_FLAG_LDPC )
+         mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_FEC_LDPC; 
+      if ( uFrameFlagsToSet & RADIO_FLAG_SGI )
+         mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_SGI;
+      if ( uFrameFlagsToSet & RADIO_FLAG_STBC )
+         mcs_flags = mcs_flags | IEEE80211_RADIOTAP_MCS_STBC_1 << IEEE80211_RADIOTAP_MCS_STBC_SHIFT;
+  
       s_uRadiotapHeaderMCS[10] = mcs_known;
       s_uRadiotapHeaderMCS[11] = mcs_flags;
       s_uRadiotapHeaderMCS[12] = (uint8_t)mcsRate;
    }
 
-   if ( (sRadioFrameFlags != uFrameFlagsToSet) || (s_iLogCount_RadioFlags == 0) )
-   if ( s_iLogCount_RadioFlags < 10 || (s_uLastTimeLog_RadioFlags + 20000) < get_current_timestamp_ms() )
+   if ( sRadioFrameFlags != uFrameFlagsToSet )
    {
-      if ( s_iLogCount_RadioFlags == 10 )
+      if ( uTimeNow > s_uLastTimeLog_RadioFlags + 2000 )
          s_iLogCount_RadioFlags = 0;
-      char szBuff[128];
-      char szBuff2[128];
-      str_get_radio_frame_flags_description(uFrameFlagsToSet, szBuff);
-      str_get_radio_frame_flags_description(sRadioFrameFlags, szBuff2);
-      log_line("Radio: Set radio frames flags to %s = %s (previous was: %s, %u packets sent on it)",
-         str_format_binary_number(uFrameFlagsToSet), szBuff, szBuff2, s_uPacketsSentUsingCurrent_RadioFlags);
-      if ( s_iLogCount_RadioFlags == 9 )
-         log_line("Radio: Too many radio flags changes, pausing log.");
-      s_iLogCount_RadioFlags++;
-      if ( get_current_timestamp_ms() > s_uLastTimeLog_RadioFlags + 1000 )
-         s_iLogCount_RadioFlags = 0;
-      s_uLastTimeLog_RadioFlags = get_current_timestamp_ms();
+      if ( s_iLogCount_RadioFlags < 10 )
+      {
+         s_uLastTimeLog_RadioFlags = uTimeNow;
+   
+         char szBuff[128];
+         char szBuff2[128];
+         str_get_radio_frame_flags_description(uFrameFlagsToSet, szBuff);
+         str_get_radio_frame_flags_description(sRadioFrameFlags, szBuff2);
+         log_line("[Radio] Set radio frames flags to %s = %s (previous was: %s, %u packets sent on it)",
+            str_format_binary_number(uFrameFlagsToSet), szBuff, szBuff2, s_uPacketsSentUsingCurrent_RadioFlags);
+         if ( s_iLogCount_RadioFlags == 9 )
+            log_line("[Radio] Too many radio flags changes, pausing log.");
+         s_iLogCount_RadioFlags++;
+      }
    }
-
-   if ( ! s_iUseTemporaryRadioFrameFlags )
-   {
-      if ( sRadioFrameFlags != frameFlags )
-         s_uPacketsSentUsingCurrent_RadioFlags = 0;
-      sRadioFrameFlags = frameFlags;
-   }
-}
-
-int  radio_has_temporary_frames_flags()
-{
-   return s_iUseTemporaryRadioFrameFlags;
-}
-
-u32  radio_get_temporary_frames_flags()
-{
-   return s_uTemporaryRadioFrameFlags;
-}
-
-void radio_set_temporary_frames_flags(u32 uFrameFlags)
-{
-   s_uTemporaryRadioFrameFlags = uFrameFlags;
-   s_iUseTemporaryRadioFrameFlags = 1;
-   log_line("Radio: Set temporary radio flags to: %s = %s", str_format_binary_number(s_uTemporaryRadioFrameFlags), str_get_radio_frame_flags_description2(s_uTemporaryRadioFrameFlags));
-   log_line("Radio: Current radio flags where: %s = %s", str_format_binary_number(sRadioFrameFlags), str_get_radio_frame_flags_description2(sRadioFrameFlags));
-   radio_set_frames_flags(sRadioFrameFlags);
-}
-
-void radio_remove_temporary_frames_flags()
-{
-   log_line("Radio: Remove temporary radio flags: %s = %s", str_format_binary_number(s_uTemporaryRadioFrameFlags), str_get_radio_frame_flags_description2(s_uTemporaryRadioFrameFlags));
-   log_line("Radio: Current radio flags are now: %s = %s", str_format_binary_number(sRadioFrameFlags), str_get_radio_frame_flags_description2(sRadioFrameFlags));
-   s_uTemporaryRadioFrameFlags = 0;
-   s_iUseTemporaryRadioFrameFlags = 0;
-   radio_set_frames_flags(sRadioFrameFlags);
+   if ( sRadioFrameFlags != uFrameFlagsToSet )
+      s_uPacketsSentUsingCurrent_RadioFlags = 0;
+   sRadioFrameFlags = uFrameFlagsToSet;
 }
 
 
@@ -636,8 +592,9 @@ int _radio_open_interface_for_read_with_filter(int interfaceIndex, char* szFilte
    }
 
    log_line("pcap snapshot length: %d bytes", pcap_snapshot(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap));
-   //int iLen = 4096;
-   int iLen = MAX_PACKET_TOTAL_SIZE*10;
+   //int iLen = 2096;
+   int iLen = MAX_PACKET_TOTAL_SIZE*6;
+   //int iLen = MAX_PACKET_TOTAL_SIZE*30;
    if ( pcap_set_snaplen(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap, iLen) !=0 )
       log_softerror_and_alarm("Error setting [%s] snap buffer length: %s", pRadioHWInfo->szName, pcap_geterr(pRadioHWInfo->runtimeInterfaceInfoRx.ppcap));
    else
@@ -912,14 +869,14 @@ void radio_close_interface_for_write(int interfaceIndex)
 }
 
 
-u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength, u32 uTimeNow)
+u8* radio_process_wlan_data_in(int interfaceNumber, int* piOutPacketLength, int* piOutRxDatarate, u32 uTimeNow)
 {
    radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(interfaceNumber);
 
    s_iRadioLastReadErrorCode = RADIO_READ_ERROR_NO_ERROR;
 
-   if ( NULL != outPacketLength )
-      *outPacketLength = 0;
+   if ( NULL != piOutPacketLength )
+      *piOutPacketLength = 0;
 
 
 #ifdef FEATURE_RADIO_SYNCHRONIZE_RXTX_THREADS
@@ -1023,6 +980,8 @@ u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength, u32 uT
    int idBm = 0;
    int iAntennaDBM[MAX_RADIO_ANTENNAS];
    int iAntennaDBMNoise[MAX_RADIO_ANTENNAS];
+   int iAntennaRate = 0;
+
    for( int i=0; i<MAX_RADIO_ANTENNAS; i++ )
    {
       iAntennaDBM[i] = 1000;
@@ -1034,8 +993,8 @@ u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength, u32 uT
       switch (rti.this_arg_index)
       {
          case IEEE80211_RADIOTAP_RATE:
-	           pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDataRateBPSMCS = getRealDataRateFromRadioDataRate((int)(*((u8*)(rti.this_arg)))/2, 0);
-            //log_line("recv datarate: %d", (int)(*((u8*)(rti.this_arg))));
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDataRateBPSMCS = getRealDataRateFromRadioDataRate((int)(*((u8*)(rti.this_arg)))/2, RADIO_FLAGS_USE_LEGACY_DATARATES, 0);
+            iAntennaRate = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDataRateBPSMCS;
             break;
 
          case IEEE80211_RADIOTAP_MCS:
@@ -1045,13 +1004,14 @@ u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength, u32 uT
             u8 mcs = rti.this_arg[2];
             //log_line("recv MCS, %d, %d, %d", (int)known, (int)flags, (int)mcs);
             pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDataRateBPSMCS = -mcs-1;
+            iAntennaRate = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDataRateBPSMCS;
             break;
             }
 
          case IEEE80211_RADIOTAP_CHANNEL:
             //pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nChannel = le16_to_cpu(*((u16 *)rti.this_arg));
             //pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nChannelFlags = le16_to_cpu(*((u16 *)(rti.this_arg + 2)));
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nFreq = le32toh(*(uint32_t*)(rti.this_arg)) & 0xffff;
+            //pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nFreq = le32toh(*(uint32_t*)(rti.this_arg)) & 0xffff;
             break;
 	
          case IEEE80211_RADIOTAP_ANTENNA:
@@ -1092,56 +1052,12 @@ u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength, u32 uT
       }
    }
 
-   for( int i=0; i<iAntennaCount; i++ )
-   {
-      if ( iAntennaDBM[i] < 500 )
-      {
-         if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmLast[i] < 500 )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmLastChange[i] = iAntennaDBM[i] - pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmLast[i];
-         else
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmLastChange[i] = 0;
-
-         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmLast[i] = iAntennaDBM[i];
-         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.uLastTimeCapture[i] = uTimeNow;
-
-         if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmAvg[i] > 500 )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmAvg[i] = iAntennaDBM[i];
-         else
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmAvg[i] = (pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmAvg[i] * 80 + 20 * iAntennaDBM[i])/100;
-
-         if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmMin[i] > 500 )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmMin[i] = iAntennaDBM[i];
-         else if ( iAntennaDBM[i] < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmMin[i] )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmMin[i] = iAntennaDBM[i];
-
-         if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmMax[i] > 500 )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmMax[i] = iAntennaDBM[i];
-         else if ( iAntennaDBM[i] > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmMax[i] )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmMax[i] = iAntennaDBM[i];
-      }
-
-      if ( iAntennaDBMNoise[i] < 500 )
-      {
-         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseLast[i] = iAntennaDBMNoise[i];
-         if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseAvg[i] > 500 )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseAvg[i] = iAntennaDBMNoise[i];
-         else
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseAvg[i] = (pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseAvg[i] * 80 + 20 * iAntennaDBMNoise[i])/100;
-         
-         if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseMin[i] > 500 )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseMin[i] = iAntennaDBMNoise[i];
-         else if ( iAntennaDBMNoise[i] < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseMin[i] )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseMin[i] = iAntennaDBMNoise[i];
-
-         if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseMax[i] > 500 )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseMax[i] = iAntennaDBMNoise[i];
-         else if ( iAntennaDBMNoise[i] > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseMax[i] )
-            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseMax[i] = iAntennaDBMNoise[i];
-      }
-   }
-
-   if ( iAntennaCount > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount )
-      pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount = iAntennaCount;
+   sRadioLastReceivedHeadersLength = rti.max_length + sizeof(s_uIEEEHeaderData);
+   pRadioPayload += sRadioLastReceivedHeadersLength;
+   payloadLength = ppcapPacketHeader->len - sRadioLastReceivedHeadersLength;
+   // Ralink and Atheros both always supply the FCS to userspace at the end, so remove it from size
+   if (pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nRadiotapFlags & IEEE80211_RADIOTAP_F_FCS)
+      payloadLength -= 4;
 
    #ifdef DEBUG_PACKET_RECEIVED
    log_line("ieee iterator length: %d, iee header: %d", rti.max_length,sizeof(s_uIEEEHeaderData) );
@@ -1152,16 +1068,190 @@ u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength, u32 uT
    }
    #endif
 
-   sRadioLastReceivedHeadersLength = rti.max_length + sizeof(s_uIEEEHeaderData);
-   pRadioPayload += sRadioLastReceivedHeadersLength;
-   payloadLength = ppcapPacketHeader->len - sRadioLastReceivedHeadersLength;
-   // Ralink and Atheros both always supply the FCS to userspace at the end, so remove it from size
-   if (pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nRadiotapFlags & IEEE80211_RADIOTAP_F_FCS)
-      payloadLength -= 4;
-   //log_line("pRadioPayload size adjusted: %d: ", payloadLength);
+   if ( NULL != piOutPacketLength )
+      *piOutPacketLength = payloadLength;
+   if ( NULL != piOutRxDatarate )
+      *piOutRxDatarate = iAntennaRate;
 
-   if ( NULL != outPacketLength )
-      *outPacketLength = payloadLength;
+   if ( payloadLength >= (int)sizeof(t_packet_header) )
+   {
+      t_packet_header* pPH = (t_packet_header*)pRadioPayload;
+
+      pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.uLastTimeCapture = uTimeNow;
+      if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA )
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.uLastTimeCapture = uTimeNow;
+      else
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.uLastTimeCapture = uTimeNow;
+
+      int iMaxDBM = 1000;
+      int iMaxDBMNoise = 1000;
+      int iMaxSNR = 1000;
+      int iMaxDBMThresh = 1000;
+      int iMaxDBMThreshDatarate = 0;
+      int iMaxSNRThresh = 1000;
+      int iMaxSNRThreshDatarate = 0;
+      int iMaxSNRThreshDBMValue = 1000;
+      int iMaxSNRThreshSNRValue = 1000;
+
+      static int siDBGCountRx = 0;
+      siDBGCountRx++;
+      for( int i=0; i<iAntennaCount; i++ )
+      {
+         if ( iAntennaDBM[i] < 500 )
+         {
+            if ( (iMaxDBM == 1000) || (iAntennaDBM[i] > iMaxDBM) )
+               iMaxDBM = iAntennaDBM[i];
+            if ( iAntennaDBMNoise[i] < 500 )
+            {
+               int iSNR = iAntennaDBM[i] - iAntennaDBMNoise[i];
+               if ( (iMaxSNR == 1000) || (iSNR > iMaxSNR) )
+                  iMaxSNR = iSNR;
+
+               if ( iAntennaRate != 0 )
+               {
+                  int iDBMThresh = iAntennaDBM[i] - getRadioMinimDBMForDataRate(iAntennaRate);
+                  if ( (iMaxDBMThresh == 1000) || (iDBMThresh > iMaxDBMThresh) )
+                  {
+                     iMaxDBMThresh = iDBMThresh;
+                     iMaxDBMThreshDatarate = iAntennaRate;
+                  }
+                  int iSNRThresh = iSNR - getRadioMinimSNRForDataRate(iAntennaRate);
+                  if ( (iMaxSNRThresh == 1000) || (iSNRThresh > iMaxSNRThresh) )
+                  {
+                     iMaxSNRThresh = iSNRThresh;
+                     iMaxSNRThreshDatarate = iAntennaRate;
+                     iMaxSNRThreshDBMValue = iAntennaDBM[i];
+                     iMaxSNRThreshSNRValue = iAntennaDBMNoise[i];
+                  }
+               }
+            }
+         }
+
+         if ( iAntennaDBMNoise[i] < 500 )
+         {
+            if ( (iMaxDBMNoise == 1000) || (iAntennaDBMNoise[i] > iMaxDBMNoise) )
+               iMaxDBMNoise = iAntennaDBMNoise[i];
+         }
+      }
+
+      pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmLast = iMaxDBM;
+      pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmNoiseLast = iMaxDBMNoise;
+      pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRLast = iMaxSNR;
+      if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA )
+      {
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmLast = iMaxDBM;
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmNoiseLast = iMaxDBMNoise;
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRLast = iMaxSNR;
+      }
+      else
+      {
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmLast = iMaxDBM;
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmNoiseLast = iMaxDBMNoise;
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRLast = iMaxSNR;
+      }
+
+      if ( iMaxDBM < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmMin )
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmMin = iMaxDBM;
+      if ( iMaxDBM < 1000 )
+      if ( (1000 == pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmMax) || (iMaxDBM > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmMax) )
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmMax = iMaxDBM;
+
+      if ( iMaxDBMNoise < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmNoiseMin )
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmNoiseMin = iMaxDBMNoise;
+      if ( iMaxDBMNoise < 1000 )
+      if ( (1000 == pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmNoiseMax) || (iMaxDBMNoise > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmNoiseMax) )
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmNoiseMax = iMaxDBMNoise;
+
+      if ( iMaxSNR < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRMin )
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRMin = iMaxSNR;
+      if ( iMaxSNR < 1000 )
+      if ( (1000 == pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRMax) || (iMaxSNR > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRMax) )
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRMax = iMaxSNR;
+
+      if ( iMaxDBMThresh < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmThreshMin )
+      {
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmThreshMin = iMaxDBMThresh;
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmThreshMinDatarate = iMaxDBMThreshDatarate;
+      }
+
+      if ( iMaxSNRThresh < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRThreshMin )
+      {
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRThreshMin = iMaxSNRThresh;
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRThreshMinDatarate = iMaxSNRThreshDatarate;
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRThreshMinDBMValue = iMaxSNRThreshDBMValue;
+         pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRThreshMinSNRValue = iMaxSNRThreshSNRValue;
+      }
+
+      if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA )
+      {
+         if ( iMaxDBM < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmMin )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmMin = iMaxDBM;
+         if ( iMaxDBM < 1000 )
+         if ( (1000 == pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmMax) || (iMaxDBM > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmMax) )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmMax = iMaxDBM;
+
+         if ( iMaxDBMNoise < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmNoiseMin )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmNoiseMin = iMaxDBMNoise;
+         if ( iMaxDBMNoise < 1000 )
+         if ( (1000 == pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmNoiseMax) || (iMaxDBMNoise > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmNoiseMax) )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmNoiseMax = iMaxDBMNoise;
+
+         if ( iMaxSNR < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRMin )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRMin = iMaxSNR;
+         if ( iMaxSNR < 1000 )
+         if ( (1000 == pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRMax) || (iMaxSNR > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRMax) )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRMax = iMaxSNR;
+
+         if ( iMaxDBMThresh < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmThreshMin )
+         {
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmThreshMin = iMaxDBMThresh;
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iDbmThreshMinDatarate = iMaxDBMThreshDatarate;
+         }
+         if ( iMaxSNRThresh < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRThreshMin )
+         {
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRThreshMin = iMaxSNRThresh;
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRThreshMinDatarate = iMaxSNRThreshDatarate;
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRThreshMinDBMValue = iMaxSNRThreshDBMValue;
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoVideo.iSNRThreshMinSNRValue = iMaxSNRThreshSNRValue;
+         }
+      }
+      else
+      {
+         if ( iMaxDBM < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmMin )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmMin = iMaxDBM;
+         if ( iMaxDBM < 1000 )
+         if ( (1000 == pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmMax) || (iMaxDBM > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmMax) )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmMax = iMaxDBM;
+
+         if ( iMaxDBMNoise < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmNoiseMin )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmNoiseMin = iMaxDBMNoise;
+         if ( iMaxDBMNoise < 1000 )
+         if ( (1000 == pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmNoiseMax) || (iMaxDBMNoise > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmNoiseMax) )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmNoiseMax = iMaxDBMNoise;
+
+         if ( iMaxSNR < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRMin )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRMin = iMaxSNR;
+         if ( iMaxSNR < 1000 )
+         if ( (1000 == pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRMax) || (iMaxSNR > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRMax) )
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRMax = iMaxSNR;
+
+         if ( iMaxDBMThresh < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmThreshMin )
+         {
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmThreshMin = iMaxDBMThresh;
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iDbmThreshMinDatarate = iMaxDBMThreshDatarate;
+         }
+         if ( iMaxSNRThresh < pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRThreshMin )
+         {
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRThreshMin = iMaxSNRThresh;
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRThreshMinDatarate = iMaxSNRThreshDatarate;
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRThreshMinDBMValue = iMaxSNRThreshDBMValue;
+            pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoData.iSNRThreshMinSNRValue = iMaxSNRThreshSNRValue;
+         }
+      }
+   }
+   if ( iAntennaCount > pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount )
+      pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount = iAntennaCount;
+
 
    #ifdef FEATURE_RADIO_SYNCHRONIZE_RXTX_THREADS
    if ( 1 == s_iMutexRadioSyncRxTxThreadsInitialized )

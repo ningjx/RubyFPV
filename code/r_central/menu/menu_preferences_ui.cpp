@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -75,6 +75,7 @@ void MenuPreferencesUI::addItems()
 
    m_IndexScaleMenu = -1;
    m_IndexMenuStacked = -1;
+   m_IndexMenusCompact = -1;
 
    m_IndexUnits = -1;
    m_IndexUnitsHeight = -1;
@@ -108,6 +109,12 @@ void MenuPreferencesUI::addItems()
       m_pItemsSelect[1]->addSelection(L("Sticky Left"), false);
       m_pItemsSelect[1]->setIsEditable();
       m_IndexMenuStacked = addMenuItem(m_pItemsSelect[1]);
+
+      m_pItemsSelect[9] = new MenuItemSelect(L("Compact Menus"), L("Show compact menus for ease of navigation. Show full settings only on demand, for each menu."));
+      m_pItemsSelect[9]->addSelection(L("No"));
+      m_pItemsSelect[9]->addSelection(L("Yes"));
+      m_pItemsSelect[9]->setIsEditable();
+      m_IndexMenusCompact = addMenuItem(m_pItemsSelect[9]);
 
       m_pItemsSelect[0] = new MenuItemSelect(L("Menu font size"), L("Change how big the menus appear on screen."));  
       m_pItemsSelect[0]->addSelection(L("X-Small"));
@@ -201,6 +208,7 @@ void MenuPreferencesUI::addItems()
          m_pItemsSelect[14]->addSelection("Betaflight");
          m_pItemsSelect[14]->addSelection("INAV");
          m_pItemsSelect[14]->addSelection("Ardupilot");
+         m_pItemsSelect[14]->addSelection("PitLab");
          m_pItemsSelect[14]->setIsEditable();
          m_IndexMSPOSDFont = addMenuItem(m_pItemsSelect[14]);
 
@@ -301,6 +309,8 @@ void MenuPreferencesUI::valuesToUI()
          m_pItemsSelect[1]->setSelection(1);
       else
          m_pItemsSelect[1]->setSelection(0);
+
+      m_pItemsSelect[9]->setSelectedIndex(p->iShowCompactMenus);
    }
 
    if ( -1 != m_IndexInvertColors )
@@ -525,6 +535,21 @@ void MenuPreferencesUI::onSelectItem()
       applyFontScaleChanges();
       menu_invalidate_all();
       popups_invalidate_all();
+
+      menu_rearrange_all_menus_xpos_no_animation();
+      menu_loop(true);
+      menu_invalidate_all();
+      popups_invalidate_all();
+
+      return;
+   }
+
+   if ( ! m_bShowOnlyOSD )
+   if ( (-1 != m_IndexMenusCompact) && (m_IndexMenusCompact == m_SelectedIndex) )
+   {
+      p->iShowCompactMenus = m_pItemsSelect[9]->getSelectedIndex();
+      save_Preferences();
+      menu_invalidate_all();
       return;
    }
 

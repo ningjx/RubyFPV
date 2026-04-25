@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -58,7 +58,7 @@ MenuControllerJoystick::MenuControllerJoystick(int joystickIndex)
    m_bIsCalibratingAxes = false;
    m_bCalibrationComplete = false;
    m_bCalibrationCanceled = false;
-   m_topTextHeight = 0;
+   m_fTopTextHeight = 0;
    m_pPopupCal = NULL;
 
    m_IndexBack = addMenuItem(new MenuItem("Back", "Close the input device window"));
@@ -127,6 +127,7 @@ bool MenuControllerJoystick::periodicLoop()
       if ( g_TimeNow < s_uTimeNextJoystickInit )
          return true;
 
+      log_line("MenuControllerJoystick: Try to enum and open joystick...");
       controllerInterfacesEnumJoysticks();
       if ( 0 == pCI->inputInterfacesCount )
          return true;
@@ -208,22 +209,25 @@ void MenuControllerJoystick::Render()
 
    y += MENU_ITEM_SPACING*height_text;
 
-   m_topTextHeight = 0;
+   m_fTopTextHeight = 0;
+
+   if ( (! m_bIsCalibratingCenters) && (! m_bIsCalibratingAxes) )
+      m_fTopTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_fTopTextHeight, L("Note: The axes order might differ on different input devices from the default order. That's normal. Map your RC channels accordingly."), MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenu);
+
    if ( m_bCalibrationComplete )
-       m_topTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_topTextHeight, "Calibration Complete. You can now use this input device.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenu);
+       m_fTopTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_fTopTextHeight, "Calibration Complete. You can now use this input device.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenu);
    else if ( m_bCalibrationCanceled )
    {
-       m_topTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_topTextHeight, "Calibration canceled.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenu);
+       m_fTopTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_fTopTextHeight, "Calibration canceled.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenu);
        if ( (NULL != m_pJoystick) && (! m_pJoystick->bCalibrated) )
-          m_topTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_topTextHeight, "This input device is not calibrated! Calibrate it before you can use it.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenu);
+          m_fTopTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_fTopTextHeight, "This input device is not calibrated! Calibrate it before you can use it.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenu);
    }
    else if ( m_bIsCalibratingCenters )
-       m_topTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_topTextHeight, "[Calibrating Centers]: Move all the sticks, pots and joysticks to the center rest position, release all the buttons or move them to the min position if they have multiple positions; then press the [Menu/Ok] key. Press [Cancel/Back] key to cancel the calibration.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenuSmall);
+       m_fTopTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_fTopTextHeight, "[Calibrating Centers]: Move all the sticks, pots and joysticks to the center rest position, release all the buttons or move them to the min position if they have multiple positions; then press the [Menu/Ok] key. Press [Cancel/Back] key to cancel the calibration.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenuSmall);
    else if ( m_bIsCalibratingAxes )
-       m_topTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_topTextHeight, "[Calibrating Axes]: Move all the sticks, pots and joysticks as far as they can move on all directions, toggle all buttons in all positions if they have multiple positions;  then press the [Menu/Ok] key when done. Press [Cancel/Back] key to cancel the calibration.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenuSmall);
+       m_fTopTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_fTopTextHeight, "[Calibrating Axes]: Move all the sticks, pots and joysticks as far as they can move on all directions, toggle all buttons in all positions if they have multiple positions;  then press the [Menu/Ok] key when done. Press [Cancel/Back] key to cancel the calibration.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenuSmall);
    else if ( (NULL != m_pJoystick) && (! m_pJoystick->bCalibrated) )
-       m_topTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_topTextHeight, "This input device is not calibrated! Calibrate it before you can use it.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenu);
-
+       m_fTopTextHeight += 1.2*g_pRenderEngine->drawMessageLines(m_xPos+m_sfMenuPaddingX, y+m_fTopTextHeight, "This input device is not calibrated! Calibrate it before you can use it.", MENU_TEXTLINE_SPACING, getUsableWidth(), g_idFontMenu);
    y += (1.7+2.0)*height_text;
    
    if ( NULL == m_pJoystick )
@@ -385,7 +389,7 @@ void MenuControllerJoystick::onSelectItem()
    if ( m_IndexBack == m_SelectedIndex )
       menu_stack_pop(0);   
 
-   if ( m_IndexCalibrate == m_SelectedIndex )
+   if ( (-1 != m_IndexCalibrate) && (m_IndexCalibrate == m_SelectedIndex) )
    {
       m_pMenuItems[0]->setEnabled(false);
       m_pMenuItems[1]->setEnabled(false);
@@ -393,6 +397,12 @@ void MenuControllerJoystick::onSelectItem()
       m_bIsCalibratingCenters = false;
       m_bCalibrationComplete = false;
       m_bCalibrationCanceled = false;
+
+      if ( NULL != m_pJoystick )
+      {
+         m_pJoystick->bCalibrated = false;
+         save_ControllerInterfacesSettings();
+      }
 
       for( int i=0; i<MAX_JOYSTICK_AXES; i++ )
       {
@@ -423,7 +433,7 @@ void MenuControllerJoystick::onSelectItem()
    }
 
    if ( NULL != m_pJoystick )
-   if ( m_IndexCenterBand == m_SelectedIndex && ! m_pMenuItems[m_IndexCenterBand]->isEditing() )
+   if ( (m_IndexCenterBand == m_SelectedIndex) && (! m_pMenuItems[m_IndexCenterBand]->isEditing()) )
    {
       for( int i=0; i<m_pJoystick->countAxes; i++ )
          m_pJoystick->axesCenterZone[i] = m_pItemsRange[0]->getCurrentValue()*10.0;

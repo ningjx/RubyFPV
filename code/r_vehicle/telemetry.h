@@ -15,6 +15,7 @@ int telemetry_get_serial_port_file();
 
 int telemetry_try_read_serial_port();
 void telemetry_periodic_loop();
+bool telemetry_will_send_full_telemetry_to_controller();
 
 t_packet_header_fc_telemetry* telemetry_get_fc_telemetry_header();
 t_packet_header_fc_extra* telemetry_get_fc_extra_telemetry_header();

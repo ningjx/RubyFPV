@@ -12,8 +12,8 @@ extern "C" {
 int radio_tx_start_tx_thread();
 void radio_tx_stop_tx_thread();
 void radio_tx_mark_quit();
-void radio_tx_set_custom_thread_priority(int iPriority);
-void radio_tx_set_dev_mode();
+void radio_tx_set_custom_thread_raw_priority(int iPriority);
+void radio_tx_set_dev_mode(int iDevMode);
 void radio_tx_pause_radio_interface(int iRadioInterfaceIndex, const char* szReason);
 void radio_tx_resume_radio_interface(int iRadioInterfaceIndex);
 void radio_tx_set_sik_packet_size(int iSiKPacketSize);

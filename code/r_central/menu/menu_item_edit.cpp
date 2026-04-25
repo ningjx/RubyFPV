@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -39,6 +39,7 @@ MenuItemEdit::MenuItemEdit(const char* title, const char* szValue)
 {
    m_bOnlyLetters = false;
    m_bIsEditable = true;
+   m_bEndEditOnBackOnly = true;
    m_szLastEditChar = 0;
    m_bCurrentEditCharFirstChange = true;
    memset(m_szValue, 0, MAX_EDIT_LENGTH+2);
@@ -62,6 +63,7 @@ MenuItemEdit::MenuItemEdit(const char* title, const char* tooltip, const char* s
 {
    m_bOnlyLetters = false;
    m_bIsEditable = true;
+   m_bEndEditOnBackOnly = true;
    m_szLastEditChar = 0;
    m_bCurrentEditCharFirstChange = true;
    memset(m_szValue, 0, MAX_EDIT_LENGTH+2);

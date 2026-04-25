@@ -3,8 +3,6 @@
 
 // Globals
 
-extern u32 g_TimeNow;
-extern u32 g_TimeStart;
 extern u32 g_TimeLastPeriodicCheck;
 
 // RC Tx
@@ -18,4 +16,8 @@ extern u32 g_TimeLastControllerLinkStatsSent;
 extern u32 g_TimeLastSetRadioFlagsCommandSent;
 
 extern u32 g_TimeLastVideoParametersOrProfileChanged;
-extern u32 g_uTimeEndedNegiciateRadioLink;
+extern u32 g_uTimeLastNegociateRadioPacket;
+
+
+bool isNegociatingRadioLink();
+

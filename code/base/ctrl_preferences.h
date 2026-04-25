@@ -9,7 +9,7 @@ extern "C" {
 #endif 
 
 #define CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_TX_PACKETS          ((u32)(((u32)0x01)<<2))
-#define CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_H264265_FRAMES      ((u32)(((u32)0x01)<<3))
+#define CTRL_RT_DEBUG_INFO_FLAG_SHOW_OUTPUT_VIDEO_FRAMES    ((u32)(((u32)0x01)<<3))
 #define CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_DBM                 ((u32)(((u32)0x01)<<4))
 #define CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_MISSING_PACKETS     ((u32)(((u32)0x01)<<5))
 #define CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_MISSING_PACKETS_MAX_GAP ((u32)(((u32)0x01)<<6))
@@ -22,6 +22,12 @@ extern "C" {
 #define CTRL_RT_DEBUG_INFO_FLAG_SHOW_ACK_TIME_HISTORY       ((u32)(((u32)0x01)<<13))
 #define CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_AIR_GAPS            ((u32)(((u32)0x01)<<14))
 #define CTRL_RT_DEBUG_INFO_FLAG_SHOW_TX_HIGH_REG_PACKETS    ((u32)(((u32)0x01)<<15))
+#define CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_SNR                 ((u32)(((u32)0x01)<<16))
+#define CTRL_RT_DEBUG_INFO_FLAG_SHOW_VIDEO_FRAMES_SIZES     ((u32)(((u32)0x01)<<17))
+#define CTRL_RT_DEBUG_INFO_FLAG_SHOW_VIDEO_FRAMES_PROC_TIMES ((u32)(((u32)0x01)<<18))
+#define CTRL_RT_DEBUG_INFO_FLAG_SHOW_VIDEO_FRAMES_RECV_DURATION ((u32)(((u32)0x01)<<19))
+#define CTRL_RT_DEBUG_INFO_FLAG_SHOW_VIDEO_FRAMES_CAPTURE_JITTER ((u32)(((u32)0x01)<<20))
+#define CTRL_RT_DEBUG_INFO_FLAG_SHOW_VIDEO_FRAMES_SEND_DURATION ((u32)(((u32)0x01)<<21))
 
 
 #define ID_DONOT_SHOW_AGAIN_MIXED_PI_OPENIPC_HARDWARE 1
@@ -114,8 +120,6 @@ typedef struct
    int iDebugShowDevVideoStats;
    int iDebugShowDevRadioStats;
    int iDebugShowFullRXStats;
-   int iDebugShowVehicleVideoStats;
-   int iDebugShowVehicleVideoGraphs;
    int iDebugShowVideoSnapshotOnDiscard;
    int iDebugWiFiChangeDelay; // 1...100 milisec
    int iPersistentMessages;
@@ -126,6 +130,7 @@ typedef struct
    int iShowProcessesMonitor;
    int iShowCPULoad;
    u32 uEnabledAlarms;
+   u32 uEnabledQuickMenu;
    int iShowOnlyPresentTxPowerCards;
    int iShowTxBoosters;
    int iMenuStyle; // 0: clasic, 1: sticky left
@@ -141,6 +146,7 @@ typedef struct
    int iMSPOSDSize; // 0...150%
    int iMSPOSDDeltaX; // delta chars
    int iMSPOSDDeltaY; // delta chars
+   int iShowCompactMenus;
 } Preferences;
 
 int save_Preferences();
@@ -152,4 +158,4 @@ void setPreferencesDoNotShowAgain(int iUniqueId, int iDoNotShowAgain);
 void removePreferencesDoNotShowAgain(int iUniqueId);
 #ifdef __cplusplus
 }  
-#endif 
+#endif

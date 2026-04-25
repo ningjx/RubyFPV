@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -34,7 +34,7 @@
 #include <pthread.h>
 #include "../base/config.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ctrl_interfaces.h"
 #include "../base/ctrl_settings.h"
 //#include "../base/radio_utils.h"
@@ -44,21 +44,6 @@
 #include "shared_vars.h"
 #include "popup.h"
 
-static int s_iCPUCoresCount = 1;
-
-void controller_compute_cpu_info()
-{
-   char szOutput[128];
-   hw_execute_bash_command_raw("nproc --all", szOutput);
-   s_iCPUCoresCount = 1;
-   if ( 1 != sscanf(szOutput, "%d", &s_iCPUCoresCount) )
-   {
-      log_softerror_and_alarm("Failed to get CPU cores count. Default to 1 core.");
-      return;    
-   }
-   log_line("Detected CPU with %d cores.", s_iCPUCoresCount);
-}
-
 void controller_launch_router(bool bSearchMode, int iFirmwareType)
 {
    log_line("Starting controller router (%s)", bSearchMode?"in search mode":"in normal mode");
@@ -67,7 +52,6 @@ void controller_launch_router(bool bSearchMode, int iFirmwareType)
       log_line("Controller router process already running. Do nothing.");
       return;
    }
-   ControllerSettings* pcs = get_ControllerSettings();
 
    char szParams[256];
    char szPrefix[256];
@@ -75,36 +59,39 @@ void controller_launch_router(bool bSearchMode, int iFirmwareType)
    szParams[0] = 0;
    if ( bSearchMode )
    {
+   
       if ( (g_iSearchSiKAirDataRate >= 0) && (iFirmwareType == MODEL_FIRMWARE_TYPE_RUBY) )
       {
-         sprintf(szPrefix, "nice -n %d", pcs->iNiceRouter);
+         if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRouter > 100) )
+            sprintf(szPrefix, "nice -n %d", g_pControllerSettings->iThreadPriorityRouter - 120);
          sprintf(szParams, "-search %d -sik %d %d %d %d",
-             g_iSearchFrequency, g_iSearchSiKAirDataRate, g_iSearchSiKECC, g_iSearchSiKLBT, g_iSearchSiKMCSTR);
+            g_iSearchFrequency, g_iSearchSiKAirDataRate, g_iSearchSiKECC, g_iSearchSiKLBT, g_iSearchSiKMCSTR);
       }
       else
       {
-         sprintf(szPrefix, "nice -n %d", pcs->iNiceRouter);
+         if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRouter > 100) )
+            sprintf(szPrefix, "nice -n %d", g_pControllerSettings->iThreadPriorityRouter - 120);
          sprintf(szParams, "-search %d -firmware %d", g_iSearchFrequency, iFirmwareType);
       }
    }
    else
    {
+      if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRouter > 100) )
+         sprintf(szPrefix, "nice -n %d", g_pControllerSettings->iThreadPriorityRouter - 120);    
       #ifdef HW_CAPABILITY_IONICE
-      if ( pcs->ioNiceRouter > 0 )
-         sprintf(szPrefix, "ionice -c 1 -n %d nice -n %d", pcs->ioNiceRouter, pcs->iNiceRouter);
-      else
+      if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->ioNiceRouter > 0) )
+      {
+         sprintf(szPrefix, "ionice -c 1 -n %d", g_pControllerSettings->ioNiceRouter);
+         if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRouter > 100) )
+            sprintf(szPrefix, "ionice -c 1 -n %d nice -n %d", g_pControllerSettings->ioNiceRouter, g_pControllerSettings->iThreadPriorityRouter - 120);
+      }
       #endif
-         sprintf(szPrefix, "nice -n %d", pcs->iNiceRouter);
    }
 
-   if ( ! pcs->iPrioritiesAdjustment )
+   if ( ! g_pControllerSettings->iPrioritiesAdjustment )
       szPrefix[0] = 0;
 
    hw_execute_ruby_process(szPrefix, "ruby_rt_station", szParams, NULL);
-
-   if ( pcs->iPrioritiesAdjustment )
-      hw_set_proc_priority( "ruby_rt_station", pcs->iNiceRouter, pcs->ioNiceRouter, 1);
-
    log_line("Done launching controller router.");
 }
 
@@ -120,7 +107,11 @@ void controller_launch_rx_telemetry()
       log_line("ruby_rx_telemetry process already running. Do nothing.");
       return;
    }
-   hw_execute_ruby_process(NULL, "ruby_rx_telemetry", NULL, NULL);
+   char szPrefix[32];
+   szPrefix[0] = 0;
+   if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityOthers > 100) )
+      sprintf(szPrefix, "nice -n %d", g_pControllerSettings->iThreadPriorityOthers - 120);
+   hw_execute_ruby_process(szPrefix, "ruby_rx_telemetry", NULL, NULL);
 }
 
 void controller_stop_rx_telemetry()
@@ -136,21 +127,25 @@ void controller_launch_tx_rc()
       return;
    }
 
-   char szPrefix[128];
-   char szParams[128];
+   char szPrefix[64];
+   char szParams[32];
    szPrefix[0] = 0;
    szParams[0] = 0;
 
-   #ifdef HW_CAPABILITY_IONICE
    if ( g_bSearching )
       sprintf(szParams, "-search");
-   else if ( NULL != g_pCurrentModel )
-      sprintf(szPrefix, "ionice -c 1 -n %d nice -n %d", DEFAULT_IO_PRIORITY_RC, g_pCurrentModel->processesPriorities.iNiceRC);
-   #else
-   if ( g_bSearching )
-      sprintf(szParams, "-search &");
-   else if ( NULL != g_pCurrentModel )
-      sprintf(szPrefix, "nice -n %d", g_pCurrentModel->processesPriorities.iNiceRC);
+
+   if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRC > 100) )
+      sprintf(szPrefix, "nice -n %d", g_pControllerSettings->iThreadPriorityRC - 120);
+
+   #ifdef HW_CAPABILITY_IONICE
+   if ( g_pControllerSettings->iPrioritiesAdjustment && (NULL != g_pCurrentModel) )
+   if ( DEFAULT_IO_PRIORITY_RC > 0 )
+   {
+      sprintf(szPrefix, "ionice -c 1 -n %d", DEFAULT_IO_PRIORITY_RC);
+      if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRC > 100) )
+         sprintf(szPrefix, "ionice -c 1 -n %d nice -n %d", DEFAULT_IO_PRIORITY_RC, g_pControllerSettings->iThreadPriorityRC - 120);
+   }
    #endif
 
    hw_execute_ruby_process(szPrefix, "ruby_tx_rc", szParams, NULL);
@@ -232,7 +227,6 @@ const char* controller_validate_radio_settings(Model* pModel, u32* pVehicleNICFr
       {
          if ( pVehicleNICFlags[i] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
             continue;
-         if ( (pModel->sw_version>>16) >= 79 )
          if ( pVehicleNICFlags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
             continue;
          //if ( pVehicleNICFlags[i] & RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO )
@@ -253,8 +247,11 @@ const char* controller_validate_radio_settings(Model* pModel, u32* pVehicleNICFr
 
 void controller_start_i2c()
 {
-   char szPrefix[128];
-   sprintf(szPrefix, "nice -n %d", DEFAULT_PRIORITY_PROCESS_RC);
+   char szPrefix[64];
+   szPrefix[0] = 0;
+
+   if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityOthers > 100) )
+      sprintf(szPrefix, "nice -n %d", g_pControllerSettings->iThreadPriorityOthers - 120);
    hw_execute_ruby_process(szPrefix, "ruby_i2c", NULL, NULL);
 }
 
@@ -303,69 +300,4 @@ void controller_wait_for_stop_all()
       log_softerror_and_alarm("Failed to wait for stopping: ruby_rt_router");
 
    log_line("All pairing processes have finished and exited.");
-}
-
-static void * _thread_adjust_affinities(void *argument)
-{
-   sched_yield();
-   log_line("[BGThread] Started background thread to adjust processes affinities...");
-   int iSelfPID = getpid();
-   int iSelfId = 0;
-   #if defined(HW_PLATFORM_RADXA)
-   iSelfId = gettid();
-   #endif
-   log_line("[BGThread] Background thread id: %d, PID: %d", iSelfId, iSelfPID);
-   if ( s_iCPUCoresCount > 2 )
-   {
-      hw_set_proc_affinity("ruby_rt_station", iSelfId, 1,1);
-      hw_set_proc_affinity("ruby_central", iSelfId, 2,2);
-      hw_set_proc_affinity("ruby_rx_telemetry", iSelfId, 3, 3);
-      hw_set_proc_affinity("ruby_tx_rc", iSelfId, 3, 3);
-      #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
-      char szFile[MAX_FILE_PATH_SIZE];
-      ControllerSettings* pCS = get_ControllerSettings();
-      if ( 0 == pCS->iStreamerOutputMode )
-         strcpy(szFile, VIDEO_PLAYER_SM);
-      else
-         strcpy(szFile, VIDEO_PLAYER_PIPE);
-      hw_set_proc_affinity(szFile, iSelfId, 3, s_iCPUCoresCount);
-      #endif
-   }
-   else
-   {
-      hw_set_proc_affinity("ruby_rt_station", iSelfId, 1,1);
-      hw_set_proc_affinity("ruby_central", iSelfId, 2,2); 
-   }
-   log_line("[BGThread] Background thread to adjust processes affinities completed.");
-   return NULL;
-}
-
-void controller_check_update_processes_affinities()
-{
-   if ( (s_iCPUCoresCount < 2) || (s_iCPUCoresCount > 32) )
-   {
-      log_line("Single core CPU (%d), no affinity adjustments for processes to be done.", s_iCPUCoresCount);
-      return;
-   }
-   ControllerSettings* pCS = get_ControllerSettings();
-   if ( (NULL == pCS) || (0 == pCS->iCoresAdjustment) )
-   {
-      log_line("%d CPU cores, affinity adjustments is disabled. Do nothing.", s_iCPUCoresCount);
-      return;
-   }
-   
-   log_line("%d CPU cores, doing affinity adjustments for processes...", s_iCPUCoresCount);
-
-   pthread_t pThreadBg;
-   pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
-
-   if ( 0 != pthread_create(&pThreadBg, &attr, &_thread_adjust_affinities, NULL) )
-   {
-      log_error_and_alarm("Failed to create thread for adjusting processes affinities.");
-      pthread_attr_destroy(&attr);
-      return;
-   }
-   pthread_attr_destroy(&attr);
-   log_line("Done launching worker thread to adjust affinities.");
 }

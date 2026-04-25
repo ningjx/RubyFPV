@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -34,9 +34,9 @@
 #include "menu_text.h"
 #include "menu_vehicle_dev.h"
 #include "menu_item_section.h"
+#include "menu_item_text.h"
 #include "menu_confirmation.h"
 #include "menu_system_dev_stats.h"
-#include "menu_system_video_profiles.h"
 #include "../../radio/radiolink.h"
 #include "../../base/utils.h"
 
@@ -55,15 +55,11 @@ MenuVehicleDev::MenuVehicleDev(void)
 void MenuVehicleDev::addItems()
 {
    int iTmp = getSelectedMenuItemIndex();
-   ControllerSettings* pCS = get_ControllerSettings();
    float fSliderWidth = 0.14 * m_sfScaleFactor;
    removeAllItems();
 
    m_IndexDevStats = addMenuItem( new MenuItem("Developer Stats Windows") );
    m_pMenuItems[m_IndexDevStats]->showArrow();
-
-   m_IndexVideoProfiles = addMenuItem(new MenuItem("Video Link Profiles", "Change video link profiles and params."));
-   m_pMenuItems[m_IndexVideoProfiles]->showArrow();
 
    addMenuItem(new MenuItemSection("Radio Links"));
 
@@ -107,9 +103,19 @@ void MenuVehicleDev::addItems()
    m_IndexRadioSilence = addMenuItem(m_pItemsSelect[1]);
 
    m_pItemsSlider[9] = new MenuItemSlider("Radio Rx Loop Check Max Time (ms)", "The threshold for generating an alarm when radio Rx loop takes too much time (in miliseconds).", 1,1000,10, fSliderWidth);
-   m_pItemsSlider[9]->setStep(1);
-   m_pItemsSlider[9]->setCurrentValue(pCS->iDevRxLoopTimeout);
+   m_pItemsSlider[9]->setCurrentValue(g_pControllerSettings->iDevRxLoopTimeout);
    m_IndexRxLoopTimeout = addMenuItem(m_pItemsSlider[9]);
+
+   addMenuItem(new MenuItemSection("Video"));
+
+   m_pItemsSlider[0] = new MenuItemSlider("Max Retransmissions Window (ms)", "Max duration it should try to retransmit video data (in miliseconds).", 5,500,10, fSliderWidth);
+   int iDuration = g_pCurrentModel->getCurrentVideoProfileMaxRetransmissionWindow();
+   m_pItemsSlider[0]->setCurrentValue(iDuration);
+   m_IndexRetransmissionWindow = addMenuItem(m_pItemsSlider[0]);
+
+   char szBuff[256];
+   sprintf(szBuff, "Current video profile: %s", str_get_video_profile_name(g_pCurrentModel->video_params.iCurrentVideoProfile));
+   addMenuItem(new MenuItemText(szBuff, true));
 
    addMenuItem(new MenuItemSection("Debugging"));
 
@@ -131,6 +137,19 @@ void MenuVehicleDev::addItems()
       m_pItemsSelect[12]->setSelectedIndex(1);
    m_IndexInjectVideoFaults = addMenuItem(m_pItemsSelect[12]);
 
+   m_pItemsSelect[3] = new MenuItemSelect("Insert Debug Video Timings", "Measure video pipeline timings");
+   m_pItemsSelect[3]->addSelection(L("Off"));
+   m_pItemsSelect[3]->addSelection(L("On"));
+   //m_pItemsSelect[3]->setIsEditable();
+   m_pItemsSelect[3]->setUseMultiViewLayout();
+   m_pItemsSelect[3]->setSelection((g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_STREAM_TIMINGS)?1:0);
+   m_IndexInsertVideoDbgTimings = addMenuItem(m_pItemsSelect[3]);
+
+   m_pItemsSelect[2] = new MenuItemSelect("Test Adaptive Video", "Tests adaptive video functionality.");
+   m_pItemsSelect[2]->addSelection(L("Off"));
+   m_pItemsSelect[2]->addSelection(L("On"));
+   m_pItemsSelect[2]->setSelection(g_bIsTestingAdaptiveVideo?1:0);
+   m_IndexTestAdaptive = addMenuItem(m_pItemsSelect[2]);
 
    m_IndexResetDev = addMenuItem(new MenuItem("Reset Developer Settings", "Resets all the developer settings to the factory default values."));
 
@@ -200,21 +219,14 @@ void MenuVehicleDev::onSelectItem()
       add_menu_to_stack(new MenuSystemDevStats());
       return;
    }
-
-   if ( m_IndexVideoProfiles == m_SelectedIndex )
-   {
-      add_menu_to_stack(new MenuSystemVideoProfiles());
-      return;
-   }
    
    if ( m_IndexPCAPRadioTx == m_SelectedIndex )
    {
-      ControllerSettings* pCS = get_ControllerSettings();
       if ( 0 == m_pItemsSelect[9]->getSelectedIndex() )
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_USE_PCAP_RADIO_TX);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_USE_PCAP_RADIO_TX;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();
       return;
    }
@@ -242,49 +254,115 @@ void MenuVehicleDev::onSelectItem()
 
    if ( m_IndexRadioSilence == m_SelectedIndex )
    {
-      ControllerSettings* pCS = get_ControllerSettings();
       if ( 0 == m_pItemsSelect[1]->getSelectedIndex() )
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_RADIO_SILENCE_FAILSAFE);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_RADIO_SILENCE_FAILSAFE;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();
       return;
    }
 
    if ( m_IndexRxLoopTimeout == m_SelectedIndex )
    {
-      ControllerSettings* pCS = get_ControllerSettings();
-      pCS->iDevRxLoopTimeout = m_pItemsSlider[9]->getCurrentValue();
+      g_pControllerSettings->iDevRxLoopTimeout = m_pItemsSlider[9]->getCurrentValue();
       save_ControllerSettings();
       valuesToUI();
       send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED, PACKET_COMPONENT_LOCAL_CONTROL);
       
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI(); 
+      return;
+   }
+
+   if ( m_IndexRetransmissionWindow == m_SelectedIndex )
+   {
+      video_parameters_t paramsNew;
+      type_video_link_profile profileNew;
+      memcpy(&paramsNew, &g_pCurrentModel->video_params, sizeof(video_parameters_t));
+      memcpy(&profileNew, &(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile]), sizeof(type_video_link_profile));
+
+      profileNew.uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
+      u32 uNewDuration = m_pItemsSlider[0]->getCurrentValue() / 5;
+      if ( uNewDuration == 0 )
+          uNewDuration = 1;
+      profileNew.uProfileEncodingFlags |= ((uNewDuration << 8) & VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK);
+
+      type_video_link_profile profiles[MAX_VIDEO_LINK_PROFILES];
+      memcpy((u8*)&profiles[0], (u8*)&g_pCurrentModel->video_link_profiles[0], MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile));
+
+      int iMatchProfile = g_pCurrentModel->isVideoSettingsMatchingBuiltinVideoProfile(&paramsNew, &profileNew);
+      if ( (iMatchProfile >= 0) && (iMatchProfile < MAX_VIDEO_LINK_PROFILES) )
+      {
+         log_line("MenuVehicleDev: Matched to video profile %s", str_get_video_profile_name(iMatchProfile));
+         paramsNew.iCurrentVideoProfile = iMatchProfile;
+      }
+      else
+      {
+         log_line("MenuVehicleDev: Switched to custom profile");
+         paramsNew.iCurrentVideoProfile = VIDEO_PROFILE_CUST;
+      }
+      memcpy((u8*)&profiles[paramsNew.iCurrentVideoProfile ], &profileNew, sizeof(type_video_link_profile));
+      g_pCurrentModel->logVideoSettingsDifferences(&paramsNew, &profileNew);
+
+      if ( 0 == memcmp(&paramsNew, &g_pCurrentModel->video_params, sizeof(video_parameters_t)) )
+      if ( 0 == memcmp(profiles, g_pCurrentModel->video_link_profiles, MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile)) )
+      {
+         log_line("MenuVehicleDev: No change in video parameters.");
+         return;
+      }
+
+      log_line("Sending video encoding flags: %s", str_format_video_encoding_flags(profileNew.uProfileEncodingFlags));
+      send_pause_adaptive_to_router(4000);
+      send_reset_adaptive_state_to_router(g_pCurrentModel->uVehicleId);
+
+      if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMETERS, 0, (u8*)&paramsNew, sizeof(video_parameters_t), (u8*)&profiles[0], MAX_VIDEO_LINK_PROFILES * sizeof(type_video_link_profile)) )
+         valuesToUI();
       return;
    }
 
    if ( m_IndexInjectVideoFaults == m_SelectedIndex )
    {
-      ControllerSettings* pCS = get_ControllerSettings();
       if ( 0 == m_pItemsSelect[12]->getSelectedIndex() )
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_INJECT_VIDEO_FAULTS);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_INJECT_VIDEO_FAULTS;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();  
    }
 
    if ( m_IndexInjectMinorVideoFaults == m_SelectedIndex )
    {
-      ControllerSettings* pCS = get_ControllerSettings();
       if ( 0 == m_pItemsSelect[15]->getSelectedIndex() )
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_INJECT_RECOVERABLE_VIDEO_FAULTS);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_INJECT_RECOVERABLE_VIDEO_FAULTS;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();  
+   }
+
+   if ( m_IndexInsertVideoDbgTimings == m_SelectedIndex )
+   {
+      if ( 0 == m_pItemsSelect[3]->getSelectedIndex() )
+         g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_STREAM_TIMINGS);
+      else
+         g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_STREAM_TIMINGS;
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
+         valuesToUI();
+   }
+
+   if ( m_IndexTestAdaptive == m_SelectedIndex )
+   {
+      bool bTest = false;
+      if ( 1 == m_pItemsSelect[2]->getSelectedIndex() )
+         bTest = true;
+      if ( bTest == g_bIsTestingAdaptiveVideo )
+         return;
+      g_bIsTestingAdaptiveVideo = bTest;
+      log_line("MenuVehicleDev: Send test adaptive mode to router: %d", g_bIsTestingAdaptiveVideo);
+      send_control_message_to_router(PACKET_TYPE_TEST_ADAPTIVE_VIDEO, g_bIsTestingAdaptiveVideo?1:0);
+      valuesToUI();
+      return;
    }
 
    if ( m_IndexResetDev == m_SelectedIndex )

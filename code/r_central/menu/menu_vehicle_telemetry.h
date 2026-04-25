@@ -21,7 +21,6 @@ class MenuVehicleTelemetry: public Menu
       MenuItemRange*  m_pItemsRange[10];
 
       int m_IndexAutodetect;
-      int m_IndexTelemetryFlags;
       int m_IndexTelemetryAnySystem;
       int m_IndexTelemetryNoFCMessages;
       int m_IndexTelemetryRequestStreams;

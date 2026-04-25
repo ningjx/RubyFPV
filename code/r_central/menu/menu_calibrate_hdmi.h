@@ -10,6 +10,7 @@ class MenuCalibrateHDMI: public Menu
       MenuCalibrateHDMI();
       virtual ~MenuCalibrateHDMI();
       virtual void Render();
+      virtual int onBack();
       virtual void onSelectItem();
       virtual void valuesToUI();
             

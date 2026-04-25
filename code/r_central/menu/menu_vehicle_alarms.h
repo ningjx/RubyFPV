@@ -22,4 +22,5 @@ class MenuVehicleAlarms: public Menu
       int m_IndexLinkLost;
       int m_IndexAlarmMotorCurrent;
       int m_iIndexFlashOSDOnTelemLost;
+      int m_iIndexTemperature;
 };

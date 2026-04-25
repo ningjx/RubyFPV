@@ -32,6 +32,7 @@ class MenuRadioConfig: public Menu
       void computeMenuItems();
 
       void onClickAutoTx(int iRadioLink);
+      void onSelectedPreferredTxCard(int iVehicleRadioLink);
 
       float computeHeights();
       void computeMaxItemIndexAndCommands();
@@ -49,6 +50,7 @@ class MenuRadioConfig: public Menu
       int m_iIdFontLarge;
       Popup* m_pPopupProgress;
       MenuItemSelect* m_pItemSelectTxCard;
+      int m_iTxCardSelectedIndex;
       int m_iCurrentRadioLink;
       float m_fHeaderHeight;
       float m_fYPosAutoTx[MAX_RADIO_INTERFACES];

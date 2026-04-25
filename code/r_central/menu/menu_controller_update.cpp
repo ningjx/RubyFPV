@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -167,7 +167,7 @@ void MenuControllerUpdate::onSelectItem()
       char szBuff2[64];
       getSystemVersionString(szBuff2, (SYSTEM_SW_VERSION_MAJOR<<8) | SYSTEM_SW_VERSION_MINOR);
 
-      sprintf(szBuff, "Your controller has software version %s (b.%d)", szBuff2, SYSTEM_SW_BUILD_NUMBER);
+      sprintf(szBuff, "Your controller has software version %s (b-%d)", szBuff2, SYSTEM_SW_BUILD_NUMBER);
 
       MenuConfirmation* pMC = new MenuConfirmation(L("Update Controller Software"), L("Insert an USB stick containing the Ruby update archive file and then press Ok to start the update process."), 1, true);
       pMC->m_yPos = 0.3;
@@ -186,9 +186,9 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
 {
    Popup* p = NULL;
    if ( (NULL == szUpdateFile) || (0 == szUpdateFile[0]) )
-      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 90);
    else
-      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 90);
    popups_add_topmost(p);
 
    ruby_processing_loop(true);
@@ -228,13 +228,13 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
    g_bUpdateInProgress = true;
    popups_remove(p);
 
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("starting controller update procedure");
    pairing_stop();
    
    if ( (NULL == szUpdateFile) || (0 == szUpdateFile[0]) )
-      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 90);
    else
-      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 90);
    popups_add_topmost(p);
 
    // Execute ruby_update_worker twice as the ruby_update_worker might have been updated itself too
@@ -261,6 +261,7 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
       hw_execute_ruby_process(NULL, "ruby_update_worker", szUpdateFile, NULL);
       ruby_signal_alive();
 
+      int iLastPartialStatus = -1000;
       u32 uTimeWorkerFinished = 0;
 
       log_line("Waiting for update process to start and finish, repeat count: %d ...", iRepeatCount);
@@ -279,6 +280,9 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
             if ( 1 != sscanf(szLine, "%d", &iPartialResult) )
                iPartialResult = -10;
 
+            if ( iPartialResult != iLastPartialStatus )
+               uTimeWorkerFinished = 0;
+            iLastPartialStatus = iPartialResult;
             szLine[0] = 0;
             if ( (NULL == fgets(szLine, 255, fd)) || (strlen(szLine)<5) )
             {
@@ -349,7 +353,7 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
                    else
                    {
                       u32 uDeltaStop = g_TimeNow - uTimeWorkerFinished;
-                      if ( uDeltaStop < 3000 )
+                      if ( uDeltaStop < 7000 )
                          log_line("waiting to see if update worker is really finished, waiting since %u ms ago", uDeltaStop);
                       else
                       {
@@ -456,7 +460,7 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
    render_all(g_TimeNow);
    ruby_signal_alive();
    g_bUpdateInProgress = false;
-   ruby_resume_watchdog();
+   ruby_resume_watchdog("finished controller update procedure");
 
    popups_remove(p);
    ruby_processing_loop(true);
@@ -470,6 +474,9 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
       MenuConfirmation* pMC = new MenuConfirmation(L("Update Failed"), L("Update timedout and failed."), 5, true);
       pMC->m_yPos = 0.3;
       add_menu_to_stack(pMC);
+      ruby_processing_loop(true);
+      render_all(g_TimeNow);
+      ruby_signal_alive();
       log_line("Exit from main update procedure (1).");
       return;
    }
@@ -504,17 +511,15 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
 
       pMC->m_yPos = 0.3;
       add_menu_to_stack(pMC);
+      ruby_processing_loop(true);
+      render_all(g_TimeNow);
+      ruby_signal_alive();
       log_line("Exit from main update procedure (2).");
       return;
    }
 
    m_bWaitingForUserFinishUpdateConfirmation = true;
-
-   memset(szOutput, 0, sizeof(szOutput)/sizeof(szOutput[0]));
-   sprintf(szComm, "./ruby_update %d %d", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR);
-   hw_execute_bash_command_raw(szComm, szOutput);
-
-
+   g_bDidAnUpdate = true;
    MenuConfirmation* pMC = new MenuConfirmation(L("Update Complete"), L("Update complete. You can now remove the USB stick. The system will reboot now."), 3, true);
    pMC->m_yPos = 0.3;
    pMC->addTopLine(L("(If it does not reboot, you can power it off and on)"));
@@ -534,5 +539,8 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
    }
 
    add_menu_to_stack(pMC);
+   ruby_processing_loop(true);
+   render_all(g_TimeNow);
+   ruby_signal_alive();
    log_line("Exit from main update procedure (normal exit).");
 }

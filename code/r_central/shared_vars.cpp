@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -37,18 +37,20 @@ vehicle_and_telemetry_info_t g_VehicleTelemetryInfo;
 u32 g_uControllerId = 0;
 int g_iBootCount = 0;
 bool g_bDebugState = false;
-bool g_bDebugStats = false;
 bool g_bQuit = false;
 
 RenderEngine* g_pRenderEngine = NULL;
 RenderEngineUI* g_pRenderEngineOSDPlugins = NULL;
 
-u32 g_uVideoRecordStartTime = 0;
-bool g_bVideoRecordingStarted = false;
-bool g_bVideoProcessing = false;
-bool g_bVideoPlaying = false;
+ControllerSettings* g_pControllerSettings = NULL;
+
+u32 g_uVideoRecordingStartTime = 0;
+bool g_bIsVideoRecording = false;
+bool g_bIsVideoProcessing = false;
+bool g_bIsVideoPlaying = false;
 u32 g_uVideoPlayingTimeMs = 0;
 u32 g_uVideoPlayingLengthSec = 0;
+bool g_bIsTestingAdaptiveVideo = false;
 
 int g_iControllerCPUSpeedMhz = 0;
 int g_iControllerCPULoad = 0;

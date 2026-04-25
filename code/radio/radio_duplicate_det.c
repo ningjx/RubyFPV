@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -60,6 +60,8 @@ typedef struct
 t_vehicle_history_packets_indexes s_ListHistoryRxPacketsVehicles[MAX_CONCURENT_VEHICLES];
 
 extern u32 s_uRadioRxTimeNow;
+
+shared_mem_radio_stats* s_pSMRadioStatsDuplicateDetection = NULL;
 
 
 void _radio_dd_reset_duplication_stats_for_vehicle(int iVehicleIndex, int iReason)
@@ -223,7 +225,7 @@ int radio_dup_detection_is_duplicate_on_stream(int iRadioInterfaceIndex, u8* pPa
    if ( hardware_radio_index_is_serial_radio(iRadioInterfaceIndex) )
       uMaxDeltaForDataStream = 200;
 
-   if ( uStreamIndex < STREAM_ID_VIDEO_1 )
+   if ( (uStreamIndex != STREAM_ID_AUDIO) && (uStreamIndex < STREAM_ID_VIDEO_1) )
    if ((pDupInfo->streamsPacketsHistory[uStreamIndex].uMaxReceivedPacketIndex > uMaxDeltaForDataStream ) && 
            (uStreamPacketIndex < pDupInfo->streamsPacketsHistory[uStreamIndex].uMaxReceivedPacketIndex - uMaxDeltaForDataStream) )
    if ( pDupInfo->streamsPacketsHistory[uStreamIndex].uLastTimeReceivedPacket > uTimeNow - 4000 )
@@ -241,11 +243,11 @@ int radio_dup_detection_is_duplicate_on_stream(int iRadioInterfaceIndex, u8* pPa
 
    int iStreamRestarted = 0;
 
-   if ( uStreamIndex >= STREAM_ID_VIDEO_1 )
+   if ( (uStreamIndex == STREAM_ID_AUDIO) || (uStreamIndex >= STREAM_ID_VIDEO_1) )
    if ( pDupInfo->streamsPacketsHistory[uStreamIndex].uMaxReceivedPacketIndex > uStreamPacketIndex + uMaxDeltaForVideoStream )
       iStreamRestarted = 1;
 
-   if ( uStreamIndex < STREAM_ID_VIDEO_1 )
+   if ( (uStreamIndex != STREAM_ID_AUDIO) && (uStreamIndex < STREAM_ID_VIDEO_1) )
    if ( pDupInfo->streamsPacketsHistory[uStreamIndex].uMaxReceivedPacketIndex > uStreamPacketIndex + uMaxDeltaForDataStream )
       iStreamRestarted = 1;
 
@@ -256,10 +258,29 @@ int radio_dup_detection_is_duplicate_on_stream(int iRadioInterfaceIndex, u8* pPa
 
    if ( iStreamRestarted )
    {
-      log_line("[RadioDuplicateDetection] Detected stream restart on the other end of the radio link for VID %u. On stream: %d (%s), received stream packet index: %u, max recv stream packet index: %u, last received packet on this stream was %d ms ago. Reseting duplicate stats info for this VID (%u)",
+      char szTime[128];
+      u32 uDeltaTime = uTimeNow - pDupInfo->streamsPacketsHistory[uStreamIndex].uLastTimeReceivedPacket;
+      if ( uDeltaTime < 1000 )
+         sprintf(szTime, "%u ms", uDeltaTime);
+      else
+         sprintf(szTime, "%u.%03u sec", uDeltaTime/1000, uDeltaTime%1000);
+
+      if ( NULL != s_pSMRadioStatsDuplicateDetection )
+      {
+         uDeltaTime = radio_stats_get_time_last_received_packet_on_stream(s_pSMRadioStatsDuplicateDetection, uVehicleId, uStreamIndex);
+         char szTmp[32];
+         if ( uDeltaTime < 1000 )
+            sprintf(szTmp, " (%u ms)", uDeltaTime);
+         else
+            sprintf(szTmp, " (%u.%03u sec)", uDeltaTime/1000, uDeltaTime%1000);
+         strcat(szTime, szTmp);
+      }
+
+      log_line("[RadioDuplicateDetection] Detected stream restart on the other end of the radio link for VID %u. On stream: %d (%s), received stream packet index: %u, max recv stream packet index: %u, last received packet on this stream was %s ago. Packet tpye: %s. Do reset duplicate info.",
          uVehicleId, uStreamIndex, str_get_radio_stream_name(uStreamIndex),
          uStreamPacketIndex, pDupInfo->streamsPacketsHistory[uStreamIndex].uMaxReceivedPacketIndex,
-         uTimeNow - pDupInfo->streamsPacketsHistory[uStreamIndex].uLastTimeReceivedPacket, uVehicleId );
+         szTime, str_get_packet_type(uPacketType) );
+
       _radio_dd_reset_duplication_stats_for_vehicle(iStatsIndex, 2);
       pDupInfo->iRestartDetected = 1;
       pDupInfo->uVehicleId = uVehicleId;

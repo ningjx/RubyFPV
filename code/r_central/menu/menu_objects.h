@@ -117,6 +117,13 @@
 #define MENU_ID_CONTROLLER_UPDATE 129
 #define MENU_ID_CONTROLLER_UPDATE_NET 130
 #define MENU_ID_VEHICLE_RADIO_PIT 131
+#define MENU_ID_VEHICLE_RADIO_RUNTIME_CAPS 132
+#define MENU_ID_CONTROLLER_CPU_PRIORITIES 133
+#define MENU_ID_VEHICLE_CPU_PRIORITIES 134
+#define MENU_ID_PROC_INFO 135
+#define MENU_ID_VEHICLE_VIDEO_COMPARE 137
+#define MENU_ID_QUICK_MENU_SETTINGS 138
+#define MENU_ID_QUICK_MENU 139
 
 
 #define MAX_MENU_ITEMS 150
@@ -215,6 +222,7 @@ class Menu
      virtual void onAddToStack();
      virtual void onShow();
      virtual int  onBack();
+     virtual void onVehicleCommandFinished(u32 uCommandId, u32 uCommandType, bool bSucceeded);
      virtual void onSelectItem();
      virtual void onMoveUp(bool bIgnoreReversion);
      virtual void onMoveDown(bool bIgnoreReversion);
@@ -239,6 +247,7 @@ class Menu
      void addMessage(const char* szMessage);
      void addMessage(int iId, const char* szMessage);
      void addMessage2(int iId, const char* szMessage, const char* szLine2);
+     void addMessageWithTitleAndIcon(int iId, const char* szTitle, const char* szMessage, u32 uIconId);
 
      static void updateOTAStatus(u8 uOTAStatus, u32 uOTACounter);
 
@@ -252,7 +261,6 @@ class Menu
      void updateScrollingOnSelectionChange();
      bool checkIsArmed();
      void addMessageNeedsVehcile(const char* szMessage, int iConfirmationId);
-     char* addMessageVideoBitrate(Model* pModel);
      void addUnsupportedMessageOpenIPC(const char* szMessage);
      void addUnsupportedMessageOpenIPCGoke(const char* szMessage);
      void addUnsupportedMessageOpenIPCSigmaster(const char* szMessage);
@@ -262,6 +270,9 @@ class Menu
      bool checkCancelUpload();
 
      MenuItemSelect* createMenuItemCardModelSelector(const char* szTitle);
+     void setSelectionForCardModelSelector(MenuItemSelect* pItemSelect, int iCardModel);
+     u32 getSelectedCardForCardModelSelector(MenuItemSelect* pItemSelect);
+
      MenuItemSelect* createMenuItemTxPowers(const char* szTitle, bool bAddAutoOption, bool bBooster2W, bool bBooster4W, int iMaxUsablePowerMw);
      void selectMenuItemTxPowersValue(MenuItemSelect* pMenuItem, bool bHasAutoOption, bool bBooster2W, bool bBooster4W, int* piCardsCurrentPowerLevelsMw, int iNumCards, int iMaxUsablePowerMw);
 

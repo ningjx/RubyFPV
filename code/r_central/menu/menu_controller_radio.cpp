@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -50,7 +50,7 @@
 MenuControllerRadio::MenuControllerRadio(void)
 :Menu(MENU_ID_CONTROLLER_RADIO, L("Controller Radio Settings"), NULL)
 {
-   m_Width = 0.38;
+   m_Width = 0.54;
    m_xPos = menu_get_XStartPos(m_Width); m_yPos = 0.18;
 }
 
@@ -94,6 +94,8 @@ void MenuControllerRadio::addItems()
       addItemsVehiclePower();
 
    m_pMenuItems[m_ItemsCount-1]->setExtraHeight(0.4*g_pRenderEngine->textHeight(g_idFontMenu));
+
+   addItemsPrefferedTx();
 
    m_IndexRadioConfig = addMenuItem(new MenuItem(L("Full Radio Config"), L("Full radio configuration")));
    m_pMenuItems[m_IndexRadioConfig]->showArrow();
@@ -139,6 +141,101 @@ void MenuControllerRadio::addItemsFixedPower()
    selectMenuItemTxPowersValue(m_pItemsSelect[1], false, false, false, &(iMwPowers[0]), iCountPowers, iMaxPower);
 
    m_IndexTxPowerSingle = addMenuItem(m_pItemsSelect[1]);
+}
+
+void MenuControllerRadio::addItemsPrefferedTx()
+{
+   char szBuff[256];
+
+   for( int iRadioLink=0; iRadioLink<g_pCurrentModel->radioLinksParams.links_count; iRadioLink++ )
+   {
+      m_IndexRadioLinksAutoTxCard[iRadioLink] = -1;
+      bool bIsHighSpeed = false;
+      int iCountInterfaces = 0;
+      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+      {
+         if ( g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId != iRadioLink )
+            continue;
+         if ( ! hardware_radio_index_is_wifi_radio(i) )
+            continue;
+         if ( ! hardware_radio_index_is_high_capacity(i) )
+            continue;
+
+         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+         if ( NULL == pRadioHWInfo )
+            continue;
+         t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
+         if ( NULL == pCardInfo )
+            continue;
+
+         if ( controllerIsCardDisabled(pRadioHWInfo->szMAC) )
+            continue;
+         if ( controllerIsCardRXOnly(pRadioHWInfo->szMAC) )
+            continue;
+
+         bIsHighSpeed = true;
+         iCountInterfaces++;
+      }
+
+      if ( (!bIsHighSpeed) || (iCountInterfaces < 2) )
+         continue;
+
+      strcpy(szBuff, "Uplink Preferred Radio Interface");
+      if ( 1 < g_pCurrentModel->radioLinksParams.links_count )
+         sprintf(szBuff, "Radio Link %d Uplink Preferred Radio Interface", iRadioLink+1);
+      m_pItemsSelect[10 + iRadioLink] = new MenuItemSelect(szBuff, L("Sets the preferred radio interface to use for the uplink link on this radio link."));
+      m_pItemsSelect[10 + iRadioLink]->addSelection("Auto");
+
+      int iSelectedIndex = 0; // auto option
+      int iMinPriority = 10000;
+
+      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+      {
+         if ( g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId != iRadioLink )
+            continue;
+         if ( ! hardware_radio_index_is_wifi_radio(i) )
+            continue;
+         if ( ! hardware_radio_index_is_high_capacity(i) )
+            continue;
+         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+         if ( NULL == pRadioHWInfo )
+            continue;
+         t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
+         if ( NULL == pCardInfo )
+            continue;
+
+         if ( controllerIsCardDisabled(pRadioHWInfo->szMAC) )
+            continue;
+         if ( controllerIsCardRXOnly(pRadioHWInfo->szMAC) )
+            continue;
+
+         char szName[128];
+      
+         strcpy(szName, "NoName");
+      
+         char szCardName[64];
+         controllerGetCardUserDefinedNameOrShortType(pRadioHWInfo, szCardName);
+         if ( NULL != szCardName && 0 != szCardName[0] )
+            strcpy(szName, szCardName);
+         else if ( NULL != pCardInfo )
+            strcpy(szName, str_get_radio_card_model_string(pCardInfo->cardModel) );
+
+         sprintf(szBuff, "Int. %d, Port %s, %s", i+1, pRadioHWInfo->szUSBPort, szName);
+         m_pItemsSelect[10 + iRadioLink]->addSelection(szBuff);
+
+
+         int iCardPriority = controllerIsCardTXPreferred(pRadioHWInfo->szMAC);
+         if ( (iCardPriority <= 0) || (iCardPriority > iMinPriority) )
+            continue;
+         iMinPriority = iCardPriority;
+         iSelectedIndex = m_pItemsSelect[10 + iRadioLink]->getSelectionsCount()-1;
+      }
+
+      m_IndexRadioLinksAutoTxCard[iRadioLink] = addMenuItem(m_pItemsSelect[10 + iRadioLink]);
+      m_pItemsSelect[10 + iRadioLink]->setIsEditable();
+      m_pItemsSelect[10 + iRadioLink]->setSelectedIndex(iSelectedIndex);
+      m_iRadioLinksTxCardSelectedIndex[iRadioLink] = iSelectedIndex;
+   }
 }
 
 void MenuControllerRadio::addItemsVehiclePower()
@@ -197,8 +294,7 @@ void MenuControllerRadio::addItemsVehiclePower()
          if ( NULL == pCRII )
             continue;
 
-         int iCardModel = pCRII->cardModel;
-         int iCardPowerMwNow = tx_powers_convert_raw_to_mw(hardware_getBoardType(), iCardModel, pCRII->iRawPowerLevel);
+         int iCardPowerMwNow = tx_power_compute_uplink_power_for_model_link(g_pCurrentModel, iLink, i, pCRII->cardModel);
          char szBuff[128];
          if ( iCountInterfacesForLink < 2 )
          {
@@ -245,6 +341,48 @@ bool MenuControllerRadio::periodicLoop()
    return false;
 }
 
+void MenuControllerRadio::onSelectedPreferredTxCard(int iVehicleRadioLink)
+{
+   int iSelection = m_pItemsSelect[10+iVehicleRadioLink]->getSelectedIndex();
+   log_line("MenuControllerRadio: Changed auto tx card selection index for vehicle radio link %d from %d to %d", iVehicleRadioLink+1, m_iRadioLinksTxCardSelectedIndex[iVehicleRadioLink], iSelection);
+
+   if ( iSelection == m_iRadioLinksTxCardSelectedIndex[iVehicleRadioLink] )
+   {
+      log_line("MenuControllerRadio: No change in auto tx.");
+      return;
+   }
+
+   // Remove all preferred cards for this link first
+   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+   {
+      if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != iVehicleRadioLink )
+         continue;
+      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+      if ( NULL != pRadioHWInfo )
+         controllerRemoveCardTXPreferred(pRadioHWInfo->szMAC);
+   }
+     
+   if ( iSelection > 0 )
+   {
+      int iCount = 0;
+      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+      {
+         if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != iVehicleRadioLink )
+            continue;
+         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+         iCount++;
+         if ( iCount == iSelection )
+         {
+            controllerSetCardTXPreferred(pRadioHWInfo->szMAC);
+            break;
+         }
+      }
+   }
+   addItems();
+   send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_UPDATED_RADIO_TX_POWERS, 0);
+}
+
+
 void MenuControllerRadio::onReturnFromChild(int iChildMenuId, int returnValue)
 {
    Menu::onReturnFromChild(iChildMenuId, returnValue);
@@ -277,7 +415,6 @@ void MenuControllerRadio::onSelectItem()
       ControllerSettings* pCS = get_ControllerSettings();
       pCS->iFixedTxPower = 1 - m_pItemsSelect[0]->getSelectedIndex();
       save_ControllerSettings();
-      compute_controller_radio_tx_powers(g_pCurrentModel, &g_SM_RadioStats);
       send_model_changed_message_to_router(MODEL_CHANGED_RADIO_POWERS, 0);
       valuesToUI();
       return;
@@ -329,10 +466,18 @@ void MenuControllerRadio::onSelectItem()
       }
       save_ControllerSettings();
       save_ControllerInterfacesSettings();
-      compute_controller_radio_tx_powers(g_pCurrentModel, &g_SM_RadioStats);
       send_model_changed_message_to_router(MODEL_CHANGED_RADIO_POWERS, 0);
       valuesToUI();
       return;
+   }
+
+   for( int iRadioLink=0; iRadioLink<g_pCurrentModel->radioLinksParams.links_count; iRadioLink++ )
+   {
+      if ( (m_IndexRadioLinksAutoTxCard[iRadioLink] != -1) && (m_IndexRadioLinksAutoTxCard[iRadioLink] == m_SelectedIndex) )
+      {
+         onSelectedPreferredTxCard(iRadioLink);
+         return;
+      }
    }
 }
 

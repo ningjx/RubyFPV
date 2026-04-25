@@ -22,25 +22,29 @@ class MenuVehicleVideo: public Menu
    private:
       type_video_capture_resolution_info* m_pVideoResolutions;
       int m_iVideoResolutionsCount;
-      int m_IndexRes, m_IndexFPS;
+      int m_IndexRes, m_IndexFPS, m_IndexFPSSelector;
+      int m_IndexBidirectional;
       int m_IndexVideoBitrate;
       int m_IndexVideoProfile;
+      int m_IndexSaveVideoProfile;
+      int m_IndexCompareProfiles;
       int m_IndexVideoCodec;
       int m_IndexExpert;
       int m_IndexVideoLinkMode;
-      int m_IndexBidirectionalVideoSettings;
-      int m_IndexRecording;
       int m_IndexShowFull;
       MenuItem* m_pMenuItemVideoWarning;
-      MenuItem* m_pMenuItemVideoRecording;
       MenuItemSlider* m_pItemsSlider[20];
       MenuItemSelect* m_pItemsSelect[20];
       MenuItemRadio* m_pItemsRadio[5];
 
       void addItems();
       void checkAddWarningInMenu();
+      int getMaxFPSForCurrentVideoRes(bool* pFound);
+      bool isStandardFPS(int iFPS);
       void showFPSWarning(int w, int h, int fps);
-      void sendVideoLinkProfiles();
+      void sendVideoSettings();
 
       bool m_bShowCompact;
+      bool m_bShowCustomFPS;
+      bool m_bShowProfileSelectorInline;
 };

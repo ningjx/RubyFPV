@@ -6,10 +6,19 @@
 #include "config_rc.h"
 #include "config_file_names.h"
 #include "config_obj_names.h"
+#include "config_radio.h"
 #include "config_video.h"
 #include "config_timers.h"
 
 #define ALIGN_STRUCT_SPEC_INFO __attribute__((aligned(4)))
+
+//sig_atomic_t
+//_Atomic
+//#if defined (HW_PLATFORM_OPENIPC_CAMERA)
+//#define _ATOMIC_PREFIX _Atomic
+//#else
+#define _ATOMIC_PREFIX volatile
+//#endif
 
 //#define DISABLE_ALL_LOGS 1
 #define FEATURE_ENABLE_RC 1
@@ -19,14 +28,6 @@
 //#define FEATURE_RADIO_SYNCHRONIZE_RXTX_THREADS
 //#define LOG_RAW_TELEMETRY
 
-#define RADIO_TX_MESSAGE_QUEUE_ID 117
-
-#define	MAX_RADIO_INTERFACES 6
-#define MAX_RADIO_ANTENNAS 4
-#define MAX_MAC_LENGTH 20
-#define MAX_RADIO_PORT_NAME_LENGTH 6
-#define MIN_BOOST_INPUT_SIGNAL 3
-#define MAX_BOOST_INPUT_SIGNAL 100
 #define MAX_RELAY_VEHICLES 5
 // Should be Main vehicle + relay vehicles (above)
 
@@ -45,79 +46,45 @@
 #define MAX_MODELS 40
 #define MAX_MODELS_SPECTATOR 20
 #endif
-#define MAX_TX_POWER 71
-#define MAX_MCS_INDEX 9
 
 
 #define SYSTEM_RT_INFO_UPDATE_INTERVAL_MS 5
 #define SYSTEM_RT_INFO_INTERVALS 400
+#define SYSTEM_RT_INFO_INTERVALS_FRAMES 150
 
-#define DEFAULT_TX_TIME_OVERLOAD 500 // milisec
-
-// Frequencies are in kHz
-#define DEFAULT_FREQUENCY_433  443000
-#define DEFAULT_FREQUENCY_868  867000
-#define DEFAULT_FREQUENCY_915  914000
-#define DEFAULT_FREQUENCY     2472000
-#define DEFAULT_FREQUENCY_2   2467000
-#define DEFAULT_FREQUENCY_3   2437000
-#define DEFAULT_FREQUENCY58   5825000
-#define DEFAULT_FREQUENCY58_2 5885000
-#define DEFAULT_FREQUENCY58_3 5745000
-
-#define DEFAULT_RADIO_FRAMES_FLAGS (RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_FRAME_TYPE_DATA)
-
-#define DEFAULT_RADIO_SIK_NETID 27
-#define DEFAULT_RADIO_SIK_CHANNELS 5
-#define DEFAULT_RADIO_SIK_FREQ_SPREAD 1000 // in kbps
-// Default sik packet size is big enough to capture the full t_packet_header in the first sik short packet received for a message
-#define DEFAULT_SIK_PACKET_SIZE 24
-
-#define DEFAULT_RADIO_SERIAL_AIR_PACKET_SIZE 24
-#define DEFAULT_RADIO_SERIAL_AIR_MIN_PACKET_SIZE 10
-#define DEFAULT_RADIO_SERIAL_AIR_MAX_PACKET_SIZE 127
-#define DEFAULT_RADIO_SERIAL_MAX_TX_LOAD 75 // in percentages
-
-// in bps
-#define DEFAULT_RADIO_DATARATE_SERIAL_AIR 4000
-#define DEFAULT_RADIO_DATARATE_SIK_AIR 64000
-#define DEFAULT_RADIO_DATARATE_VIDEO 18000000
-#define DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS 12000000
-#define DEFAULT_RADIO_DATARATE_LOWEST 6000000
-#define DEFAULT_RADIO_DATARATE_DATA 6000000
-
-#define DEFAULT_USE_PPCAP_FOR_TX 0
-#define DEFAULT_BYPASS_SOCKET_BUFFERS 1
-#define DEFAULT_RADIO_TX_POWER_CONTROLLER 20
-#define DEFAULT_RADIO_TX_POWER 20
-#define DEFAULT_RADIO_SIK_TX_POWER 11
 #define DEFAULT_OVERVOLTAGE 3
 #define DEFAULT_ARM_FREQ 900
 #define DEFAULT_GPU_FREQ 400
-#define DEFAULT_FREQ_OPENIPC_SIGMASTAR 1000
+#define DEFAULT_FREQ_OPENIPC_SIGMASTAR 1100
 #define DEFAULT_FREQ_RADXA 1416
 
-#define DEFAULT_PRIORITY_PROCESS_ROUTER -10
-#define DEFAULT_PRIORITY_PROCESS_ROUTER_OPIC -12
-#define DEFAULT_IO_PRIORITY_ROUTER 3 //(negative for disabled)
-#define DEFAULT_PRIORITY_PROCESS_RC -9
-#define DEFAULT_IO_PRIORITY_RC 2 // (negative for disabled)
-#define DEFAULT_PRIORITY_PROCESS_VIDEO_TX -7
-#define DEFAULT_PRIORITY_PROCESS_VIDEO_RX -7 // 0 - auto
+#define DEFAULT_IO_PRIORITY_ROUTER_CTRL 3 //(negative for disabled)
+#define DEFAULT_IO_PRIORITY_ROUTER_VEHICLE 3 //(negative for disabled)
+#define DEFAULT_IO_PRIORITY_RC 3
 #define DEFAULT_IO_PRIORITY_VIDEO_TX 3
 #define DEFAULT_IO_PRIORITY_VIDEO_RX 3
-#define DEFAULT_PRIORITY_PROCESS_TELEMETRY -7
-#define DEFAULT_PRIORITY_PROCESS_TELEMETRY_OIPC -3
-#define DEFAULT_PRIORITY_PROCESS_OTHERS -3
-#define DEFAULT_PRIORITY_PROCESS_CENTRAL -1
 
-#define DEFAULT_PRIORITY_VEHICLE_THREAD_ROUTER 5
-#define DEFAULT_PRIORITY_VEHICLE_THREAD_RADIO_RX 20 // of 99
-#define DEFAULT_PRIORITY_VEHICLE_THREAD_RADIO_TX 2 // of 99
+// Priorities are 2...139:  0,1: disabled, 1...100: RT, 101-139: nice
+#define DEFAULT_PRIORITY_VEHICLE_THREAD_ROUTER 60
+#define DEFAULT_PRIORITY_VEHICLE_THREAD_ROUTER_OIPC 90
+#define DEFAULT_PRIORITY_VEHICLE_THREAD_RADIO_RX 55
+#define DEFAULT_PRIORITY_VEHICLE_THREAD_RADIO_TX 80
+#define DEFAULT_PRIORITY_VEHICLE_THREAD_VIDEO_CAPTURE 70
+#define DEFAULT_PRIORITY_VEHICLE_THREAD_VIDEO_CAPTURE_OIPC 0
+#define DEFAULT_PRIORITY_VEHICLE_THREAD_RX_RC 80
+#define DEFAULT_PRIORITY_VEHICLE_THREAD_TX_TELEM 101
+#define DEFAULT_PRIORITY_VEHICLE_THREAD_TX_TELEM_OIPC 105
+#define DEFAULT_PRIORITY_VEHICLE_OTHERS 110
 
-#define DEFAULT_PRIORITY_THREAD_ROUTER 5
-#define DEFAULT_PRIORITY_THREAD_RADIO_RX 20 // of 99
-#define DEFAULT_PRIORITY_THREAD_RADIO_TX 2 // of 99
+// Priorities are 2...139:  0,1: disabled, 1...100: RT, 101-139: nice
+#define DEFAULT_PRIORITY_CTRL_THREAD_ROUTER 60
+#define DEFAULT_PRIORITY_CTRL_THREAD_RADIO_RX 51
+#define DEFAULT_PRIORITY_CTRL_THREAD_RADIO_TX 55
+#define DEFAULT_PRIORITY_CTRL_THREAD_CENTRAL 101
+#define DEFAULT_PRIORITY_CTRL_THREAD_TX_RC 90
+#define DEFAULT_PRIORITY_CTRL_THREAD_VIDEO_RX 70
+#define DEFAULT_PRIORITY_CTRL_THREAD_VIDEO_REC 101
+#define DEFAULT_PRIORITY_CTRL_OTHERS 110
 
 #define DEFAULT_MAVLINK_SYS_ID_VEHICLE 1
 #define DEFAULT_MAVLINK_SYS_ID_CONTROLLER 255
@@ -147,38 +114,17 @@
 #define DEFAULT_RADXA_DISPLAY_REFRESH 60
 #define DEFAULT_MPP_BUFFERS_SIZE 32
 
+#define DEFAULT_OSD_RADIO_GRAPH_REFRESH_PERIOD_MS 50
+#define DEFAULT_MSPOSD_RECORDING_COLS 53
+#define DEFAULT_MSPOSD_RECORDING_ROWS 20
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif 
 
-u32* getChannels433();
-int getChannels433Count();
-u32* getChannels868();
-int getChannels868Count();
-u32* getChannels915();
-int getChannels915Count();
-u32* getChannels24();
-int getChannels24Count();
-u32* getChannels23();
-int getChannels23Count();
-u32* getChannels25();
-int getChannels25Count();
-u32* getChannels58();
-int getChannels58Count();
-
-int getBand(u32 freqKhz);
-int getChannelIndexForFrequency(u32 nBand, u32 freqKhz);
-int isFrequencyInBands(u32 freqKhz, u8 bands);
-int getSupportedChannels(u32 supportedBands, int includeSeparator, u32* pOutChannels, int maxChannels);
-
-int* getSiKAirDataRates();
-int  getSiKAirDataRatesCount();
-int* getDataRatesBPS();
-int getDataRatesCount();
-u32 getRealDataRateFromMCSRate(int mcsIndex, int iHT40);
-u32 getRealDataRateFromRadioDataRate(int dataRateBPS, int iHT40);
-
 void getSystemVersionString(char* p, u32 swversion);
+int hardware_file_check_and_fix_access_c(char* szFullFileName);
 
 int config_file_get_value(const char* szPropName);
 void config_file_set_value(const char* szFile, const char* szPropName, int value);

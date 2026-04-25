@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -32,6 +32,8 @@
 
 #include "../base/base.h"
 #include "../base/hardware.h"
+#include "../base/hardware_procs.h"
+#include "../base/ctrl_settings.h"
 #include "keyboard.h"
 #include "timers.h"
 #include <pthread.h>
@@ -42,6 +44,7 @@
 #include "warnings.h"
 
 #define MAX_INPUT_EVENTS 64
+#define MAX_INPUT_DEVICES 6
 
 bool s_bKeyboardInitDone = false;
 pthread_t s_pThreadKeyboard;
@@ -59,7 +62,7 @@ typedef struct
    unsigned long evbit;
 } input_device_info;
 
-input_device_info s_InputDevicesInfo[10];
+input_device_info s_InputDevicesInfo[MAX_INPUT_DEVICES];
 
 u32 s_uKeyboardInputEvents[MAX_INPUT_EVENTS];
 int s_iCountKeyboardInputEvents = 0;
@@ -79,7 +82,7 @@ bool _input_device_has_key(int iFile, int iKey)
 
 void _close_remove_input_device_info(int iIndex)
 {
-   if ( (iIndex < 0) || (iIndex > 9) )
+   if ( (iIndex < 0) || (iIndex >= MAX_INPUT_DEVICES) )
       return;
 
    warnings_add_input_device_removed(s_InputDevicesInfo[iIndex].szName);
@@ -101,7 +104,7 @@ bool _keyboard_try_detect()
 
    // First, check if current devices are still valid
 
-   for( int i=0; i<10; i++ )
+   for( int i=0; i<MAX_INPUT_DEVICES; i++ )
    {
       if ( s_InputDevicesInfo[i].iFile < 0 )
          continue;
@@ -155,7 +158,7 @@ bool _keyboard_try_detect()
    if ( access( "/dev/input/event0", R_OK ) == -1 )
       return false;
 
-   for( int i=0; i<10; i++ )
+   for( int i=0; i<MAX_INPUT_DEVICES; i++ )
    {
       // Valid device, skip it
       if ( s_InputDevicesInfo[i].iFile >= 0 )
@@ -262,7 +265,7 @@ bool _keyboard_try_detect()
    return bDetectedNewDevices;
 }
 
-void _add_input_event(u32 uEvent)
+void _add_input_event(u32 uEvent, bool bFromKeyboard)
 {
    if ( (uEvent == INPUT_EVENT_PRESS_QA1) ||
         (uEvent == INPUT_EVENT_PRESS_QA2) ||
@@ -273,8 +276,8 @@ void _add_input_event(u32 uEvent)
       s_uKeyboardLastQAActionEventTime = get_current_timestamp_ms();
    }
 
-   if ( uEvent == INPUT_EVENT_PRESS_MENU )
-      log_line("[Input] Added input event %u, %d events", uEvent, s_iCountKeyboardInputEvents);
+   //if ( uEvent == INPUT_EVENT_PRESS_MENU )
+      log_line("[Input] Added input event %u %s, %d events already in queue", uEvent, bFromKeyboard?"from keyboard":"from GPIO", s_iCountKeyboardInputEvents);
    int iLock = pthread_mutex_lock(&s_pThreadKeyboardMutex);
 
    s_uKeyboardInputEvents[s_iCountKeyboardInputEvents] = uEvent;
@@ -298,7 +301,7 @@ int _read_keyboard_input_events()
    FD_ZERO(&readset);
    bool bHasAnyInputDevice = false;
 
-   for( int i=0; i<10; i++ )
+   for( int i=0; i<MAX_INPUT_DEVICES; i++ )
    {
       if ( s_InputDevicesInfo[i].iFile < 0 )
         continue;
@@ -318,7 +321,7 @@ int _read_keyboard_input_events()
    if ( selectResult <= 0 )
       return selectResult;
 
-   for( int i=0; i<10; i++ )
+   for( int i=0; i<MAX_INPUT_DEVICES; i++ )
    {
       if ( s_InputDevicesInfo[i].iFile < 0 )
          continue;
@@ -365,7 +368,7 @@ int _read_keyboard_input_events()
                uEvent = ((u32)events[k].code) << 16;
             }
             if ( uEvent > 0 )
-               _add_input_event(uEvent);
+               _add_input_event(uEvent, true);
          }
       }
    }
@@ -375,7 +378,10 @@ int _read_keyboard_input_events()
 static void * _thread_keyboard(void *argument)
 {
    log_line("[Keyboard] Thread started.");
-
+   ControllerSettings* pCS = get_ControllerSettings();
+   if ( pCS->iPrioritiesAdjustment )
+      hw_set_current_thread_raw_priority("keyboard", pCS->iThreadPriorityOthers);
+   hw_log_current_thread_attributes("keyboard");
    
    bool* pbInitialized = (bool*) argument;
    
@@ -385,30 +391,30 @@ static void * _thread_keyboard(void *argument)
       if ( ! (*pbInitialized) )
          break;
       if ( isKeyMenuPressed() )
-         _add_input_event(INPUT_EVENT_PRESS_MENU);
+         _add_input_event(INPUT_EVENT_PRESS_MENU, false);
       if ( isKeyBackPressed() )
-         _add_input_event(INPUT_EVENT_PRESS_BACK);
+         _add_input_event(INPUT_EVENT_PRESS_BACK, false);
       if ( isKeyMinusPressed() )
-         _add_input_event(INPUT_EVENT_PRESS_MINUS);
+         _add_input_event(INPUT_EVENT_PRESS_MINUS, false);
       if ( isKeyPlusPressed() )
-         _add_input_event(INPUT_EVENT_PRESS_PLUS);
+         _add_input_event(INPUT_EVENT_PRESS_PLUS, false);
       if ( isKeyQA1Pressed() )
-         _add_input_event(INPUT_EVENT_PRESS_QA1);
+         _add_input_event(INPUT_EVENT_PRESS_QA1, false);
       if ( isKeyQA2Pressed() )
-         _add_input_event(INPUT_EVENT_PRESS_QA2);
+         _add_input_event(INPUT_EVENT_PRESS_QA2, false);
       if ( isKeyQA3Pressed() )
-         _add_input_event(INPUT_EVENT_PRESS_QA3);
+         _add_input_event(INPUT_EVENT_PRESS_QA3, false);
 
       if ( isKeyMinusLongPressed() )
-         _add_input_event(INPUT_EVENT_PRESS_MINUS);
+         _add_input_event(INPUT_EVENT_PRESS_MINUS, false);
       if ( isKeyPlusLongPressed() )
-         _add_input_event(INPUT_EVENT_PRESS_PLUS);
+         _add_input_event(INPUT_EVENT_PRESS_PLUS, false);
 
       if ( isKeyMinusLongLongPressed() || isKeyPlusLongLongPressed() || isKeyMenuLongLongPressed() )
          s_bHasLongPressFlag = true;
       else
          s_bHasLongPressFlag = false;
-      hardware_sleep_ms(15);
+      hardware_sleep_ms(10);
 
       if ( ! (*pbInitialized) )
          break;
@@ -417,7 +423,7 @@ static void * _thread_keyboard(void *argument)
       {
          s_iKeyboardDetectTryCount++;
          if ( s_iKeyboardDetectTryCount < 3 )
-            s_uNextKeyboardDetectTime = g_TimeNow+1000 * s_iKeyboardDetectTryCount;
+            s_uNextKeyboardDetectTime = g_TimeNow + 1000 * s_iKeyboardDetectTryCount;
          else
             s_uNextKeyboardDetectTime = g_TimeNow + 3000;
 
@@ -441,12 +447,14 @@ int keyboard_init()
    if ( s_bKeyboardInitDone )
       return 0;
 
+   ControllerSettings* pCS = get_ControllerSettings();
+
    s_bKeyboardInitDone = true;
    s_uNextKeyboardDetectTime = g_TimeNow + 2000;
    s_iKeyboardDetectTryCount = 0;
    s_iCountKeyboardInputEvents = 0;
 
-   for( int i=0; i<10; i++ )
+   for( int i=0; i<MAX_INPUT_DEVICES; i++ )
    {
       s_InputDevicesInfo[i].iFile = -1;
       s_InputDevicesInfo[i].szName[0] = 0;
@@ -459,12 +467,22 @@ int keyboard_init()
       return 0;
    }
 
-   if ( 0 != pthread_create(&s_pThreadKeyboard, NULL, &_thread_keyboard, (void*)&s_bKeyboardInitDone) )
+   pthread_attr_t attr;
+   int iPrio = pCS->iThreadPriorityCentral;
+   if ( pCS->iPrioritiesAdjustment && (iPrio > 2) && (iPrio < 98) )
    {
+      iPrio+=2;
+      hw_init_worker_thread_attrs(&attr, (pCS->iCoresAdjustment?CORE_AFFINITY_CENTRAL_UI:-1), -1, SCHED_FIFO, iPrio, "keyboard");
+   }
+   else
+      hw_init_worker_thread_attrs(&attr, (pCS->iCoresAdjustment?CORE_AFFINITY_CENTRAL_UI:-1), -1, SCHED_OTHER, 0, "keyboard");
+   if ( 0 != pthread_create(&s_pThreadKeyboard, &attr, &_thread_keyboard, (void*)&s_bKeyboardInitDone) )
+   {
+      pthread_attr_destroy(&attr);
       log_error_and_alarm("[Keyboard] Failed to create thread.");
       return 0;
    }
-
+   pthread_attr_destroy(&attr);
    return 1;
 }
 
@@ -481,7 +499,7 @@ int keyboard_uninit()
    pthread_cancel(s_pThreadKeyboard);
    pthread_mutex_destroy(&s_pThreadKeyboardMutex);
 
-   for( int i=0; i<10; i++ )
+   for( int i=0; i<MAX_INPUT_DEVICES; i++ )
    {
       if ( s_InputDevicesInfo[i].iFile >= 0 )
          close(s_InputDevicesInfo[i].iFile);
@@ -549,10 +567,9 @@ u32 keyboard_get_triggered_input_events()
    return s_uKeyboardInputEventsSum;
 }
 
-u32 keyboard_add_triggered_input_event(u32 uEventId)
+void keyboard_clear_triggered_back_event()
 {
-   s_uKeyboardInputEventsSum |= uEventId;
-   return s_uKeyboardInputEventsSum;
+   s_uKeyboardInputEventsSum &= ~INPUT_EVENT_PRESS_BACK; 
 }
 
 u32 keyboard_add_triggered_gpio_input_events()

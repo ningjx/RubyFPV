@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/ctrl_settings.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 
 #include "forward_watch.h"
 #include "shared_vars.h"
@@ -50,7 +50,7 @@ void _forward_on_usb_device_detected()
 {
    log_line("USB device detected");
 
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("on new usb device");
 
    char szSysType[128];
    char szBuff[1024];
@@ -110,7 +110,7 @@ void _forward_on_usb_device_detected()
    sprintf(szBuff, "echo \"%s\" > %s%s", szIP, FOLDER_RUBY_TEMP, FILE_TEMP_USB_TETHERING_DEVICE);
    hw_execute_bash_command(szBuff, NULL);
    log_line("Done configuring USB tethering device connection.");
-   ruby_resume_watchdog();
+   ruby_resume_watchdog("on new usb device");
 }
 
 void _forward_on_usb_device_unplugged()
@@ -118,7 +118,7 @@ void _forward_on_usb_device_unplugged()
    char szSysType[128];
    char szBuff[1024];
 
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("on usb device unplugged");
 
    if ( hardware_is_vehicle() )
       strcpy(szSysType, "VEHICLE");
@@ -139,7 +139,7 @@ void _forward_on_usb_device_unplugged()
       sprintf(szBuff, "nice pump -i eth0 --no-ntp -h Ruby%s &", szSysType);
       hw_execute_bash_command(szBuff, NULL);
    }
-   ruby_resume_watchdog();
+   ruby_resume_watchdog("on usb device unplugged");
 }
 
 bool forward_streams_on_pairing_start()

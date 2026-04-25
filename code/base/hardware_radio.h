@@ -48,6 +48,8 @@
 #define CARD_MODEL_RTL8812AU_OIPC_USIGHT 18
 #define CARD_MODEL_RTL8812AU_OIPC_USIGHT2 19
 #define CARD_MODEL_RTL8733BU    20
+#define CARD_MODEL_BONNET_LOW_POWER 21
+#define CARD_MODEL_BONNET_HIGH_POWER 22
 
 #define CARD_MODEL_SIK_RADIO 100
 #define CARD_MODEL_SERIAL_RADIO 101
@@ -84,27 +86,41 @@ extern "C" {
 
 typedef struct
 {
+   u32 uLastTimeCapture;
+
+   int iDbmLast;
+   int iDbmMin;
+   int iDbmMax;
+   int iDbmNoiseLast;
+   int iDbmNoiseMin;
+   int iDbmNoiseMax;
+   int iSNRLast;
+   int iSNRMin;
+   int iSNRMax;
+   int iDbmThreshMin;
+   int iDbmThreshMinDatarate;
+   int iSNRThreshMin;
+   int iSNRThreshMinDatarate;
+   int iSNRThreshMinDBMValue;
+   int iSNRThreshMinSNRValue;
+} ALIGN_STRUCT_SPEC_INFO type_runtime_radio_rx_signal_info;
+
+typedef struct
+{
    int nChannel;
    int nChannelFlags;
    int nFreq;
    int nDataRateBPSMCS; // positive: bps, negative: mcs rate, 0: never
    int nRadiotapFlags;
    int nAntennaCount;
-   int nDbmLast[MAX_RADIO_ANTENNAS];
-   int nDbmLastChange[MAX_RADIO_ANTENNAS];
-   int nDbmAvg[MAX_RADIO_ANTENNAS];
-   int nDbmMin[MAX_RADIO_ANTENNAS];
-   int nDbmMax[MAX_RADIO_ANTENNAS];
-   int nDbmNoiseLast[MAX_RADIO_ANTENNAS];
-   int nDbmNoiseAvg[MAX_RADIO_ANTENNAS];
-   int nDbmNoiseMin[MAX_RADIO_ANTENNAS];
-   int nDbmNoiseMax[MAX_RADIO_ANTENNAS];
-   u32 uLastTimeCapture[MAX_RADIO_ANTENNAS];
+   type_runtime_radio_rx_signal_info signalInfoAll;
+   type_runtime_radio_rx_signal_info signalInfoVideo;
+   type_runtime_radio_rx_signal_info signalInfoData;
 } ALIGN_STRUCT_SPEC_INFO type_runtime_radio_rx_info;
 
 
 void reset_runtime_radio_rx_info(type_runtime_radio_rx_info* pRuntimeRadioRxInfo);
-void reset_runtime_radio_rx_info_dbminfo(type_runtime_radio_rx_info* pRuntimeRadioRxInfo);
+void reset_runtime_radio_rx_signal_info(type_runtime_radio_rx_signal_info* pRuntimeRadioRxSignalInfo);
 
 typedef struct
 {
@@ -140,6 +156,7 @@ typedef struct
    char szMAC[MAX_MAC_LENGTH]; // MAC or serial port name or SPI name
    char szProductId[12];
    char szUSBPort[MAX_RADIO_PORT_NAME_LENGTH];  // [A-X], [A-X][1-9], ... or serial port name or SPI name
+   int iUSBHubPort;
    int iRadioType;
    int iRadioDriver;
    u32 uHardwareParamsList[MAX_RADIO_HW_PARAMS];
@@ -180,6 +197,7 @@ void hardware_log_radio_info(radio_hw_info_t* pRadioInfo, int iCount);
 void hardware_radio_remove_stored_config();
 
 void hardware_reset_radio_enumerated_flag();
+int hardware_find_usb_radio_interfaces_info();
 int hardware_enumerate_radio_interfaces();
 int hardware_enumerate_radio_interfaces_step(int iStep);
 int hardware_radio_get_class_net_adapters_count();
@@ -195,7 +213,6 @@ void hardware_install_drivers(int iEchoToConsole);
 int hardware_initialize_radio_interface(int iInterfaceIndex, u32 uDelayMS);
 
 int hardware_radio_get_driver_id_card_model(int iCardModel);
-int hardware_radio_get_driver_id_for_product_id(const char* szProdId);
 
 int hardware_get_radio_interfaces_count();
 int hardware_get_supported_radio_interfaces_count();
@@ -204,6 +221,7 @@ int hardware_add_radio_interface_info(radio_hw_info_t* pRadioInfo);
 int hardware_get_radio_index_by_name(const char* szName);
 int hardware_get_radio_index_from_mac(const char* szMAC);
 int hardware_radio_has_low_capacity_links();
+int hardware_radio_has_wifi_cards();
 int hardware_radio_has_rtl8812au_cards();
 int hardware_radio_has_rtl8812eu_cards();
 int hardware_radio_has_rtl8733bu_cards();
@@ -216,7 +234,7 @@ int hardware_radio_driver_is_atheros_card(int iDriver);
 const char* hardware_get_radio_name(int iRadioIndex);
 const char* hardware_get_radio_description(int iRadioIndex);
 
-int hardware_radio_type_is_ieee(int iRadioType);
+int hardware_radio_type_is_wifi(int iRadioType);
 int hardware_radio_type_is_sikradio(int iRadioType);
 int hardware_radio_is_wifi_radio(radio_hw_info_t* pRadioInfo);
 int hardware_radio_is_serial_radio(radio_hw_info_t* pRadioInfo);

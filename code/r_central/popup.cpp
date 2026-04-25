@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -36,16 +36,23 @@
 #include "colors.h"
 #include "osd_common.h"
 #include "menu.h"
+#include "pairing.h"
+#include "link_watch.h"
 #include "shared_vars.h"
 #include "timers.h"
 
 float POPUP_LINE_SPACING = 0.5; // percentage of actual line height
+float POPUP_ALPHA_WHEN_MENU_ON = 0.8;
 
 Popup* sPopups[MAX_POPUPS];
 int countPopups = 0;
 
 Popup* sPopupsTopmost[MAX_POPUPS];
 int countPopupsTopmost = 0;
+
+Popup* sPopupsBottom[MAX_POPUPS];
+int countPopupsBottom = 0;
+
 
 int popups_get_count() { return countPopups; }
 int popups_get_topmost_count() { return countPopupsTopmost; };
@@ -89,6 +96,31 @@ void popups_add(Popup* p)
    }
 }
 
+void popups_add_bottom(Popup* p)
+{
+   if ( NULL == p )
+   {
+      log_softerror_and_alarm("Tried to add a NULL popup to the stack");
+      return;      
+   }
+
+   for( int i=0; i<countPopupsBottom; i++ )
+   {
+      if ( sPopupsBottom[i] == p )
+      {
+         p->onShow();
+         return;
+      }
+   }
+   if ( countPopupsBottom < MAX_POPUPS )
+   {
+      p->onShow();
+      sPopupsBottom[countPopupsBottom] = p;
+      countPopupsBottom++;
+      log_line("Added bottom popup: [%s]", p->getTitle());
+   }
+}
+
 void popups_add_topmost(Popup* p)
 {
    if ( NULL == p )
@@ -125,6 +157,10 @@ bool popups_has_popup(Popup* p)
    for( int i=0; i<countPopupsTopmost; i++ )
       if ( sPopupsTopmost[i] == p )
          return true;
+
+   for( int i=0; i<countPopupsBottom; i++ )
+      if ( sPopupsBottom[i] == p )
+         return true;
    return false;
 }
 
@@ -134,10 +170,10 @@ void popups_remove(Popup* p)
       return;
    int i = 0;
    for( ; i<countPopups; i++ )
-      if ( NULL != sPopups[i] && sPopups[i] == p )
+      if ( (NULL != sPopups[i]) && (sPopups[i] == p) )
          break;
 
-   if ( i < countPopups && sPopups[i] == p )
+   if ( (i < countPopups) && (sPopups[i] == p) )
    {
       for( ; i<countPopups-1; i++ )
          sPopups[i] = sPopups[i+1];
@@ -146,15 +182,28 @@ void popups_remove(Popup* p)
 
    i = 0;
    for( ; i<countPopupsTopmost; i++ )
-      if ( NULL != sPopupsTopmost[i] && sPopupsTopmost[i] == p )
+      if ( (NULL != sPopupsTopmost[i]) && (sPopupsTopmost[i] == p) )
          break;
 
-   if ( i < countPopupsTopmost && sPopupsTopmost[i] == p )
+   if ( (i < countPopupsTopmost) && (sPopupsTopmost[i] == p) )
    {
       log_line("Removed topmost popup: [%s]", p->getTitle());
       for( ; i<countPopupsTopmost-1; i++ )
          sPopupsTopmost[i] = sPopupsTopmost[i+1];
       countPopupsTopmost--;
+   }
+
+   i = 0;
+   for( ; i<countPopupsBottom; i++ )
+      if ( (NULL != sPopupsBottom[i]) && (sPopupsBottom[i] == p) )
+         break;
+
+   if ( (i < countPopupsBottom) && (sPopupsBottom[i] == p) )
+   {
+      log_line("Removed bottom popup: [%s]", p->getTitle());
+      for( ; i<countPopupsBottom-1; i++ )
+         sPopupsBottom[i] = sPopupsBottom[i+1];
+      countPopupsBottom--;
    }
 }
 
@@ -185,6 +234,19 @@ void popups_remove_all(Popup* pExceptionPopup)
    }
 
    countPopupsTopmost = iCountExceptions;
+
+   iCountExceptions = 0;
+   for( int i=0; i<countPopupsBottom; i++ )
+   {
+      if ( NULL != sPopupsBottom[i] )
+      if ( (sPopupsBottom[i] == pExceptionPopup) || sPopupsBottom[i]->hasDisabledAutoRemove() )
+      {
+         sPopupsBottom[iCountExceptions] = sPopupsBottom[i];
+         iCountExceptions++;
+      }
+   }
+
+   countPopupsBottom = iCountExceptions;
 }
 
 void popups_render()
@@ -192,16 +254,19 @@ void popups_render()
    if ( render_engine_uses_raw_fonts() )
       POPUP_LINE_SPACING = 0.2;
 
-   g_pRenderEngine->disableRectBlending();
+   bool bAlphaEnabled = g_pRenderEngine->isAlphaBlendingEnabled();
+   float fAlfa = g_pRenderEngine->getGlobalAlfa();
 
-   float alfa = g_pRenderEngine->getGlobalAlfa();
-
-   //log_line("Render %d popups", countPopups);
+   g_pRenderEngine->disableAlphaBlending();
 
    if ( isMenuOn() )
-      g_pRenderEngine->setGlobalAlfa(0.47);
+   {
+      g_pRenderEngine->enableAlphaBlending();
+      g_pRenderEngine->setGlobalAlfa(POPUP_ALPHA_WHEN_MENU_ON);
+   }
 
    for( int i=0; i<countPopups; i++ )
+   {
       if ( NULL != sPopups[i] )
       {
          sPopups[i]->Render();
@@ -210,9 +275,9 @@ void popups_render()
             sPopups[i] = NULL;
          }
       }
-
-   g_pRenderEngine->setGlobalAlfa(alfa);
-   g_pRenderEngine->enableRectBlending();
+   }
+   g_pRenderEngine->setGlobalAlfa(fAlfa);
+   g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
 
    // Remove expired ones (NULL)
    int index = 0;
@@ -232,21 +297,29 @@ void popups_render()
 
 void popups_render_topmost()
 {
-   float alfa = g_pRenderEngine->setGlobalAlfa(1.0);
-   g_pRenderEngine->disableRectBlending();
+   bool bAlphaEnabled = g_pRenderEngine->isAlphaBlendingEnabled();
+   float fAlfa = g_pRenderEngine->setGlobalAlfa(1.0);
 
-   //log_line("Render %d topmost popups", countPopupsTopmost);
+   g_pRenderEngine->disableAlphaBlending();
+
+   if ( isMenuOn() )
+   {
+      g_pRenderEngine->enableAlphaBlending();
+      g_pRenderEngine->setGlobalAlfa(POPUP_ALPHA_WHEN_MENU_ON);
+   }
 
    for( int i=0; i<countPopupsTopmost; i++ )
+   {
       if ( NULL != sPopupsTopmost[i] )
       {
          sPopupsTopmost[i]->Render();
          if ( sPopupsTopmost[i]->isExpired() )
             sPopupsTopmost[i] = NULL;
       }
+   }
 
-   g_pRenderEngine->setGlobalAlfa(alfa);
-   g_pRenderEngine->enableRectBlending();
+   g_pRenderEngine->setGlobalAlfa(fAlfa);
+   g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
 
    // Remove expired ones (NULL)
    int index = 0;
@@ -264,14 +337,59 @@ void popups_render_topmost()
    }
 }
 
+
+void popups_render_bottom()
+{
+   bool bAlphaEnabled = g_pRenderEngine->isAlphaBlendingEnabled();
+   float fAlfa = g_pRenderEngine->getGlobalAlfa();
+
+   g_pRenderEngine->disableAlphaBlending();
+
+   if ( isMenuOn() )
+      g_pRenderEngine->setGlobalAlfa(POPUP_ALPHA_WHEN_MENU_ON);
+
+   for( int i=0; i<countPopupsBottom; i++ )
+   {
+      if ( NULL != sPopupsBottom[i] )
+      {
+         sPopupsBottom[i]->Render();
+         if ( sPopupsBottom[i]->isExpired() )
+            sPopupsBottom[i] = NULL;
+      }
+   }
+
+   g_pRenderEngine->setGlobalAlfa(fAlfa);
+   g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
+
+   // Remove expired ones (NULL)
+   int index = 0;
+   int skip = 0;
+   while( index < countPopupsBottom )
+   {
+       if ( sPopupsBottom[index+skip] == NULL )
+       {
+          skip++;
+          countPopupsBottom--;
+          continue;
+       }
+       sPopupsBottom[index] = sPopupsBottom[index+skip];
+       index++;
+   }
+}
+
 void popups_invalidate_all()
 {
    for( int i=0; i<countPopups; i++ )
       if ( NULL != sPopups[i] )
          sPopups[i]->invalidate();
+
    for( int i=0; i<countPopupsTopmost; i++ )
       if ( NULL != sPopupsTopmost[i] )
          sPopupsTopmost[i]->invalidate();
+
+   for( int i=0; i<countPopupsBottom; i++ )
+      if ( NULL != sPopupsBottom[i] )
+         sPopupsBottom[i]->invalidate();
 }
 
 
@@ -303,6 +421,7 @@ Popup::Popup(const char* title, float x, float y, float timeoutSec)
    m_fBottomMargin = 0.0;
    m_RenderWidth = 0;
    m_RenderHeight = 0;
+   m_bShowTimeoutBar = false;
    m_bBelowMenu = false;
    m_bTopmost = false;
    m_uIdFont = g_idFontMenu;
@@ -356,6 +475,7 @@ Popup::Popup(const char* title, float x, float y, float maxWidth, float timeoutS
    m_fBottomMargin = 0.0;
    m_RenderWidth = 0;
    m_RenderHeight = 0;
+   m_bShowTimeoutBar = false;
    m_bBelowMenu = false;
    m_bTopmost = false;
    m_uIdFont = g_idFontMenu;
@@ -404,6 +524,7 @@ Popup::Popup(bool bCentered, const char* title, float timeoutSec)
    m_fBottomMargin = 0.0;
    m_RenderWidth = 0;
    m_RenderHeight = 0;
+   m_bShowTimeoutBar = false;
    m_bBelowMenu = false;
    m_bTopmost = false;
    m_uIdFont = g_idFontMenu;
@@ -610,6 +731,11 @@ void Popup::refresh()
 void Popup::setRenderBelowMenu(bool bBelowMenu)
 {
    m_bBelowMenu = bBelowMenu;
+}
+
+void Popup::showTimeoutProgress()
+{
+   m_bShowTimeoutBar = true;
 }
 
 void Popup::setCentered()
@@ -893,6 +1019,7 @@ void Popup::Render()
    colorBg[3] = colorBg[3] * m_fBackgroundAlpha;
    if ( colorBg[3] > 1.0 )
       colorBg[3] = 1.0;
+   
    if ( m_fBackgroundAlpha < 0.99 )
       g_pRenderEngine->setColors(colorBg);
    else
@@ -904,6 +1031,26 @@ void Popup::Render()
    float fDeltaWidthIcons = computeIconsSizes();
    if ( ! m_bNoBackground )
       g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos, m_RenderWidth + fDeltaWidthIcons, m_RenderHeight, POPUP_ROUND_MARGIN);
+
+
+   if ( m_bShowTimeoutBar )
+   if ( (m_fTimeoutSeconds > 0.001) && (m_uTimeoutEndTime != 0) )
+   if ( g_TimeNow <= m_uTimeoutEndTime )
+   {
+      float fBarPercentage = 1.0 - (float)(m_uTimeoutEndTime - g_TimeNow)/(1000.0*m_fTimeoutSeconds);
+      if ( fBarPercentage < 0.001 )
+         fBarPercentage = 0.001;
+      if ( fBarPercentage > 1.0 )
+         fBarPercentage = 1.0;
+
+      float fBarHeight = height_text*0.5;
+
+      g_pRenderEngine->setFill(0,0,0,0);
+      g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos + m_RenderHeight - fBarHeight, m_RenderWidth + fDeltaWidthIcons, fBarHeight, POPUP_ROUND_MARGIN);
+
+      g_pRenderEngine->setColors(get_Color_PopupText());
+      g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos + m_RenderHeight - fBarHeight, fBarPercentage * (m_RenderWidth + fDeltaWidthIcons), fBarHeight, POPUP_ROUND_MARGIN);
+   }
 
    float xTextStart = m_RenderXPos+m_fPaddingX;
    float yTextStart = m_RenderYPos+m_fPaddingY;
@@ -980,7 +1127,6 @@ void Popup::Render()
       }
       yTextStart += fHeightText;
    }
-
    g_pRenderEngine->setGlobalAlfa(alfaOrg);
 }
 

@@ -1,7 +1,7 @@
 #include "../base/shared_mem.h"
 #include "../base/hardware.h"
 
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 
 #include <time.h>
 #include <sys/resource.h>

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,7 +35,7 @@
 #include "../../base/config.h"
 #include "../../base/ctrl_preferences.h"
 #include "../../base/plugins_settings.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 #include "../shared_vars.h"
 #include "../timers.h"
 #include "osd_common.h"
@@ -46,6 +46,7 @@
 #include "../ruby_central.h"
 #include "../local_stats.h"
 #include "../link_watch.h"
+#include "../process_router_messages.h"
 
 #include <dlfcn.h>
 #include <sys/types.h>
@@ -418,6 +419,7 @@ void osd_plugins_render()
    _osd_plugins_populate_public_telemetry_info();
 
    bool bAnyHighlight = false;
+   bool bOldOSDPluginsNeedTelemetry = g_bOSDPluginsNeedTelemetryStreams;
    g_bOSDPluginsNeedTelemetryStreams = false;
 
    for( int i=0; i<g_iPluginsOSDCount; i++ )
@@ -444,6 +446,9 @@ void osd_plugins_render()
             g_bOSDPluginsNeedTelemetryStreams = true;
       }      
    }
+
+   if ( bOldOSDPluginsNeedTelemetry != g_bOSDPluginsNeedTelemetryStreams )
+      send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_OSD_PLUGINS_NEED_TELEMETRY, (u32)(g_bOSDPluginsNeedTelemetryStreams?1:0));
 
    osd_set_colors();
 

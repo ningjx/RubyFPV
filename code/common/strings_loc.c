@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -47,7 +47,7 @@ static u16 s_HashTableLocStrings[STRINGS_HASH_SIZE];
 static const char* s_szLanguages[] = { "Chinese", "English", "French", "German", "Hindi", "Russian", "Spanish" };
 static const char* s_szStringTableEmptyText = "";
 static const char* s_szStringTableMissingText = "missing text";
-static int s_iActiveLanguage = 0;
+static int s_iActiveLanguage = 1;
 static int s_iLocalizationInited = 0;
 
 int getLanguagesCount()
@@ -65,6 +65,11 @@ const char* getLanguageName(int iIndex)
 void setActiveLanguage(int iLanguage)
 {
    s_iActiveLanguage = iLanguage;
+}
+
+int getActiveLanguage()
+{
+   return s_iActiveLanguage;
 }
 
 u16 _loc_string_compute_hash(const char* szString)
@@ -160,9 +165,9 @@ const char* L(const char* szString)
    if ( (NULL == szString) || (0 == szString[0] ) )
       return s_szStringTableEmptyText;
 
-   if ( 0 == szString[1] )
-      return _check_add_dynamic_loc_string(szString);
-
+   if ( (0 == szString[1]) || (0 == szString[2]) )
+   //   return _check_add_dynamic_loc_string(szString);
+      return szString;
 
    type_localized_strings* pStringsTable = string_get_table();
    int iStringsTableSize = string_get_table_size();
@@ -171,12 +176,14 @@ const char* L(const char* szString)
 
    u16 uHashIndex = _loc_string_compute_hash(szString);
    int iColCount = 0;
+   int iStringTableIndex = -1;
 
    while ( (s_HashTableLocStrings[uHashIndex] != 0xFFFF) && (iColCount < STRINGS_HASH_SIZE/2) )
    {
        if ( s_HashTableLocStrings[uHashIndex] < iStringsTableSize )
        if ( 0 == strcmp(pStringsTable[s_HashTableLocStrings[uHashIndex]].szEnglish, szString) )
        {
+          iStringTableIndex = s_HashTableLocStrings[uHashIndex];
           pEnglish = pStringsTable[s_HashTableLocStrings[uHashIndex]].szEnglish;
           if (0 == s_iActiveLanguage )
              pLocalized = pStringsTable[s_HashTableLocStrings[uHashIndex]].szTranslatedCN;
@@ -199,15 +206,27 @@ const char* L(const char* szString)
        iColCount++;
    }
    
+   if ( (NULL == pLocalized) || (-1 == iStringTableIndex) || ( 0 != strcmp(pStringsTable[iStringTableIndex].szEnglish, szString)) ||
+      (strlen(szString) != strlen(pStringsTable[iStringTableIndex].szEnglish)) )
+   {
+      return szString;
+   }
+
    if ( iColCount >= STRINGS_HASH_SIZE/2 )
       return s_szStringTableMissingText;
+
    if ( (NULL != pLocalized) && (NULL != pEnglish) )
    {
       if ( 0 != *pLocalized )
+      {
          return pLocalized;
+      }
       if ( 0 != *pEnglish )
+      {
          return pEnglish;
+      }
       return s_szStringTableMissingText;
    }
    return _check_add_dynamic_loc_string(szString);
+   //return szString;
 }

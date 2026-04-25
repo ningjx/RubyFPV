@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -49,7 +49,7 @@
 #include "../launchers_controller.h"
 
 MenuVehicleSimpleSetup::MenuVehicleSimpleSetup()
-:Menu(MENU_ID_VEHICLE_SIMPLE_SETUP, "Quick Vehicle Setup", NULL)
+:Menu(MENU_ID_VEHICLE_SIMPLE_SETUP, L("Quick vehicle setup"), NULL)
 {
    m_bDisableStacking = true;
    m_Width = 0.32;
@@ -206,9 +206,7 @@ void MenuVehicleSimpleSetup::addRegularItems()
        u32 uPortTelemetryType = g_pCurrentModel->hardwareInterfacesInfo.serial_port_supported_and_usage[i] & 0xFF;
        
        if ( g_pCurrentModel->hardwareInterfacesInfo.serial_port_supported_and_usage[i] & MODEL_SERIAL_PORT_BIT_SUPPORTED )
-       if ( (uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK) ||
-            (uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY_LTM) ||
-            (uPortTelemetryType == SERIAL_PORT_USAGE_MSP_OSD) )
+       if ( uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY )
        {
           m_iCurrentSerialPortIndexUsedForTelemetry = i;
           break;
@@ -279,6 +277,16 @@ void MenuVehicleSimpleSetup::addRegularItems()
       m_pItemsSelect[0]->setSelection(2);
    if ( g_pCurrentModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MSP )
       m_pItemsSelect[0]->setSelection(3);
+
+   if ( m_bSearchingTelemetry )
+   {
+      if ( m_iSearchTelemetryType == -1 )
+         m_pItemsSelect[0]->setSelection(0);
+      else if ( m_iSearchTelemetryType == 0 )
+         m_pItemsSelect[0]->setSelection(3);
+      else if ( m_iSearchTelemetryType == 1 )
+         m_pItemsSelect[0]->setSelection(1);
+   }
    
    if ( m_bPairingSetup || m_bTelemetrySetup )
       m_pItemsSelect[0]->setExtraHeight(fVSpacing);
@@ -309,7 +317,15 @@ void MenuVehicleSimpleSetup::addRegularItems()
       m_pItemsSelect[1]->setIsEditable();
    m_iIndexTelemetryPort = addMenuItem(m_pItemsSelect[1]);
 
-   m_pItemsSelect[1]->setSelectedIndex( 1 + m_iCurrentSerialPortIndexUsedForTelemetry );
+   m_pItemsSelect[1]->setSelectedIndex(1 + m_iCurrentSerialPortIndexUsedForTelemetry);
+
+   if ( m_bSearchingTelemetry )
+   {
+      if ( -1 == m_iSearchTelemetryPort )
+         m_pItemsSelect[1]->setSelectedIndex(0);
+      else
+         m_pItemsSelect[1]->setSelectedIndex(m_iSearchTelemetryPort);
+   }
 
    if ( g_pCurrentModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_NONE )
       m_pItemsSelect[1]->setEnabled(false);
@@ -375,7 +391,7 @@ void MenuVehicleSimpleSetup::addRadioItems()
           iRadioInterfaceId+1, m_SupportedChannelsCount[iRadioLinkId]);
 
       char szTmp[128];
-      strcpy(szTmp, "Radio Link Frequency");
+      strcpy(szTmp, L("Radio Link Frequency"));
       if ( g_pCurrentModel->radioLinksParams.links_count > 1 )
          sprintf(szTmp, "Radio Link %d Frequency", iRadioLinkId+1 );
 
@@ -471,7 +487,7 @@ void MenuVehicleSimpleSetup::addRadioItems()
       {
          if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] != iLink )
             continue;
-         if ( ! hardware_radio_type_is_ieee(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) )
+         if ( ! hardware_radio_type_is_wifi(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) )
             continue;
 
          int iCardModel = g_pCurrentModel->radioInterfacesParams.interface_card_model[i];
@@ -563,36 +579,38 @@ void MenuVehicleSimpleSetup::valuesToUI()
    
    addItems();
 
-   if ( iTmp >= 0 )
-     m_SelectedIndex = iTmp;
+   if ( (iTmp >= 0) && (iTmp <m_ItemsCount) )
+   {
+      m_SelectedIndex = iTmp;
+      onFocusedItemChanged();
+   }
 }
 
 void MenuVehicleSimpleSetup::renderSearch()
 {
    float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
 
-   float yPos = m_RenderYPos + m_RenderTitleHeight;
+   float yPosTop = m_RenderYPos + m_RenderTitleHeight + height_text * 1.5;
+   // OSD layout menu item present?
    if ( NULL != m_pItemsSelect[2] )
-     yPos = m_pItemsSelect[2]->getItemRenderYPos();
+     yPosTop = m_pItemsSelect[2]->getItemRenderYPos() + height_text * 1.5;
+   // Telemetry type menu item present?
    else if ( NULL != m_pItemsSelect[0] )
-     yPos = m_pItemsSelect[0]->getItemRenderYPos();
-   yPos += height_text*1.5;
+     yPosTop = m_pItemsSelect[0]->getItemRenderYPos() - height_text;
 
-   float xPos = m_RenderXPos + m_sfMenuPaddingX;
-   float fWidth = m_RenderWidth - 2*m_sfMenuPaddingX ;
-   float fHeight = (m_RenderYPos + m_RenderHeight - m_RenderFooterHeight - m_sfMenuPaddingY) - yPos;
+   float xPos = m_RenderXPos;
+   float yPos = yPosTop;
+   float fWidth = m_RenderWidth;
+   float fHeight = (m_RenderHeight - m_RenderFooterHeight) - (yPos - m_RenderYPos);
 
-   float fAlpha = g_pRenderEngine->setGlobalAlfa(0.9);
-   bool bBlending = g_pRenderEngine->isRectBlendingEnabled();
-   g_pRenderEngine->enableRectBlending();
+   float fAlpha = g_pRenderEngine->setGlobalAlfa(0.6);
+   bool bAlpha = g_pRenderEngine->isAlphaBlendingEnabled();
+   g_pRenderEngine->enableAlphaBlending();
    g_pRenderEngine->setColors(get_Color_MenuBg());
    //g_pRenderEngine->setStroke(get_Color_MenuText());
    g_pRenderEngine->setStroke(0,0,0,0);
    g_pRenderEngine->drawRoundRect(xPos - g_pRenderEngine->getPixelWidth(), yPos - g_pRenderEngine->getPixelHeight(), fWidth + 2.0 * g_pRenderEngine->getPixelWidth(), fHeight + 2.0*g_pRenderEngine->getPixelHeight(), 0.01*Menu::getMenuPaddingY());
-   if ( bBlending )
-      g_pRenderEngine->enableRectBlending();
-   else
-      g_pRenderEngine->disableRectBlending();
+   g_pRenderEngine->setAlphaBlendingEnabled(bAlpha);
    g_pRenderEngine->setGlobalAlfa(fAlpha);
 
    yPos += fHeight*0.3;
@@ -617,9 +635,10 @@ void MenuVehicleSimpleSetup::renderSearch()
 
    yPos += height_text*1.5;
 
-   int iTotalSteps = g_pCurrentModel->hardwareInterfacesInfo.serial_port_count * 2 * 2;
+   int iTotalSteps = g_pCurrentModel->hardwareInterfacesInfo.serial_port_count * 2 * 2 + 1;
    int iCurrentStep = m_iSearchTelemetryPort * 4 + m_iSearchTelemetrySpeed * 2 + m_iSearchTelemetryType;
-
+   if ( (m_iSearchTelemetryPort < 0) || (m_iSearchTelemetrySpeed < 0) || (m_iSearchTelemetryType < 0) )
+      iCurrentStep = iTotalSteps-1;
    g_pRenderEngine->setStroke(get_Color_MenuText());
    g_pRenderEngine->setFill(0,0,0,0);
    g_pRenderEngine->drawRoundRect(xPos + fWidth*0.25, yPos, fWidth-0.5*fWidth, height_text, 0.01*Menu::getMenuPaddingY());
@@ -662,6 +681,7 @@ void MenuVehicleSimpleSetup::Render()
 bool MenuVehicleSimpleSetup::periodicLoop()
 {
    Menu::periodicLoop();
+
    if ( ! m_bSearchingTelemetry )
       return false;
 
@@ -671,7 +691,7 @@ bool MenuVehicleSimpleSetup::periodicLoop()
       m_iSearchTelemetryPort = 0;
       m_iSearchTelemetrySpeed = 0;
       m_uTimeStartCurrentTelemetrySearch = g_TimeNow;
-      send_control_message_to_router(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, 12000);
+      send_pause_adaptive_to_router(10000);
       sendTelemetrySearchToVehicle();
       return true;
    }
@@ -686,9 +706,10 @@ bool MenuVehicleSimpleSetup::periodicLoop()
       {
          log_line("MenuVehicleSimpleSetup: Received vehicle FC telemetry.");
          m_bSearchingTelemetry = false;
+         m_uTimeStartCurrentTelemetrySearch = 0;
          enableBackAction();
          m_SelectedIndex = m_iIndexMenuOk;
-         send_control_message_to_router(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, 0);
+         send_pause_adaptive_to_router(0);
          addItems();
          return true;
       }
@@ -696,6 +717,19 @@ bool MenuVehicleSimpleSetup::periodicLoop()
 
    if ( g_TimeNow < m_uTimeStartCurrentTelemetrySearch+2000 )
       return true;
+
+   // Switch to next params combination
+
+   if ( (m_iSearchTelemetryPort == -1) && (m_iSearchTelemetryType == -1) && (m_iSearchTelemetrySpeed == -1) )
+   {
+      m_bSearchingTelemetry = false;
+      m_uTimeStartCurrentTelemetrySearch = 0;
+      enableBackAction();
+      m_SelectedIndex = m_iIndexMenuOk;
+      send_pause_adaptive_to_router(0);
+      addItems();
+      return true;
+   }
 
    m_iSearchTelemetryType++;
    if ( m_iSearchTelemetryType >= 2 )
@@ -708,16 +742,14 @@ bool MenuVehicleSimpleSetup::periodicLoop()
          m_iSearchTelemetryPort++;
          if ( m_iSearchTelemetryPort >= g_pCurrentModel->hardwareInterfacesInfo.serial_port_count )
          {
-            // Finished all options
-            m_bSearchingTelemetry = false;
-            enableBackAction();
-            m_SelectedIndex = m_iIndexMenuOk;
-            send_control_message_to_router(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, 0);
-            addItems();
-            return true;
+            // Finished all options, nothing found. Disable telemetry
+            m_iSearchTelemetryType = -1;
+            m_iSearchTelemetryPort = -1;
+            m_iSearchTelemetrySpeed = -1;
          }
       }
    }
+
    m_uTimeStartCurrentTelemetrySearch = g_TimeNow;
    sendTelemetrySearchToVehicle();
    return true;
@@ -742,13 +774,18 @@ void MenuVehicleSimpleSetup::sendTelemetrySearchToVehicle()
    uParam = (u8)TELEMETRY_TYPE_MSP;
    if ( 1 == m_iSearchTelemetryType )
       uParam = (u8)TELEMETRY_TYPE_MAVLINK;
+   if ( -1 == m_iSearchTelemetryType )
+      uParam = 0;
    uParam &= 0x0F;
 
-   uParam |= (((u32)(iSerialPortsOrder[m_iSearchTelemetryPort])) & 0x0F) << 4;
+   if ( m_iSearchTelemetryPort >= 0 )
+      uParam |= (((u32)(iSerialPortsOrder[m_iSearchTelemetryPort])) & 0x0F) << 4;
+   else
+      uParam |= 0xF0;
 
    if ( m_iSearchTelemetrySpeed == 0 )
       uParam |= ((u32)(57600)) << 8;
-   else
+   else if ( m_iSearchTelemetrySpeed == 1 )
       uParam |= ((u32)(115200)) << 8;
    if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_TELEMETRY_TYPE_AND_PORT, uParam, NULL, 0) )
       valuesToUI();
@@ -810,11 +847,11 @@ void MenuVehicleSimpleSetup::sendTelemetryTypeToVehicle()
 
          new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] &= 0xFFFFFF00;
          if ( 1 == m_pItemsSelect[0]->getSelectedIndex() )
-            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
+            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY;
          if ( 2 == m_pItemsSelect[0]->getSelectedIndex() )
-            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY_LTM;
+            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY;
          if ( 3 == m_pItemsSelect[0]->getSelectedIndex() )
-            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_MSP_OSD;
+            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY;
 
          // We don't need to send the serial ports configuration to vehicle as the vehicle
          // does the same assignment if no serial port is set when telemetry changes with
@@ -878,11 +915,11 @@ void MenuVehicleSimpleSetup::sendTelemetryPortToVehicle()
 
       new_info.serial_port_supported_and_usage[iSerialPort-1] &= 0xFFFFFF00;
       if ( 1 == m_pItemsSelect[0]->getSelectedIndex() )
-         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
+         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY;
       if ( 2 == m_pItemsSelect[0]->getSelectedIndex() )
-         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY_LTM;
+         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY;
       if ( 3 == m_pItemsSelect[0]->getSelectedIndex() )
-         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_MSP_OSD;
+         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY;
 
       log_line("Sending new serial port to be used for telemetry to vehicle.");
       if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_SERIAL_PORTS_INFO, 0, (u8*)&new_info, sizeof(type_vehicle_hardware_interfaces_info)) )
@@ -898,6 +935,12 @@ void MenuVehicleSimpleSetup::sendOSDToVehicle()
    osd_parameters_t params;
    memcpy(&params, &(g_pCurrentModel->osd_params), sizeof(osd_parameters_t));
    int iScreenIndex = g_pCurrentModel->osd_params.iCurrentOSDScreen;
+
+   log_line("MenuVehicleSimpleSetup: Sending OSD info, has mavlink telem? %s", (m_pItemsSelect[0]->getSelectedIndex() == 1)?"yes":"no");
+   if ( 1 == m_pItemsSelect[0]->getSelectedIndex() )
+      params.uFlags |= OSD_BIT_FLAGS_SHOW_FLIGHT_END_STATS;
+   else
+      params.uFlags &= ~OSD_BIT_FLAGS_SHOW_FLIGHT_END_STATS;
 
    params.osd_layout_preset[iScreenIndex] = m_pItemsSelect[2]->getSelectedIndex();
 
@@ -985,7 +1028,7 @@ void MenuVehicleSimpleSetup::computeSendPowerToVehicle(int iVehicleLinkIndex)
 
       if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] != iVehicleLinkIndex )
          continue;
-      if ( ! hardware_radio_type_is_ieee(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) )
+      if ( ! hardware_radio_type_is_wifi(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) )
          continue;
 
       int iCardModel = g_pCurrentModel->radioInterfacesParams.interface_card_model[i];
@@ -1097,7 +1140,7 @@ void MenuVehicleSimpleSetup::onSelectItem()
       if ( (NULL == g_pCurrentModel) || (0 == g_uActiveControllerModelVID) ||
         (g_bFirstModelPairingDone && (0 == getControllerModelsCount()) && (0 == getControllerModelsSpectatorCount())) )
       {
-         addMessage2(0, L("Not paired with any vehicle."), L("Search for vehicles to find one and connect to."));
+         addMessage2(0, L("Not paired with any vehicle"), L("Search for vehicles to find one and connect to."));
          return;
       }
       add_menu_to_stack(new MenuVehicle());
@@ -1172,13 +1215,6 @@ void MenuVehicleSimpleSetup::onSelectItem()
             char szBuff[256];
             sprintf(szBuff, "Not all radio interfaces on your controller support %s frequency. Some radio interfaces on the controller will not be used to communicate with this vehicle.", str_format_frequency(freq));
             add_menu_to_stack(new MenuConfirmation(L("Confirmation"), szBuff, 0, true));
-         }
-
-         if ( (get_sw_version_major(g_pCurrentModel) < 9) ||
-              ((get_sw_version_major(g_pCurrentModel) == 9) && (get_sw_version_minor(g_pCurrentModel) <= 20)) )
-         {
-            addMessageWithTitle(0, L("Can't update radio links"), L("You need to update your vehicle to version 9.2 or newer"));
-            return;
          }
 
          sendNewRadioLinkFrequency(i, freq);

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,7 +35,6 @@
 #include "menu_text.h"
 #include "menu_system_dev_stats.h"
 #include "menu_system_dev_logs.h"
-#include "menu_system_video_profiles.h"
 #include "menu_item_section.h"
 #include "menu_confirmation.h"
 #include "../../radio/radiolink.h"
@@ -96,18 +95,6 @@ MenuSystemDevStats::MenuSystemDevStats(void)
    m_pItemsSelect[4]->setUseMultiViewLayout();
    m_IndexDevVehicleVideoBitrateHistory = addMenuItem(m_pItemsSelect[4]);
 
-   m_pItemsSelect[5] = new MenuItemSelect("Show Vehicle's Video Link Stats", "Shows vehicle statistics (generated on the vehicle side) about video link params.");
-   m_pItemsSelect[5]->addSelection("Off");
-   m_pItemsSelect[5]->addSelection("On");
-   m_pItemsSelect[5]->setUseMultiViewLayout();
-   m_IndexDevVehicleVideoStreamStats = addMenuItem(m_pItemsSelect[5]);
-
-   m_pItemsSelect[6] = new MenuItemSelect("Show Vehicle's Video Link Stats Graphs", "Shows vehicle graphs (generated on the vehicle side) about video link params.");
-   m_pItemsSelect[6]->addSelection("Off");
-   m_pItemsSelect[6]->addSelection("On");
-   m_pItemsSelect[6]->setUseMultiViewLayout();
-   m_IndexDevVehicleVideoGraphs = addMenuItem(m_pItemsSelect[6]);
-
    for( int i=0; i<m_ItemsCount; i++ )
       m_pMenuItems[i]->setTextColor(get_Color_Dev());
 }
@@ -133,9 +120,6 @@ void MenuSystemDevStats::valuesToUI()
    if ( g_pCurrentModel->osd_params.osd_flags3[layoutIndex] & OSD_FLAG3_SHOW_VIDEO_BITRATE_HISTORY )
       m_pItemsSelect[4]->setSelectedIndex(1);
 
-   m_pItemsSelect[5]->setSelectedIndex(pP->iDebugShowVehicleVideoStats);
-   m_pItemsSelect[6]->setSelectedIndex(pP->iDebugShowVehicleVideoGraphs);
-   
    m_pItemsSelect[7]->setSelectedIndex(0);
    if ( g_pCurrentModel->osd_params.osd_flags3[layoutIndex] & OSD_FLAG3_SHOW_CONTROLLER_ADAPTIVE_VIDEO_INFO )
       m_pItemsSelect[7]->setSelectedIndex(1);
@@ -173,11 +157,6 @@ void MenuSystemDevStats::onSelectItem()
    {
       addMessageNeedsVehcile("You need to be connected to a vehicle to change this.", 1);
       valuesToUI();
-      return;
-   }
-   if ( get_sw_version_build(g_pCurrentModel) < 278 )
-   {
-      addMessage("OSD functionality has changed. You need to update your vehicle sowftware.");
       return;
    }
 
@@ -220,12 +199,11 @@ void MenuSystemDevStats::onSelectItem()
    
    if ( m_IndexDevStatsVehicleTx == m_SelectedIndex )
    {
-      ControllerSettings* pCS = get_ControllerSettings();
       if ( 0 == m_pItemsSelect[3]->getSelectedIndex() )
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_SEND_BACK_VEHICLE_TX_GAP);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_SEND_BACK_VEHICLE_TX_GAP;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();  
       return;    
    }
@@ -255,24 +233,6 @@ void MenuSystemDevStats::onSelectItem()
          params.osd_flags3[layoutIndex] |= OSD_FLAG3_SHOW_VIDEO_BITRATE_HISTORY;
       if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_OSD_PARAMS, 0, (u8*)&params, sizeof(osd_parameters_t)) )
          valuesToUI();
-   }
-
-   if ( m_IndexDevVehicleVideoStreamStats == m_SelectedIndex )
-   {
-      pP->iDebugShowVehicleVideoStats = m_pItemsSelect[5]->getSelectedIndex();
-      save_Preferences();
-      valuesToUI();
-      if ( NULL != g_pCurrentModel )
-         g_pCurrentModel->b_mustSyncFromVehicle = true;
-   }
-
-   if ( m_IndexDevVehicleVideoGraphs == m_SelectedIndex )
-   {
-      pP->iDebugShowVehicleVideoGraphs = m_pItemsSelect[6]->getSelectedIndex();
-      save_Preferences();
-      valuesToUI();
-      if ( NULL != g_pCurrentModel )
-         g_pCurrentModel->b_mustSyncFromVehicle = true;
    }
 }
 

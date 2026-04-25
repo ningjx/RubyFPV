@@ -14,9 +14,11 @@ class MenuControllerPeripherals: public Menu
       virtual bool periodicLoop();
       virtual void Render();
       virtual void valuesToUI();
+      virtual void onReturnFromChild(int iChildMenuId, int returnValue);
       virtual void onSelectItem();
 
    private:
+      void addItems();
       void addI2CDevices();
       MenuItemSelect* m_pItemsSelect[100];
       MenuItemSlider* m_pItemsSlider[20];
@@ -25,6 +27,8 @@ class MenuControllerPeripherals: public Menu
       int m_IndexSerialType[10], m_IndexSerialSpeed[10];
       int m_IndexJoysticks[10];
       int m_IndexI2CDevices[20];
+      int m_iCountJoysticks;
+      u32 m_uLastTimeCheckedJoysticks;
       MenuItemText* m_pItemWait;
       int m_IndexWait;
       int m_nSearchI2CDeviceAddress;

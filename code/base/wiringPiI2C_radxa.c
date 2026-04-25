@@ -7,6 +7,8 @@
 
 
 #if defined (HW_PLATFORM_RADXA)
+
+#if defined (HW_CAPABILITY_I2C)
 #include <linux/i2c-dev.h>
 #include <i2c/smbus.h>
 
@@ -106,7 +108,7 @@ int wiringPiI2CWriteBlockDataIoctl(int fd, int addr, uint8_t reg, uint8_t length
        return -1;
 
     struct i2c_msg msg[2];
-    uint8_t *buffer = malloc(length + 1);
+    uint8_t *buffer = (uint8_t*)malloc(length + 1);
     if ( NULL == buffer )
        return -1;
  
@@ -126,5 +128,15 @@ int wiringPiI2CWriteBlockDataIoctl(int fd, int addr, uint8_t reg, uint8_t length
     free(buffer);
     return ret;
 }
-
+#else
+int wiringPiI2CSetup(const int devId) { return 0; }
+int wiringPiI2CRead(int fd) { return 0; }
+int wiringPiI2CReadReg8(int fd, int reg) { return 0; }
+int wiringPiI2CReadReg16(int fd, int reg) { return 0; }
+int wiringPiI2CWrite(int fd, int data) { return 0; }
+int wiringPiI2CWriteReg8(int fd, int reg, int data) { return 0; }
+int wiringPiI2CWriteReg16(int fd, int reg, int data) { return 0; }
+int wiringPiI2CWriteBlockData(int fd, uint8_t reg, uint8_t length, uint8_t *values) { return 0; }
+int wiringPiI2CWriteBlockDataIoctl(int fd,int addr, uint8_t reg, uint8_t length, uint8_t *values) { return 0; }
+#endif
 #endif

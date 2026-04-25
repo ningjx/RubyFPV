@@ -18,7 +18,6 @@ class MenuControllerTelemetry: public Menu
       MenuItemSlider* m_pItemsSlider[10];
       MenuItemRange* m_pItemsRange[14];
 
-      int m_IndexInOut;
       int m_IndexSerialPort;
       int m_IndexSerialSpeed;
 

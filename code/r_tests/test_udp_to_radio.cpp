@@ -1,6 +1,6 @@
 #include "../base/shared_mem.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/utils.h"
 #include "../common/string_utils.h"
 #include "../radio/radiolink.h"
@@ -172,8 +172,8 @@ int main(int argc, char *argv[])
    hardware_enumerate_radio_interfaces();
    radio_init_link_structures();
    radio_enable_crc_gen(1);
-   radio_set_out_datarate(12);
-   radio_set_frames_flags(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_FRAME_TYPE_DATA);
+   radio_set_out_datarate(12, 0, get_current_timestamp_ms());
+   radio_set_frames_flags(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_FRAME_TYPE_DATA, get_current_timestamp_ms());
    radio_utils_set_interface_frequency(NULL, 0, -1, iFreq*1000, NULL, 0);
 
    int pcapW = radio_open_interface_for_write(0);

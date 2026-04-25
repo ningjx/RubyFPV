@@ -195,7 +195,7 @@ extern "C" {
         int16_t fps;
 #endif
 
-        int s_iEnableRectBlending;
+        int s_iEnableAlpha;
         int disableFontOutline;
         //! Current FPS as a string
         char fps_char[10];
@@ -376,7 +376,7 @@ extern "C" {
     */
     extern void fbg_fadeUp(struct _fbg *fbg, unsigned char rgb_fade_amount);
 
-    extern void fbg_enable_rect_blending(struct _fbg *fbg, int iEnable);
+    extern void fbg_enable_alpha(struct _fbg *fbg, int iEnable);
 
     //! fast grayscale background clearing
     /*!
@@ -394,7 +394,7 @@ extern "C" {
       \param b
       \sa fbg_fpixel(), fbg_frect()
     */
-    extern void fbg_fill(struct _fbg *fbg, unsigned char r, unsigned char g, unsigned char b);
+    extern void fbg_fill(struct _fbg *fbg, unsigned char r, unsigned char g, unsigned char b, unsigned char a);
 
     //! get the RGB value of a pixel
     /*!
@@ -415,7 +415,7 @@ extern "C" {
       \param b
       \sa fbg_fpixel(), fbg_pixela()
     */
-    extern void fbg_pixel(struct _fbg *fbg, int x, int y, unsigned char r, unsigned char g, unsigned char b);
+    extern void fbg_pixel(struct _fbg *fbg, int x, int y, unsigned char r, unsigned char g, unsigned char b, unsigned char a);
 
     //! draw a pixel with alpha component (alpha blending)
     /*!
@@ -697,6 +697,7 @@ extern "C" {
     */
     extern void fbg_imageDraw(struct _fbg *fbg, struct _fbg_img *img, int x, int y, int w, int h, int cx, int cy, int cw, int ch);
     extern void fbg_imageDrawAlpha(struct _fbg *fbg, struct _fbg_img *img, int x, int y, int w, int h, int cx, int cy, int cw, int ch);
+    extern void fbg_imageDrawAlphaMask(struct _fbg *fbg, struct _fbg_img *img, int x, int y, int w, int h, int cx, int cy, int cw, int ch);
 
     //! free the memory associated with an image
     /*!
@@ -766,7 +767,7 @@ extern "C" {
       \param b
       \sa fbg_createFont(), fbg_write(), fbg_textColorkey(), fbg_textBackground()
     */
-    extern void fbg_text(struct _fbg *fbg, struct _fbg_font *fnt, char *text, int x, int y, int r, int g, int b);
+    extern void fbg_text(struct _fbg *fbg, struct _fbg_font *fnt, char *text, int x, int y, int r, int g, int b, int a);
 
     //! free the memory associated with a font
     /*!
@@ -786,7 +787,7 @@ extern "C" {
       \param g
       \param b
     */
-    extern void fbg_drawFramerate(struct _fbg *fbg, struct _fbg_font *fnt, int task, int x, int y, int r, int g, int b);
+    extern void fbg_drawFramerate(struct _fbg *fbg, struct _fbg_font *fnt, int task, int x, int y, int r, int g, int b, int a);
 
     //! get the framerate of a particular task
     /*!

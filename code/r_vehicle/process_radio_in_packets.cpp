@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,7 +35,7 @@
 #include "../base/models_list.h"
 #include "../base/commands.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #include "../base/ruby_ipc.h"
 #include "../common/radio_stats.h"
@@ -72,15 +72,33 @@ void _mark_link_from_controller_present(int iRadioInterface)
    else
       g_TimeLastReceivedSlowRadioPacketFromController = g_TimeNow;
 
-   if ( (! g_bHasFastUplinkFromController) && (!g_bHasFastUplinkFromController) )
+   if ( (! g_bHasFastUplinkFromController) && hardware_radio_index_is_wifi_radio(iRadioInterface) )
    {
-      log_line("[Router] Link to controller recovered (received packets from controller).");
+      log_line("[Router] Fast link from controller recovered (received fast packets from controller).");
+      if ( 0 == g_LastTimeLostFastLinkFromController )
+         log_line("[Router] Never have had lost the fast link before.");
+      else
+         log_line("[Router] Last time the fast link was lost was %u ms ago", g_TimeNow - g_LastTimeLostFastLinkFromController);
 
+      //if ( g_pCurrentModel->osd_params.osd_preferences[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM )
+         send_alarm_to_controller(ALARM_ID_LINK_TO_CONTROLLER_RECOVERED, hardware_radio_index_is_wifi_radio(iRadioInterface), 1-hardware_radio_index_is_wifi_radio(iRadioInterface), 10);
+   }
+
+   if ( (! g_bHasSlowUplinkFromController) && (! hardware_radio_index_is_wifi_radio(iRadioInterface)) )
+   {
+      log_line("[Router] Slow link from controller recovered (received slow packets from controller).");
+      if ( 0 == g_LastTimeLostSlowLinkFromController )
+         log_line("[Router] Never have had lost the slow link before.");
+      else
+         log_line("[Router] Last time the slow link was lost was %u ms ago", g_TimeNow - g_LastTimeLostSlowLinkFromController);
+
+      //if ( g_pCurrentModel->osd_params.osd_preferences[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM )
+         send_alarm_to_controller(ALARM_ID_LINK_TO_CONTROLLER_RECOVERED, hardware_radio_index_is_wifi_radio(iRadioInterface), 1-hardware_radio_index_is_wifi_radio(iRadioInterface), 10);
+   }
+
+   if ( (! g_bHasFastUplinkFromController) && (!g_bHasFastUplinkFromController) )
       adaptive_video_on_uplink_recovered();
 
-      if ( g_pCurrentModel->osd_params.osd_preferences[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM )
-         send_alarm_to_controller(ALARM_ID_LINK_TO_CONTROLLER_RECOVERED, 0, 0, 10);
-   }
    if ( hardware_radio_index_is_wifi_radio(iRadioInterface) )
       g_bHasFastUplinkFromController = true;
    else
@@ -204,11 +222,6 @@ int _handle_received_packet_error(int iInterfaceIndex, u8* pData, int nDataLengt
 
 void process_received_single_radio_packet(int iRadioInterface, u8* pData, int dataLength )
 {
-
-   //log_line("DBG remove");
-   //if ( ((g_TimeNow / 1000)/10) % 2 )
-   //   return;
-     
    t_packet_header* pPH = (t_packet_header*)pData;
    u32 uVehicleIdSrc = pPH->vehicle_id_src;
    u32 uVehicleIdDest = pPH->vehicle_id_dest;
@@ -221,20 +234,23 @@ void process_received_single_radio_packet(int iRadioInterface, u8* pData, int da
    int iRadioLinkId = g_pCurrentModel->radioInterfacesParams.interface_link_id[iRadioInterface];
    radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(iRadioInterface);
 
-   g_UplinkInfoRxStats[iRadioInterface].lastReceivedDBM = -200;
-   g_UplinkInfoRxStats[iRadioInterface].lastReceivedNoiseDBM = 0;
-   for( int i=0; i<pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount; i++ )
-   {
-      if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmLast[i] < 500 )
-      if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmLast[i] > g_UplinkInfoRxStats[iRadioInterface].lastReceivedDBM )
-      {
-         g_UplinkInfoRxStats[iRadioInterface].lastReceivedDBM = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmLast[i];
-         if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseLast[i] < 0 )
-            g_UplinkInfoRxStats[iRadioInterface].lastReceivedNoiseDBM = -pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDbmNoiseLast[i];
-      
-         g_UplinkInfoRxStats[iRadioInterface].uTimeLastCapture = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.uLastTimeCapture[i];
-      }
-   }
+   g_UplinkInfoRxStats[iRadioInterface].lastReceivedDBM = 1000;
+   g_UplinkInfoRxStats[iRadioInterface].lastReceivedDBMNoise = 1000;
+   g_UplinkInfoRxStats[iRadioInterface].lastReceivedSNR = 1000;
+   g_UplinkInfoRxStats[iRadioInterface].uTimeLastCapture = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.uLastTimeCapture;
+
+   if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmLast < 500 )
+   if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmLast > -500 )
+      g_UplinkInfoRxStats[iRadioInterface].lastReceivedDBM = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmLast;
+   
+   if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmNoiseLast < 500 )
+   if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmNoiseLast > -500 )
+      g_UplinkInfoRxStats[iRadioInterface].lastReceivedDBMNoise = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iDbmNoiseLast;
+
+   if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRLast < 500 )
+   if ( pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRLast > -500 )
+      g_UplinkInfoRxStats[iRadioInterface].lastReceivedSNR = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.signalInfoAll.iSNRLast;
+
    g_UplinkInfoRxStats[iRadioInterface].lastReceivedDataRate = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nDataRateBPSMCS;
 
    if ( dataLength <= 0 )
@@ -277,11 +293,10 @@ void process_received_single_radio_packet(int iRadioInterface, u8* pData, int da
 
    // Detect if it's a relayed packet from controller to relayed vehicle
    
-   if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->relay_params.isRelayEnabledOnRadioLinkId >= 0) )
+   if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->relay_params.uRelayedVehicleId != 0) )
    if ( uVehicleIdDest == g_pCurrentModel->relay_params.uRelayedVehicleId )
    {
       _mark_link_from_controller_present(iRadioInterface);
-  
       relay_process_received_single_radio_packet_from_controller_to_relayed_vehicle(iRadioInterface, pData, pPH->total_length);
       return;
    }
@@ -309,7 +324,7 @@ void process_received_single_radio_packet(int iRadioInterface, u8* pData, int da
    if ( (uPacketFlags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_RUBY )
    {
       if ( uVehicleIdDest == g_pCurrentModel->uVehicleId )
-         process_received_ruby_message(iRadioInterface, pData);
+         process_received_ruby_message_from_controller(iRadioInterface, pData);
       return;
    }
 
@@ -320,7 +335,7 @@ void process_received_single_radio_packet(int iRadioInterface, u8* pData, int da
          int iParamsLength = pPH->total_length - sizeof(t_packet_header) - sizeof(t_packet_header_command);
          t_packet_header_command* pPHC = (t_packet_header_command*)(pData + sizeof(t_packet_header));
          if ( pPHC->command_type == COMMAND_ID_UPLOAD_SW_TO_VEHICLE63 )
-            g_uTimeLastCommandSowftwareUpload = g_TimeNow;
+            g_uTimeLastCommandSoftwareUpload = g_TimeNow;
 
          if ( pPHC->command_type == COMMAND_ID_SET_RADIO_LINK_FLAGS )
          if ( pPHC->command_counter != s_uLastCommandChangeDataRateCounter || (g_TimeNow > s_uLastCommandChangeDataRateTime + 4000) )
@@ -339,7 +354,7 @@ void process_received_single_radio_packet(int iRadioInterface, u8* pData, int da
             piInfo++;
             int datarateData = *piInfo;
             log_line("Received new Set Radio Links Flags command. Link %d, Link flags: %s, Datarate %d/%d", linkIndex+1, str_get_radio_frame_flags_description2(linkFlags), datarateVideo, datarateData);
-            if ( datarateVideo != g_pCurrentModel->radioLinksParams.link_datarate_video_bps[linkIndex] ) 
+            if ( datarateVideo != g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[linkIndex] ) 
                _check_update_atheros_datarates(linkIndex, datarateVideo);
          }
       }
@@ -357,7 +372,7 @@ void process_received_single_radio_packet(int iRadioInterface, u8* pData, int da
 
    if ( (uPacketFlags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_RC )
    {
-      if ( g_pCurrentModel->rc_params.rc_enabled )
+      if ( g_bReceivedPairingRequest && (g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED) )
          ruby_ipc_channel_send_message(s_fIPCRouterToRC, pData, dataLength);
       return;
    }

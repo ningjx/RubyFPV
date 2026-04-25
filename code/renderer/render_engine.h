@@ -60,10 +60,10 @@ class RenderEngine
 
      float setGlobalAlfa(float alfa);
      float getGlobalAlfa();
-     bool isRectBlendingEnabled();
-     void setRectBlendingEnabled(bool bEnable);
-     void enableRectBlending();
-     void disableRectBlending();
+     bool isAlphaBlendingEnabled();
+     void setAlphaBlendingEnabled(bool bEnable);
+     void enableAlphaBlending();
+     void disableAlphaBlending();
      void setClearBufferByte(u8 uClearByte);
 
      virtual void highlightFirstWordOfLine(bool bHighlight);
@@ -130,6 +130,7 @@ class RenderEngine
      virtual void drawLine(float x1, float y1, float x2, float y2);
      virtual void drawRect(float xPos, float yPos, float fWidth, float fHeight);
      virtual void drawRoundRect(float xPos, float yPos, float fWidth, float fHeight, float fCornerRadius);
+     virtual void drawRoundRectMenu(float xPos, float yPos, float fWidth, float fHeight, float fCornerRadius);
      virtual void drawTriangle(float x1, float y1, float x2, float y2, float x3, float y3);
      virtual void fillTriangle(float x1, float y1, float x2, float y2, float x3, float y3);
      virtual void drawPolyLine(float* x, float* y, int count);
@@ -163,7 +164,7 @@ class RenderEngine
 
       u8 m_uClearBufferByte;
       float m_fGlobalAlfa;
-      bool m_bEnableRectBlending;
+      bool m_bEnableAlphaBlending;
       bool m_bEnableFontScaling;
       bool m_bHighlightFirstWord;
       bool m_bDrawBackgroundBoundingBoxes;

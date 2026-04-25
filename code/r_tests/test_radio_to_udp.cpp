@@ -1,6 +1,6 @@
 #include "../base/shared_mem.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/utils.h"
 #include "../radio/radiolink.h"
 #include "../radio/radiopackets2.h"
@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
          continue;
 
       int nPacketLength = 0;
-      u8* pPacketBuffer = radio_process_wlan_data_in(0, &nPacketLength, g_TimeNow); 
+      u8* pPacketBuffer = radio_process_wlan_data_in(0, &nPacketLength, NULL, g_TimeNow); 
       if ( NULL == pPacketBuffer )
       {
          log_line("NULL receive buffer. Ignoring...\n");

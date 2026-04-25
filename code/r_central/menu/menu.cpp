@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -11,9 +11,9 @@
         * Redistributions in binary form (partially or complete) must reproduce
         the above copyright notice, this list of conditions and the following disclaimer
         in the documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permitted.
@@ -34,6 +34,7 @@
 #include "menu_objects.h"
 #include "menu_root.h"
 #include "menu_search.h"
+#include "menu_quick_menu.h"
 #include "../../renderer/render_engine.h"
 #include "osd_common.h"
 #include "osd_ahi.h"
@@ -50,6 +51,7 @@
 #include "../timers.h"
 #include "../ruby_central.h"
 #include "../keyboard.h"
+#include "../process_router_messages.h"
 
 static int s_iCountRotaryEncoderCancelCount = 0;
 static int s_iCountRotaryEncoder2CancelCount = 0;
@@ -337,10 +339,9 @@ void menu_stack_pop_no_delete(int returnValue)
 
 void _menu_check_rotary_encoders_buttons( bool* pbSelect, bool* pbCancel, bool* pbRotatedCW, bool* pbRotatedCCW, bool* pbRotatedFastCW, bool* pbRotatedFastCCW, bool* pbSelect2, bool* pbCancel2, bool* pbRotatedCW2, bool* pbRotatedCCW2, bool* pbRotatedFastCW2, bool* pbRotatedFastCCW2)
 {
-   ControllerSettings* pCS = get_ControllerSettings();
    ControllerInterfacesSettings* pCI = get_ControllerInterfacesSettings();
 
-   if ( NULL == pCS || NULL == pCI )
+   if ( (NULL == g_pControllerSettings) || (NULL == pCI) )
       return;
 
    if ( (ruby_get_start_sequence_step() != START_SEQ_COMPLETED) && (ruby_get_start_sequence_step() != START_SEQ_FAILED) )
@@ -400,7 +401,7 @@ void _menu_check_rotary_encoders_buttons( bool* pbSelect, bool* pbCancel, bool* 
       if ( ! events.uHasSecondaryRotaryEncoder )
       if ( s_iCountRotaryEncoderCancelCount > 7 )
       {
-         pCS->nRotaryEncoderFunction = 1;
+         g_pControllerSettings->nRotaryEncoderFunction = 1;
          save_ControllerSettings();
          s_iCountRotaryEncoderCancelCount = 0;
       }
@@ -474,11 +475,9 @@ void _menu_check_rotary_encoders_buttons( bool* pbSelect, bool* pbCancel, bool* 
 }
 
 
-void menu_loop()
+void menu_loop(bool bNoKeys)
 {
    s_uMenuLoopCounter++;
-
-   ControllerSettings* pCS = get_ControllerSettings();
 
    for( int i=0; i<g_iMenuStackTopIndex; i++ )
    {
@@ -518,19 +517,19 @@ void menu_loop()
    s_bRotaryRotated = bRotaryRotatedCW | bRotaryRotatedCCW | bRotaryRotatedFastCW | bRotaryRotatedFastCCW;
    //bool bRotary2Rotated = bRotary2RotatedCW | bRotary2RotatedCCW | bRotary2RotatedFastCW | bRotary2RotatedFastCCW;
 
-   if ( pCS->nRotaryEncoderSpeed == 1 )
+   if ( g_pControllerSettings->nRotaryEncoderSpeed == 1 )
    {
       bRotaryRotatedFastCW = false;
       bRotaryRotatedFastCCW = false;
    }
 
-   if ( pCS->nRotaryEncoderSpeed2 == 1 )
+   if ( g_pControllerSettings->nRotaryEncoderSpeed2 == 1 )
    {
       bRotary2RotatedFastCW = false;
       bRotary2RotatedFastCCW = false;
    }
 
-   if ( (NULL != pCS) && (pCS->nRotaryEncoderFunction == 2) && (s_StartSequence == START_SEQ_COMPLETED) )
+   if ( (NULL != g_pControllerSettings) && (g_pControllerSettings->nRotaryEncoderFunction == 2) && (s_StartSequence == START_SEQ_COMPLETED) )
    {
       if ( (bRotarySelect || bRotaryRotatedCW || bRotaryRotatedCCW) && (!popups_has_popup(g_pPopupCameraParams)) )
       {
@@ -544,7 +543,7 @@ void menu_loop()
          g_pPopupCameraParams->handleRotaryEvents(bRotaryRotatedCW, bRotaryRotatedCCW, bRotaryRotatedFastCW, bRotaryRotatedFastCCW, bRotarySelect, bRotaryCancel);
    }
 
-   if ( (NULL != pCS) && (pCS->nRotaryEncoderFunction2 == 2) && (s_StartSequence == START_SEQ_COMPLETED) )
+   if ( (NULL != g_pControllerSettings) && (g_pControllerSettings->nRotaryEncoderFunction2 == 2) && (s_StartSequence == START_SEQ_COMPLETED) )
    {
       if ( (bRotary2Select || bRotary2RotatedCW || bRotary2RotatedCCW) && (!popups_has_popup(g_pPopupCameraParams)) )
       {
@@ -558,7 +557,7 @@ void menu_loop()
          g_pPopupCameraParams->handleRotaryEvents(bRotary2RotatedCW, bRotary2RotatedCCW, bRotary2RotatedFastCW, bRotary2RotatedFastCCW, bRotary2Select, bRotary2Cancel);
    }
 
-   if ( (NULL == pCS) || (pCS->nRotaryEncoderFunction != 1) )
+   if ( (NULL == g_pControllerSettings) || (g_pControllerSettings->nRotaryEncoderFunction != 1) )
    {
       bRotarySelect = false;
       bRotaryCancel = false;
@@ -574,7 +573,7 @@ void menu_loop()
       keyboard_add_triggered_gpio_input_events();
    }
 
-   if ( (NULL == pCS) || (pCS->nRotaryEncoderFunction2 != 1) )
+   if ( (NULL == g_pControllerSettings) || (g_pControllerSettings->nRotaryEncoderFunction2 != 1) )
    {
       bRotary2Select = false;
       bRotary2Cancel = false;
@@ -589,19 +588,22 @@ void menu_loop()
       keyboard_add_triggered_gpio_input_events();
    }
 
-   if ( (NULL != pCS) && (pCS->nRotaryEncoderFunction == 1) && (pCS->nRotaryEncoderFunction2 == 1) )
+   if ( (NULL != g_pControllerSettings) && (g_pControllerSettings->nRotaryEncoderFunction == 1) && (g_pControllerSettings->nRotaryEncoderFunction2 == 1) )
    {
       hardware_override_keys((bRotarySelect || bRotary2Select)?1:0, (bRotaryCancel || bRotary2Cancel)?1:0, (bRotaryRotatedCCW || bRotary2RotatedCCW)?1:0, (bRotaryRotatedCW || bRotary2RotatedCW)?1:0, 0, 0,0,0);
       keyboard_add_triggered_gpio_input_events();
    }
 
-   menu_loop_parse_input_events();
+   if ( ! bNoKeys )
+      menu_loop_parse_input_events();
 }
 
 void menu_loop_parse_input_events()
 {
    if ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_MENU )
+   if ( ! keyboard_has_long_press_flag() )
    {
+      log_line("[Menu] (loop %d) Pressed [Menu] Key", menu_get_loop_counter()%1000);
       if ( osd_is_stats_flight_end_on() )
       {
          osd_remove_stats_flight_end();
@@ -617,13 +619,33 @@ void menu_loop_parse_input_events()
          g_pMenuStack[g_iMenuStackTopIndex-1]->onSelectItem();
    }
 
+   // Quick Menu displayed at root after pressing either plus/minus if no menu is on screen
+   if (( 0 == g_iMenuStackTopIndex ) &&
+      (( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_PLUS ) ||  ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_MINUS )))
+   {
+      log_line("[Menu] (loop %d) Pressed [QuickMenu] Key", menu_get_loop_counter()%1000);
+      load_Preferences();
+      Preferences* pP = get_Preferences();
+      if (pP->uEnabledQuickMenu != 0)
+      {
+         add_menu_to_stack(new MenuQuickMenu());
+         return;
+      }
+   }
+
    if ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_BACK )
    {
-      if ( g_bDebugStats )
+      log_line("[Menu] (loop %d) Pressed [Back] Key", menu_get_loop_counter()%1000);
+      keyboard_clear_triggered_back_event();
+      if ( (g_iMenuStackTopIndex < 1) && g_pControllerSettings->iEnableDebugStats )
       {
-         Preferences* pP = get_Preferences();
-         if ( (NULL != pP) && (pP->iDebugStatsQAButton == 0) )
-            g_bDebugStats = false;
+         //Preferences* pP = get_Preferences();
+         //if ( (NULL != pP) && (pP->iDebugStatsQAButton == 0) )
+         {
+            g_pControllerSettings->iEnableDebugStats = 0;
+            save_ControllerSettings();
+            send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED, 0xFF);
+         }
       }
       if ( osd_is_stats_flight_end_on() )
       {
@@ -651,7 +673,8 @@ void menu_loop_parse_input_events()
 
    if ( isKeyBackPressed() && keyboard_has_long_press_flag() )
    {
-      log_line("[Menu] Long pressed back key");
+      log_line("[Menu] Long pressed [Back] Key");
+
       if ( NULL != g_pPopupCameraParams && popups_has_popup(g_pPopupCameraParams) )
       {
          g_pPopupCameraParams->handleRotaryEvents(false, false, false, false, false, true);
@@ -675,6 +698,7 @@ void menu_loop_parse_input_events()
 
    if ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_MINUS )
    {
+      log_line("[Menu] Pressed [Minus] Key");
       if ( g_iMenuStackTopIndex > 0 )
       if ( NULL != g_pMenuStack[g_iMenuStackTopIndex-1] )
       {
@@ -686,6 +710,7 @@ void menu_loop_parse_input_events()
 
    if ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_PLUS )
    {
+      log_line("[Menu] Pressed [Plus] Key");
       if ( g_iMenuStackTopIndex > 0 )
       if ( NULL != g_pMenuStack[g_iMenuStackTopIndex-1] )
       {
@@ -740,6 +765,21 @@ void menu_rearrange_all_menus_no_animation()
    log_line("[Menu] Updated UI for all menus.");
 }
 
+void menu_rearrange_all_menus_xpos_no_animation()
+{
+   log_line("[Menu] Rearrange all menus xPos with no animation.");
+   int iCountMenus = g_iMenuStackTopIndex;
+   g_iMenuStackTopIndex = 0;
+   for ( int i=0; i<iCountMenus; i++ )
+   {
+      if ( NULL != g_pMenuStack[i] )
+         g_pMenuStack[i]->m_xPos = menu_get_XStartPos(g_pMenuStack[i]->m_Width);
+      g_iMenuStackTopIndex++;
+   }
+   
+   menu_rearrange_all_menus_no_animation();
+}
+
 u32 menu_get_loop_counter()
 {
    return s_uMenuLoopCounter;
@@ -750,10 +790,9 @@ void menu_render()
    if ( s_fMenuGlobalAlpha < 0.01 )
       return;
    float fOrigAlpha = g_pRenderEngine->getGlobalAlfa();
+   bool bAlphaEnabled = g_pRenderEngine->isAlphaBlendingEnabled();
    Preferences* pP = get_Preferences();
    
-   g_pRenderEngine->disableRectBlending();
-
    // If menus are stacked, render only last 3 menus
 
    int iMenuToRender = g_iMenuStackTopIndex-3;
@@ -847,7 +886,7 @@ void menu_render()
       iMenuToRender++;
    }
    g_pRenderEngine->setGlobalAlfa(fOrigAlpha);
-   g_pRenderEngine->enableRectBlending();
+   g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
 }
 
 bool menu_is_menu_on_top(Menu* pMenu)

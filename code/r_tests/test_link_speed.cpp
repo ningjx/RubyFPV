@@ -10,7 +10,6 @@
 #include <sys/resource.h>
 
 bool quit = false;
-u32 g_TimeNow = 0;
 
 #define UPLINK 1
 #define DOWNLINK 2
@@ -95,7 +94,7 @@ int main(int argc, char *argv[])
          memset(packet, 0, MAX_PACKET_TOTAL_SIZE);
          memcpy(packet, (u8*)&PH, sizeof(t_packet_header));
          memcpy(packet+sizeof(t_packet_header), &uPingId, sizeof(u8));
-         radio_set_out_datarate(DEFAULT_RADIO_DATARATE);
+         radio_set_out_datarate(DEFAULT_RADIO_DATARATE, 0, get_current_timestamp_ms());
          static u8 rawPacket[MAX_PACKET_TOTAL_SIZE];
          int totalLength = radio_build_packet(rawPacket, packet, PH.total_length, UPLINK, 0);
          write_packet_to_radio(sock, rawPacket, totalLength);
@@ -142,7 +141,7 @@ int main(int argc, char *argv[])
             u8* pBuffer = NULL;
             int bCRCOk = 0;
             int okPacket = 0;
-            pBuffer = radio_process_wlan_data_in(i, &length, g_TimeNow); 
+            pBuffer = radio_process_wlan_data_in(i, &length, NULL, g_TimeNow); 
             if ( NULL == pBuffer )
             {
                printf("NULL receive buffer. Ignoring...");
@@ -186,7 +185,7 @@ int main(int argc, char *argv[])
                memcpy(packet+sizeof(t_packet_header), &pingId, sizeof(u32));
                memcpy(packet+sizeof(t_packet_header)+sizeof(u32), &timeNow, sizeof(u32));
 
-               radio_set_out_datarate(DEFAULT_RADIO_DATARATE);
+               radio_set_out_datarate(DEFAULT_RADIO_DATARATE, 0, get_current_timestamp_ms());
                u8 rawPacket[MAX_PACKET_TOTAL_SIZE];
                int totalLength = radio_build_packet(rawPacket, packet, PH.total_length, DOWNLINK, 0);
                write_packet_to_radio(sock, rawPacket, totalLength);

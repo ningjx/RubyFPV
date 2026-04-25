@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -55,45 +55,45 @@
 
 
 MenuSystem::MenuSystem(void)
-:Menu(MENU_ID_SYSTEM, "System Info", NULL)
+:Menu(MENU_ID_SYSTEM, L("System Info"), NULL)
 {
    m_Width = 0.34;
    m_xPos = menu_get_XStartPos(m_Width); m_yPos = 0.24;
    
-   m_IndexAlarms = addMenuItem( new MenuItem("Alarms Settings") );
+   m_IndexAlarms = addMenuItem( new MenuItem(L("Alarms Settings")) );
    m_pMenuItems[m_IndexAlarms]->showArrow();
 
-   m_IndexLogs = addMenuItem( new MenuItem("Logs Settings") );
+   m_IndexLogs = addMenuItem( new MenuItem(L("Logs Settings")) );
    m_pMenuItems[m_IndexLogs]->showArrow();
 
-   m_IndexAllParams = addMenuItem(new MenuItem("View All Parameters", "View all controller and vehicle parameters at once, in a single screen."));
+   m_IndexAllParams = addMenuItem(new MenuItem(L("View All Parameters"), L("View all controller and vehicle parameters at once, in a single screen.")));
    m_pMenuItems[m_IndexAllParams]->showArrow();
 
-   m_IndexDevices = addMenuItem(new MenuItem("View All Devices and Peripherals", "Displays all the devices and peripherals attached to the controller and to the current vehicle."));
+   m_IndexDevices = addMenuItem(new MenuItem(L("View All Devices and Peripherals"), L("Displays all the devices and peripherals attached to the controller and to the current vehicle.")));
    m_pMenuItems[m_IndexDevices]->showArrow();
 
-   m_IndexExport = addMenuItem(new MenuItem("Export All Settings", "Exports all vehicles, controller settings and preferences to a USB memory stick for back-up purposes."));
-   m_IndexImport = addMenuItem(new MenuItem("Import All Settings", "Import all vehicles, controller settings and preferences from a USB memory stick."));
+   m_IndexExport = addMenuItem(new MenuItem(L("Export All Settings"), L("Exports all vehicles, controller settings and preferences to a USB memory stick for back-up purposes.")));
+   m_IndexImport = addMenuItem(new MenuItem(L("Import All Settings"), L("Import all vehicles, controller settings and preferences from a USB memory stick.")));
 
-   m_pItemsSelect[1] = new MenuItemSelect("Auto Export Settings", "Automatically periodically export all settings and models to a USB memory stick, if one is found. All your settings will be synchronized to a USB memory stick for later import (after a factory reset for example).");
-   m_pItemsSelect[1]->addSelection("Off");
-   m_pItemsSelect[1]->addSelection("On");
+   m_pItemsSelect[1] = new MenuItemSelect(L("Auto Export Settings"), L("Automatically periodically export all settings and models to a USB memory stick, if one is found. All your settings will be synchronized to a USB memory stick for later import (after a factory reset for example)."));
+   m_pItemsSelect[1]->addSelection(L("Off"));
+   m_pItemsSelect[1]->addSelection(L("On"));
    m_pItemsSelect[1]->setUseMultiViewLayout();
    m_IndexAutoExport = addMenuItem(m_pItemsSelect[1]);
 
-   m_IndexReset = addMenuItem(new MenuItem("Factory Reset", "Resets all the settings an files on the controller, as they where when the image was flashed."));
+   m_IndexReset = addMenuItem(new MenuItem(L("Factory Reset"), L("Resets all the settings an files on the controller, as they where when the image was flashed.")));
    m_IndexAbout = addMenuItem(new MenuItem("About", "Get info about Ruby system."));
 
-   m_pItemsSelect[0] = new MenuItemSelect("Enable Developer Mode", "Used to debug issues and test experimental features. Disables fail safe checks, parameters consistency checks and other options. It's recommended to leave this [Off] as it will degrade your system performance.");
-   m_pItemsSelect[0]->addSelection("Off");
-   m_pItemsSelect[0]->addSelection("On");
+   m_pItemsSelect[0] = new MenuItemSelect(L("Enable Developer Mode"), L("Used to enable expert settings and tweaks, to debug issues and test experimental features. Also, it disables some failsafe checks, parameters consistency checks and other options. It's recommended to leave this [Off] as it will degrade your system performance."));
+   m_pItemsSelect[0]->addSelection(L("Off"));
+   m_pItemsSelect[0]->addSelection(L("On"));
    m_pItemsSelect[0]->setUseMultiViewLayout();
    m_IndexDeveloper = addMenuItem(m_pItemsSelect[0]);
 
-   m_IndexDevOptionsVehicle = addMenuItem( new MenuItem("Vehicle Developer Settings") );
+   m_IndexDevOptionsVehicle = addMenuItem( new MenuItem(L("Vehicle Developer Settings")) );
    m_pMenuItems[m_IndexDevOptionsVehicle]->showArrow();
 
-   m_IndexDevOptionsController = addMenuItem( new MenuItem("Controller Developer Settings") );
+   m_IndexDevOptionsController = addMenuItem( new MenuItem(L("Controller Developer Settings")) );
    m_pMenuItems[m_IndexDevOptionsController]->showArrow();
 }
 
@@ -159,11 +159,6 @@ void MenuSystem::onReturnFromChild(int iChildMenuId, int returnValue)
       hw_execute_bash_command("mkdir -p config", NULL);
       hw_execute_bash_command("touch /home/radxa/ruby/config/firstboot.txt", NULL);
       #endif
-
-      char szBuff[128];
-      sprintf(szBuff, "touch %s%s", FOLDER_CONFIG, LOG_USE_PROCESS);
-      hw_execute_bash_command(szBuff, NULL);
-
       hardware_reboot();
       return;
    }
@@ -182,9 +177,9 @@ void MenuSystem::onReturnFromChild(int iChildMenuId, int returnValue)
    if ( 10 == iChildMenuId/1000 )
    {
       ruby_signal_alive();
-      ruby_pause_watchdog();
+      ruby_pause_watchdog("export controller settings to USB stick");
       int nReturn = controller_utils_export_all_to_usb();
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("finish export controller settings to USB stick");
       ruby_signal_alive();
 
       if ( nReturn == -1 )
@@ -204,7 +199,6 @@ void MenuSystem::onReturnFromChild(int iChildMenuId, int returnValue)
       }
       ruby_signal_alive();
       
-      ruby_resume_watchdog();
       addMessage("Done. All configuration files have been successfully exported. You can now remove the USB memory stick.");
       return;
    }
@@ -212,10 +206,10 @@ void MenuSystem::onReturnFromChild(int iChildMenuId, int returnValue)
    if ( 11 == iChildMenuId/1000 )
    {
       ruby_signal_alive();
-      ruby_pause_watchdog();
+      ruby_pause_watchdog("import controller settings from USB stick");
       pairing_stop();
       int nReturn = controller_utils_import_all_from_usb(false);
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("import controller settings finished.");
       ruby_signal_alive();
       if ( nReturn == -1 )
       {
@@ -253,9 +247,9 @@ void MenuSystem::onReturnFromChild(int iChildMenuId, int returnValue)
             save_ControllerInterfacesSettings();
    
 
-         MenuConfirmation* pMC = new MenuConfirmation("Import Succeeded","All configuration files have been successfully imported. You can now remove the USB memory stick.", 12, true);
+         MenuConfirmation* pMC = new MenuConfirmation(L("Import Succeeded"),L("All configuration files have been successfully imported. You can now remove the USB memory stick."), 12, true);
          pMC->addTopLine(" ");
-         pMC->addTopLine("The controller will reboot now.");
+         pMC->addTopLine(L("The controller will reboot now."));
          add_menu_to_stack(pMC);
       }
       return;
@@ -337,19 +331,26 @@ void MenuSystem::onSelectItem()
       pCS->iDeveloperMode = val;
       save_ControllerSettings();
       
-      if ( pCS->iDeveloperMode )
-      {
-         MenuConfirmation* pMC = new MenuConfirmation(L("Developer Mode"),L("Enabling developer mode will have an impact on performance. It is recomended you turn Developer Mode Off after you do the changes you want to do."), 5, true);
-         pMC->m_yPos = 0.3;
-         add_menu_to_stack(pMC);
-         return;
-      }
       send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED, PACKET_COMPONENT_LOCAL_CONTROL);      
       valuesToUI();
 
       if ( (NULL != g_pCurrentModel) && (! g_pCurrentModel->is_spectator) )
       if ( pairing_isStarted() && link_is_vehicle_online_now(g_pCurrentModel->uVehicleId) )
-         g_pCurrentModel->b_mustSyncFromVehicle = true;
+      {
+         if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
+            valuesToUI();
+         else
+         {
+            if ( pCS->iDeveloperMode != ((g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?1:0) )
+               addMessage("You need to restart your vehicle for the changes to take effect.");
+         }
+      }
+      if ( pCS->iDeveloperMode )
+      {
+         MenuConfirmation* pMC = new MenuConfirmation(L("Developer Mode"),L("Enabling developer mode will have an impact on performance. It is recomended you turn Developer Mode Off after you do the changes you want to do."), 5, true);
+         pMC->m_yPos = 0.3;
+         add_menu_to_stack(pMC);
+      }
       return;
    }
 

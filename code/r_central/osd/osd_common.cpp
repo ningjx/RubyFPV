@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -32,7 +32,6 @@
 
 #include "osd_common.h"
 #include "../../base/base.h"
-#include "../../base/hw_procs.h"
 #include "../../base/config.h"
 #include "../../../mavlink/common/mavlink.h"
 #include "../../base/ctrl_interfaces.h"
@@ -94,6 +93,7 @@ u32 g_idIconSDCard = 0;
 u32 g_idImgMSPOSDBetaflight = 0;
 u32 g_idImgMSPOSDINAV = 0;
 u32 g_idImgMSPOSDArdupilot = 0;
+u32 g_idImgMSPOSDPitLab = 0;
 
 float sfScreenXMargin = 0.02;
 float sfScreenYMargin = 0.02;
@@ -118,6 +118,47 @@ Model* s_pCurrentOSDLayoutSourceModel = NULL;
 
 int s_iCurrentOSDVehicleDataSourceRuntimeIndex = 0;
 
+double OSD_COLOR_FRAME_NORMAL[4] = { 255,255,255, 0.7 };
+double OSD_COLOR_FRAME_MISSING[4] = {255,70,70, 0.9};
+double OSD_COLOR_FRAME_EC[4] = {90,255,110, 0.9};
+double OSD_COLOR_FRAME_ECMAX[4] = {255,250,40, 1.0};
+double OSD_COLOR_FRAME_NAL_I[4] = {80,80,255, 0.94};
+double OSD_COLOR_FRAME_NAL_OTHER[4] = {0,0,100, 0.94};
+double OSD_COLOR_FRAME_RETR[4] = {255,170, 0, 0.9};
+double OSD_COLOR_FRAME_RETR_DISCARD[4] = {70,100,255,1.0};
+
+const double* osdGetColorVideoFrameNormal()
+{
+   return OSD_COLOR_FRAME_NORMAL;
+}
+const double* osdGetColorVideoFrameI()
+{
+   return OSD_COLOR_FRAME_NAL_I;
+}
+const double* osdGetColorVideoFrameO()
+{
+   return OSD_COLOR_FRAME_NAL_OTHER;
+}
+const double* osdGetColorVideoFrameEC()
+{
+   return OSD_COLOR_FRAME_EC;
+}
+const double* osdGetColorVideoFrameECMax()
+{
+   return OSD_COLOR_FRAME_ECMAX;
+}
+const double* osdGetColorVideoFrameRetr()
+{
+   return OSD_COLOR_FRAME_RETR;
+}
+const double* osdGetColorVideoFrameRetrDiscard()
+{
+   return OSD_COLOR_FRAME_RETR_DISCARD;
+}
+const double* osdGetColorVideoFrameMissing()
+{
+   return OSD_COLOR_FRAME_MISSING;
+}
 
 float osd_getSetScreenScale(int iOSDScreenSize)
 {
@@ -300,6 +341,8 @@ void osd_reload_msp_resources()
       g_pRenderEngine->freeImage(g_idImgMSPOSDINAV);
    if ( g_idImgMSPOSDArdupilot > 0 )
       g_pRenderEngine->freeImage(g_idImgMSPOSDArdupilot);
+   if ( g_idImgMSPOSDPitLab > 0 )
+      g_pRenderEngine->freeImage(g_idImgMSPOSDPitLab);
 
    log_line("Loading MSP OSD images for screen surface height: %d px", g_pRenderEngine->getScreenHeight());
    if ( g_pRenderEngine->getScreenHeight() > 800 )
@@ -307,12 +350,14 @@ void osd_reload_msp_resources()
       g_idImgMSPOSDBetaflight = g_pRenderEngine->loadImage("res/msp_osd_betaflight.png");
       g_idImgMSPOSDINAV = g_pRenderEngine->loadImage("res/msp_osd_inav.png");
       g_idImgMSPOSDArdupilot = g_pRenderEngine->loadImage("res/msp_osd_ardu.png");
+      g_idImgMSPOSDPitLab = g_pRenderEngine->loadImage("res/msp_osd_pitlab.png");
    }
    else
    {
       g_idImgMSPOSDBetaflight = g_pRenderEngine->loadImage("res/msp_osd_betaflight720.png");
       g_idImgMSPOSDINAV = g_pRenderEngine->loadImage("res/msp_osd_inav720.png");
-      g_idImgMSPOSDArdupilot = g_pRenderEngine->loadImage("res/msp_osd_ardu720.png");    
+      g_idImgMSPOSDArdupilot = g_pRenderEngine->loadImage("res/msp_osd_ardu720.png");
+      g_idImgMSPOSDPitLab = g_pRenderEngine->loadImage("res/msp_osd_pitlab720.png");
    }
    Preferences* p = get_Preferences();
    if ( NULL != p )
@@ -320,6 +365,7 @@ void osd_reload_msp_resources()
       g_pRenderEngine->changeImageHue(g_idImgMSPOSDBetaflight, p->iColorOSD[0], p->iColorOSD[1], p->iColorOSD[2]);
       g_pRenderEngine->changeImageHue(g_idImgMSPOSDINAV, p->iColorOSD[0], p->iColorOSD[1], p->iColorOSD[2]);
       g_pRenderEngine->changeImageHue(g_idImgMSPOSDArdupilot, p->iColorOSD[0], p->iColorOSD[1], p->iColorOSD[2]);
+      g_pRenderEngine->changeImageHue(g_idImgMSPOSDPitLab, p->iColorOSD[0], p->iColorOSD[1], p->iColorOSD[2]);
    }
 }
 
@@ -576,23 +622,31 @@ float osd_show_video_profile_mode(float xPos, float yPos, u32 uFontId, bool bLef
       return 0.0;
 
    strcpy(szBuff, str_get_video_profile_name(pVDS->PHVS.uCurrentVideoLinkProfile));
-   int diffEC = pVDS->PHVS.uCurrentBlockECPackets - pActiveModel->video_link_profiles[pVDS->PHVS.uCurrentVideoLinkProfile].iBlockECs;
-
-   if ( diffEC > 0 )
+   
+   if ( pVDS->iAdaptiveVideoLevelNow > 0 )
    {
-      char szTmp[16];
-      sprintf(szTmp, "-%d", diffEC);
-      strcat(szBuff, szTmp);
+      if ( pVDS->bIsOnLowestAdaptiveLevel )
+      {
+         if ( pActiveModel->video_link_profiles[pActiveModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_USE_MEDIUM_ADAPTIVE_VIDEO )
+            strcat(szBuff, "-M");
+         else
+            strcat(szBuff, "-L");
+      }
+      else
+      {
+         char szTmp[16];
+         sprintf(szTmp, "-%d", pVDS->iAdaptiveVideoLevelNow);
+         strcat(szBuff, szTmp);
+      }
    }
-
-   if ( pVDS->PHVS.uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_ON_LOWER_BITRATE )
+   else if ( pVDS->PHVS.uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_ON_LOWER_BITRATE )
       strcat(szBuff, "-");
      
    if ( pVDS->uCurrentVideoProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ONE_WAY_FIXED_VIDEO )
       strcat(szBuff, "-1Way");
    if (((pVDS->PHVS.uVideoStreamIndexAndType >> 4) & 0x0F) == VIDEO_TYPE_H265 )
       strcat(szBuff, " H265");
-     
+   
    fWidth = g_pRenderEngine->textWidth(uFontId, szBuff);
 
    if ( bLeft )
@@ -633,8 +687,8 @@ float osd_render_relay(float xCenter, float yBottom, bool bHorizontal)
    float fWidth = 0.0;
    float yPos = yBottom-fHeight;
    
-   Model *pModel = findModelWithId(g_pCurrentModel->relay_params.uRelayedVehicleId, 30);
-   if ( NULL == pModel || ( pModel->uVehicleId == g_pCurrentModel->uVehicleId ) )
+   Model *pRelayedModel = findModelWithId(g_pCurrentModel->relay_params.uRelayedVehicleId, 30);
+   if ( (NULL == pRelayedModel) || (pRelayedModel->uVehicleId == g_pCurrentModel->uVehicleId) )
    {
       fHeight = height_text + 2.0*fPaddingY;
       yPos = yBottom - fHeight;
@@ -659,7 +713,7 @@ float osd_render_relay(float xCenter, float yBottom, bool bHorizontal)
    strncpy(szName1, g_pCurrentModel->getLongName(), 127);
    szName1[0] = toupper(szName1[0]);
 
-   strncpy(szName2, pModel->getLongName(), 127);
+   strncpy(szName2, pRelayedModel->getLongName(), 127);
    szName2[0] = toupper(szName2[0]);
 
    float fWidthName1 = g_pRenderEngine->textWidth(g_idFontOSDSmall, szName1);
@@ -675,30 +729,44 @@ float osd_render_relay(float xCenter, float yBottom, bool bHorizontal)
    float fWidthRight = fWidthName2;
    if ( fWidthTextRelay > fWidthRight )
       fWidthRight = fWidthTextRelay;
-
+   
    float xLeft = xCenter - fWidthLeft - 2.0 * fPaddingX;
    float xRight = xCenter + fWidthRight + 2.0 * fPaddingX;
+
+   if ( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE )
+   {
+      xLeft = xCenter - 0.5 * fWidthRight - fPaddingX;
+      xRight = xCenter + 0.5 * fWidthRight + fPaddingX;
+   }
    fWidth = xRight - xLeft;
 
    g_pRenderEngine->setFill(0,0,0,0.1);
    g_pRenderEngine->setStrokeSize(1.0);
    g_pRenderEngine->drawRoundRect(xLeft, yPos, fWidth, fHeight, 0.01);
-   g_pRenderEngine->drawLine(xCenter, yPos, xCenter, yBottom - g_pRenderEngine->getPixelHeight());
+   if ( ! (g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE) )
+      g_pRenderEngine->drawLine(xCenter, yPos, xCenter, yBottom - g_pRenderEngine->getPixelHeight());
 
    bool bMainVehicleActive = true;
-   if (( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_REMOTE ) &&
-       bRelayedVehicleIsOnline )
+   if ( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE )
+      bMainVehicleActive = false;
+   if ( (g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_REMOTE) && bRelayedVehicleIsOnline )
       bMainVehicleActive = false;
 
    double pCA[4];
    memcpy(pCA,get_Color_IconSucces(), 4*sizeof(double));
    for( int i=0; i<3; i++ )
+   {
       if ( pCA[i] > 70 )
          pCA[i] -= 70;
       else
          pCA[i] = 0;
-
-   if ( bMainVehicleActive )
+   }
+   if ( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE )
+   {
+      g_pRenderEngine->setFill(pCA[0],pCA[1],pCA[2],pCA[3]);
+      g_pRenderEngine->drawRoundRect(xLeft, yPos, fWidth, fHeight, 0.01);
+   }
+   else if ( bMainVehicleActive )
    {
       g_pRenderEngine->setFill(pCA[0],pCA[1],pCA[2],pCA[3]);
       g_pRenderEngine->drawRoundRect(xLeft, yPos, xCenter-xLeft, fHeight, 0.01);
@@ -714,7 +782,12 @@ float osd_render_relay(float xCenter, float yBottom, bool bHorizontal)
 
    yPos += fPaddingY;
 
-   if ( bMainVehicleActive )
+   if ( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE )
+   {
+      osd_set_colors();
+      g_pRenderEngine->drawText(xLeft + fPaddingX + 0.5*(fWidthRight - fWidthTextRelay), yPos, g_idFontOSDSmall, szTextRelay);
+   }
+   else if ( bMainVehicleActive )
    {
       g_pRenderEngine->drawText(xLeft + fPaddingX + 0.5*(fWidthLeft - fWidthTextMain), yPos, g_idFontOSDSmall, szTextMain);
       float fa = g_pRenderEngine->setGlobalAlfa(fInactiveAlpha);
@@ -735,7 +808,12 @@ float osd_render_relay(float xCenter, float yBottom, bool bHorizontal)
 
    yPos += height_text_small*1.2;
 
-   if ( bMainVehicleActive )
+   if ( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE )
+   {
+      osd_set_colors();
+      g_pRenderEngine->drawText(xLeft + fPaddingX, yPos, g_idFontOSDSmall, szName2);
+   }
+   else if ( bMainVehicleActive )
    {
       g_pRenderEngine->drawText(xLeft + fPaddingX, yPos, g_idFontOSDSmall, szName1);
       float fa = g_pRenderEngine->setGlobalAlfa(fInactiveAlpha);
@@ -762,10 +840,15 @@ float osd_render_relay(float xCenter, float yBottom, bool bHorizontal)
       float fa = g_pRenderEngine->setGlobalAlfa(fInactiveAlpha);
       osd_set_colors();
       float fwt = g_pRenderEngine->textWidth(g_idFontOSDSmall, "Online");
-      g_pRenderEngine->drawText(xCenter + fPaddingX + 0.5*(fWidthRight - fwt), yPos, g_idFontOSDSmall, "Online");
+      float fxHighlight = xCenter + 0.5*(fWidthRight - fwt);
+      if ( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE )
+         fxHighlight = xLeft + 0.5*(fWidthRight - fwt);
+      if ( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE )
+
+      g_pRenderEngine->drawText(fxHighlight, yPos, g_idFontOSDSmall, "Online");
       const double* pc = get_Color_IconSucces();
       g_pRenderEngine->setFill(pc[0], pc[1], pc[2], pc[3]);
-      g_pRenderEngine->fillCircle(xCenter + fPaddingX + 0.5*(fWidthRight-fwt) - height_text_small/g_pRenderEngine->getAspectRatio(), yPos + height_text_small*0.5, fRadius);
+      g_pRenderEngine->fillCircle(fxHighlight - height_text_small/g_pRenderEngine->getAspectRatio(), yPos + height_text_small*0.5, fRadius);
    
       g_pRenderEngine->setGlobalAlfa(fa);
       osd_set_colors();
@@ -773,10 +856,13 @@ float osd_render_relay(float xCenter, float yBottom, bool bHorizontal)
    else
    {
       float fwt = g_pRenderEngine->textWidth(g_idFontOSDSmall, "Offline");
-      g_pRenderEngine->drawText(xCenter + fPaddingX + 0.5*(fWidthRight - fwt), yPos, g_idFontOSDSmall, "Offline");
+      float fxHighlight = xCenter + 0.5*(fWidthRight - fwt);
+      if ( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE )
+         fxHighlight = xLeft + 0.5*(fWidthRight - fwt);
+      g_pRenderEngine->drawText(fxHighlight, yPos, g_idFontOSDSmall, "Offline");
       const double* pc = get_Color_IconError();
       g_pRenderEngine->setFill(pc[0], pc[1], pc[2], pc[3]);
-      g_pRenderEngine->fillCircle(xCenter + fPaddingX + 0.5*(fWidthRight-fwt) - height_text_small/g_pRenderEngine->getAspectRatio(), yPos + height_text_small*0.5, fRadius);
+      g_pRenderEngine->fillCircle(fxHighlight - height_text_small/g_pRenderEngine->getAspectRatio(), yPos + height_text_small*0.5, fRadius);
    }
 
    osd_set_colors();
@@ -841,48 +927,4 @@ u32 osd_get_current_data_source_vehicle_id()
    if ( NULL != g_VehiclesRuntimeInfo[s_iCurrentOSDVehicleDataSourceRuntimeIndex].pModel )
       uVehicleId = g_VehiclesRuntimeInfo[s_iCurrentOSDVehicleDataSourceRuntimeIndex].pModel->uVehicleId;
    return uVehicleId;
-}
-
-char* osd_format_video_adaptive_level(Model* pModel, int iLevel)
-{
-   static char s_szOSDVideoAdaptiveLevelInfo[64];
-   s_szOSDVideoAdaptiveLevelInfo[0] = 0;
-   if ( NULL == pModel )
-   {
-      strcpy(s_szOSDVideoAdaptiveLevelInfo, "N/A");
-      return s_szOSDVideoAdaptiveLevelInfo;
-   }
-
-   int iLevelsHQ = pModel->get_video_profile_total_levels(pModel->video_params.user_selected_video_link_profile);
-   int iLevelsMQ = pModel->get_video_profile_total_levels(VIDEO_PROFILE_MQ);
-   int iLevelsLQ = pModel->get_video_profile_total_levels(VIDEO_PROFILE_LQ);
-   if ( iLevel < iLevelsHQ )
-   {
-      if ( iLevel == 0 )
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s", str_get_video_profile_name(pModel->video_params.user_selected_video_link_profile));
-      else
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s-%d", str_get_video_profile_name(pModel->video_params.user_selected_video_link_profile), iLevel);
-      return s_szOSDVideoAdaptiveLevelInfo;
-   }
-   iLevel -= iLevelsHQ;
-   if ( iLevel < iLevelsMQ )
-   {
-      if ( iLevel == 0 )
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s", str_get_video_profile_name(VIDEO_PROFILE_MQ));
-      else
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s-%d", str_get_video_profile_name(VIDEO_PROFILE_MQ), iLevel);
-      return s_szOSDVideoAdaptiveLevelInfo;
-   }
-   
-   iLevel -= iLevelsMQ;
-   if ( iLevel < iLevelsLQ )
-   {
-      if ( iLevel == 0 )
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s", str_get_video_profile_name(VIDEO_PROFILE_LQ));
-      else
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s-%d", str_get_video_profile_name(VIDEO_PROFILE_LQ), iLevel);
-      return s_szOSDVideoAdaptiveLevelInfo;
-   }
-   strcpy(s_szOSDVideoAdaptiveLevelInfo, "???");
-   return s_szOSDVideoAdaptiveLevelInfo;
 }

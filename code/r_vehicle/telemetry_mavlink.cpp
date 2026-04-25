@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -32,7 +32,7 @@
 
 #include "telemetry_mavlink.h"
 #include "telemetry.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/parse_fc_telemetry.h"
 #include "../base/models.h"
 #include "../base/ruby_ipc.h"
@@ -48,8 +48,9 @@ bool s_bDidSentMAVLinkSetup = false;
 u32 s_uMAVLinkSetupTime = 0;
 bool s_bOnArmEventHandled = false;
 bool s_bLogNextMAVLinkMessage = true;
+static int s_iCountTelemetryMAVLinkWriteErrors = 0;
 
-extern t_packet_header_ruby_telemetry_extended_v4 sPHRTE;
+extern t_packet_header_ruby_telemetry_extended_v6 sPHRTE;
 u32 s_SentTelemetryCounter = 0;
 long int s_lLastPosLat = 0;
 long int s_lLastPosLon = 0;
@@ -101,7 +102,6 @@ void _telemetry_mavlink_send_setup()
 
    
    log_line("[Telem] Initializing MAVLink with flight controller...");
-   if ( g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_RXONLY )
    if ( ! (g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_REQUEST_DATA_STREAMS) )
    {
       log_line("[Telem] Telemetry is set as read only with no requests for data streams. Do nothing.");
@@ -111,29 +111,39 @@ void _telemetry_mavlink_send_setup()
    
    mavlink_msg_heartbeat_pack(g_pCurrentModel->telemetry_params.controller_mavlink_id, componentId, &msgHeartBeat, MAV_TYPE_GCS, MAV_AUTOPILOT_INVALID, 0,0,0);
    len = mavlink_msg_to_send_buffer(serialBufferOut, &msgHeartBeat);
-   if ( len != write(telemetry_get_serial_port_file(), serialBufferOut, len) )
-      log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
    
-   int rate = g_pCurrentModel->telemetry_params.update_rate;
+   if ( len != write(telemetry_get_serial_port_file(), serialBufferOut, len) )
+   {
+      s_iCountTelemetryMAVLinkWriteErrors++;
+      if ( s_iCountTelemetryMAVLinkWriteErrors < 10 )
+         log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
+   }
+   else
+      s_iCountTelemetryMAVLinkWriteErrors = 0;
+   
+   int rate = g_pCurrentModel->telemetry_params.iUpdateRateHz;
    if ( rate < 1 ) rate = 1;
    if ( rate > 10 ) rate = 10;
    mavlink_msg_request_data_stream_pack(g_pCurrentModel->telemetry_params.controller_mavlink_id, componentId, &msgDataStreams, g_pCurrentModel->telemetry_params.vehicle_mavlink_id, MAV_COMP_ID_AUTOPILOT1, MAV_DATA_STREAM_ALL, rate, 1);
    len = mavlink_msg_to_send_buffer(serialBufferOut, &msgDataStreams);
    if ( len != write(telemetry_get_serial_port_file(), serialBufferOut, len) )
    {
-      log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
+      s_iCountTelemetryMAVLinkWriteErrors++;
+      if ( s_iCountTelemetryMAVLinkWriteErrors < 10 )
+         log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
       return;
    }
+   else
+      s_iCountTelemetryMAVLinkWriteErrors = 0;
    log_line("[Telem] Requested all MAVLink data streams");
    
 
    char szParam[32];
    strcpy(szParam, "RC_OVERRIDE_TIME");
 
-   if ( g_pCurrentModel->rc_params.rc_enabled )
+   if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
    {      
-      float fTimeout = 1.0/g_pCurrentModel->rc_params.rc_frames_per_second;
-      fTimeout *= 2.5;
+      float fTimeout = (float)g_pCurrentModel->rc_params.rc_failsafe_timeout_ms/1000.0;
       log_line("[Telem] Sending to FC an RC_OVERRIDE timeout of %.2f seconds", fTimeout);
       mavlink_message_t msgSetParam;
       mavlink_msg_param_set_pack(g_pCurrentModel->telemetry_params.controller_mavlink_id, componentId, &msgSetParam,
@@ -142,9 +152,13 @@ void _telemetry_mavlink_send_setup()
       len = mavlink_msg_to_send_buffer(serialBufferOut, &msgSetParam);
       if ( len != write(telemetry_get_serial_port_file(), serialBufferOut, len) )
       {
-         log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
+         s_iCountTelemetryMAVLinkWriteErrors++;
+         if ( s_iCountTelemetryMAVLinkWriteErrors < 10 )
+            log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
          return;
       }
+      else
+         s_iCountTelemetryMAVLinkWriteErrors = 0;
    }
 
    mavlink_message_t msgReqParam;
@@ -154,9 +168,13 @@ void _telemetry_mavlink_send_setup()
    len = mavlink_msg_to_send_buffer(serialBufferOut, &msgReqParam);
    if ( len != write(telemetry_get_serial_port_file(), serialBufferOut, len) )
    {
-      log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
+      s_iCountTelemetryMAVLinkWriteErrors++;
+      if ( s_iCountTelemetryMAVLinkWriteErrors < 10 )
+         log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
       return;
    }
+   else
+      s_iCountTelemetryMAVLinkWriteErrors = 0;
   
    //mavlink_message_t msgReqParamList;
    //mavlink_msg_param_request_list_pack(uint8_t system_id, uint8_t component_id, mavlink_message_t* msg,
@@ -191,17 +209,25 @@ void _telemetry_mavlink_send_setup()
    len = mavlink_msg_to_send_buffer(serialBufferOut, &msgMsgInterval);
    if ( len != write(telemetry_get_serial_port_file(), serialBufferOut, len) )
    {
-      log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
+      s_iCountTelemetryMAVLinkWriteErrors++;
+      if ( s_iCountTelemetryMAVLinkWriteErrors < 10 )
+         log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
       return;
    }
+   else
+      s_iCountTelemetryMAVLinkWriteErrors = 0;
 
    mavlink_msg_message_interval_pack(g_pCurrentModel->telemetry_params.controller_mavlink_id, componentId, &msgMsgInterval, MAVLINK_MSG_ID_HIGH_LATENCY2, 1000000);
    len = mavlink_msg_to_send_buffer(serialBufferOut, &msgMsgInterval);
    if ( len != write(telemetry_get_serial_port_file(), serialBufferOut, len) )
    {
-      log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
+      s_iCountTelemetryMAVLinkWriteErrors++;
+      if ( s_iCountTelemetryMAVLinkWriteErrors < 10 )
+         log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
       return;
    }
+   else
+     s_iCountTelemetryMAVLinkWriteErrors = 0;
 /*
    log_line("Requested MAVLink message interval.");
 */
@@ -217,10 +243,14 @@ void _telemetry_mavlink_send_setup()
    len = mavlink_msg_to_send_buffer(serialBufferOut, &msgHighLatency);
    if ( len != write(telemetry_get_serial_port_file(), serialBufferOut, len) )
    {
-      log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
+      s_iCountTelemetryMAVLinkWriteErrors++;
+      if ( s_iCountTelemetryMAVLinkWriteErrors < 10 )
+         log_softerror_and_alarm("[Telem] Failed to write to serial port to FC");
       return;
    }
- 
+   else
+      s_iCountTelemetryMAVLinkWriteErrors = 0;
+
    log_line("[Telem] Requested MAVLink high latency messages.");
 
 /*
@@ -361,25 +391,6 @@ void _preprocess_fc_telemetry(t_packet_header_fc_telemetry* pPHFCT)
 {
    pPHFCT->fc_telemetry_type = g_pCurrentModel->telemetry_params.fc_telemetry_type;
 
-   if ( g_bDebug )
-   {
-      if ( s_SentTelemetryCounter > 70 )
-         pPHFCT->uFCFlags |= FC_TELE_FLAGS_ARMED;
-      pPHFCT->satelites = 15;
-      pPHFCT->hdop = 110;
-      pPHFCT->gps_fix_type = GPS_FIX_TYPE_3D_FIX;
-      pPHFCT->throttle = 25;
-      pPHFCT->altitude = 100025;
-      pPHFCT->altitude_abs = 100325;
-      pPHFCT->heading = 1;
-      pPHFCT->hspeed = 100010; // 1 m/sec
-      pPHFCT->flight_mode = FLIGHT_MODE_ALTH | FLIGHT_MODE_ARMED;
-      pPHFCT->latitude = 47.136136 * 10000000 + 40000 * sin(s_SentTelemetryCounter/10.0);
-      pPHFCT->longitude = 27.5777667 * 10000000 + 30000 * cos(s_SentTelemetryCounter/10.0);
-      //log_line("lat: %u, lon: %u", DPFCT.latitude, DPFCT.longitude);
-      //log_line("pos %d", s_SentTelemetryCounter);
-   }
-
    pPHFCT->uFCFlags = pPHFCT->uFCFlags & (~FC_TELE_FLAGS_HAS_GPS_FIX);
    if ( pPHFCT->gps_fix_type >= GPS_FIX_TYPE_2D_FIX )
       pPHFCT->uFCFlags = pPHFCT->uFCFlags | FC_TELE_FLAGS_HAS_GPS_FIX;
@@ -413,13 +424,7 @@ void _preprocess_fc_telemetry(t_packet_header_fc_telemetry* pPHFCT)
       {
          home_set = true;
          home_lat = pPHFCT->latitude;
-         home_lon = pPHFCT->longitude;
-
-         if ( g_bDebug )
-         {
-            home_lat = 47.136136 * 10000000;
-            home_lon = 27.5777667 * 10000000;
-         }
+         home_lon = pPHFCT->longitude;        
       }
 
       // Update distance from home
@@ -521,7 +526,7 @@ void telemetry_mavlink_send_to_controller()
    pFCTelem->uFCFlags = pFCTelem->uFCFlags & (~FC_TELE_FLAGS_RC_FAILSAFE);
 
    #ifdef FEATURE_ENABLE_RC
-   if ( g_pCurrentModel->rc_params.rc_enabled && NULL != s_pPHDownstreamInfoRC )
+   if ( (g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED) && (NULL != s_pPHDownstreamInfoRC) )
    if ( s_pPHDownstreamInfoRC->is_failsafe )
       pFCTelem->uFCFlags = pFCTelem->uFCFlags | FC_TELE_FLAGS_RC_FAILSAFE;
    #endif

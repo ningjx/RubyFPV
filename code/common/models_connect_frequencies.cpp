@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -157,4 +157,24 @@ u32 get_model_main_connect_frequency(u32 uModelId)
          return s_uLoadedModelsConnectFreq[i];
 
    return 0;
+}
+
+
+bool is_vehicle_radio_link_used(Model* pModel, shared_mem_radio_stats* pSMRadioStats, int iVehicleRadioLinkIndex)
+{
+   if ( (NULL == pSMRadioStats) || (NULL == pModel) )
+      return true;
+
+   if ( (iVehicleRadioLinkIndex < 0) || (iVehicleRadioLinkIndex >= pModel->radioLinksParams.links_count) )
+      return false;
+
+   for( int i=0; i<pSMRadioStats->countLocalRadioInterfaces; i++ )
+   {
+      if ( pSMRadioStats->radio_interfaces[i].assignedVehicleRadioLinkId == iVehicleRadioLinkIndex )
+         return true;
+   }
+   if ( pModel->relay_params.uRelayedVehicleId != 0 )
+   if ( pModel->relay_params.isRelayEnabledOnRadioLinkId == iVehicleRadioLinkIndex )
+      return true;
+   return false;
 }

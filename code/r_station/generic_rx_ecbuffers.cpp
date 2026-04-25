@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -235,19 +235,7 @@ void GenericRxECBuffers::_computeECDataOnBlock(int iBufferIndex)
    for( int i=0; i<(int)m_missing_packets_count_for_ec; i++ )
    {
       int iPacketIndexToFix = m_ec_decode_missing_packets_indexes[i];
-      if ( m_bEnableCRC )
-      {
-         u8* pData = m_pBlocks[iBufferIndex].pPackets[iPacketIndexToFix]->uPacketData;
-         u32 uCRC = base_compute_crc32(pData+sizeof(u32), m_iBlockPacketLength-sizeof(u32));
-         u32 uVal = 0;
-         memcpy(&uVal, pData, sizeof(u32));
-         if ( uVal != uCRC )
-         {
-            log_softerror_and_alarm("[GenericRxEcBuffer] Invalid CRC on reconstructed packet %u != %u,  %d bytes", uCRC, uVal, m_iBlockPacketLength);
-            return;
-         }
-      }
-
+      
       m_pBlocks[iBufferIndex].pPackets[iPacketIndexToFix]->bEmpty = false;
       m_pBlocks[iBufferIndex].pPackets[iPacketIndexToFix]->bOutputed = false;
       m_pBlocks[iBufferIndex].pPackets[iPacketIndexToFix]->bReconstructed = true;
@@ -265,18 +253,6 @@ void GenericRxECBuffers::checkAddPacket(u32 uBlockIndex, u32 uPacketIndex, u8* p
 
    if ( uPacketIndex >= (m_uBlockDataPackets + m_uBlockECPackets) )
       return;
-
-   if ( m_bEnableCRC && (uPacketIndex < m_uBlockDataPackets) )
-   {
-      u32 uCRC = base_compute_crc32(pData+sizeof(u32), iDataLength-sizeof(u32));
-      u32 uVal = 0;
-      memcpy(&uVal, pData, sizeof(u32));
-      if ( uVal != uCRC )
-      {
-         log_softerror_and_alarm("[GenericRxEcBuffer] Invalid CRC on recv packet %u != %u,  %d bytes", uCRC, uVal, iDataLength);
-         return;
-      }
-   }
 
    // Empty buffers ?
    if ( m_pBlocks[m_iTopBufferIndex].bEmpty )

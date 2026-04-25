@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../common/string_utils.h"
 #include "media.h"
 #include "../renderer/render_engine.h"
@@ -124,7 +124,7 @@ void _media_remove_invalid_files()
 bool media_init_and_scan()
 {
    log_line("Media Storage: Init media storage...");
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("scanning media");
 
    s_iMediaBootCount = 0;
    s_szMediaCurrentScreenshotFileName[0] = 0;
@@ -144,7 +144,7 @@ bool media_init_and_scan()
 
    media_scan_files();
 
-   ruby_resume_watchdog();
+   ruby_resume_watchdog("scanning media");
    log_line("Media Storage: Init media storage completed.");
 
    return true;
@@ -249,6 +249,7 @@ void _media_take_screenshot()
 
 static void * _thread_media_take_screenshot(void *argument)
 {
+   hw_log_current_thread_attributes("take screenshot");
    _media_take_screenshot();
    return NULL;
 }
@@ -283,8 +284,8 @@ bool media_take_screenshot(bool bIncludeOSD)
    ruby_signal_alive();
 
    if ( 0 != pthread_create(&s_pThreadMediaTakeScreenShot, NULL, &_thread_media_take_screenshot, NULL) )
-   {
       _media_take_screenshot();
-   }
+   else
+      pthread_detach(s_pThreadMediaTakeScreenShot);
    return true;
 }

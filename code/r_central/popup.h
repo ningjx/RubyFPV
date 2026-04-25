@@ -47,6 +47,7 @@ class Popup
    void setMaxWidth(float width);
    void setFixedWidth(float width);
    void setRenderBelowMenu(bool bBelowMenu);
+   void showTimeoutProgress();
    void setCentered();
    void setCenteredTexts();
    void setBottomAlign(bool b);
@@ -67,6 +68,7 @@ class Popup
       bool m_bInvalidated;
       bool m_bBelowMenu;
       bool m_bTopmost;
+      bool m_bShowTimeoutBar;
       bool m_bCentered;
       bool m_bCenterTexts;
       bool m_bBottomAlign;
@@ -106,6 +108,7 @@ class Popup
 };
 
 void popups_add(Popup* p);
+void popups_add_bottom(Popup* p);
 void popups_add_topmost(Popup* p);
 bool popups_has_popup(Popup* p);
 
@@ -113,6 +116,7 @@ void popups_remove(Popup* p);
 void popups_remove_all(Popup* pExceptionPopup = NULL);
 void popups_render();
 void popups_render_topmost();
+void popups_render_bottom();
 void popups_invalidate_all();
 
 int popups_get_count();

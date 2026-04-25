@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -60,16 +60,16 @@ MenuVehicleRadioInterface::MenuVehicleRadioInterface(int iRadioInterface)
    //addTopLine("You have a single radio interface on the vehicle side for this radio link. You can't change the radio interface parameters. They are derived automatically from the radio link params.");
    //addMenuItem(new MenuItem("Ok"));
 
-   m_pItemsSelect[1] = createMenuItemCardModelSelector("Card Model");
-   m_pItemsSelect[1]->setIsEditable();
-   m_IndexCardModel = addMenuItem(m_pItemsSelect[1]);
-
-   m_pItemsSelect[0] = new MenuItemSelect(L("Output Boost Mode"), L("If this radio interface has an output RF power booster connected to it, select the one you have."));
-   m_pItemsSelect[0]->addSelection(L("None"));
-   m_pItemsSelect[0]->addSelection(L("2W Booster"));
-   m_pItemsSelect[0]->addSelection(L("4W Booster"));
+   m_pItemsSelect[0] = createMenuItemCardModelSelector("Card Model");
    m_pItemsSelect[0]->setIsEditable();
-   m_iIndexBoostMode = addMenuItem(m_pItemsSelect[0]);
+   m_IndexCardModel = addMenuItem(m_pItemsSelect[0]);
+
+   m_pItemsSelect[1] = new MenuItemSelect(L("Output Boost Mode"), L("If this radio interface has an output RF power booster connected to it, select the one you have."));
+   m_pItemsSelect[1]->addSelection(L("None"));
+   m_pItemsSelect[1]->addSelection(L("2W Booster"));
+   m_pItemsSelect[1]->addSelection(L("4W Booster"));
+   m_pItemsSelect[1]->setIsEditable();
+   m_iIndexBoostMode = addMenuItem(m_pItemsSelect[1]);
 }
 
 MenuVehicleRadioInterface::~MenuVehicleRadioInterface()
@@ -86,16 +86,13 @@ void MenuVehicleRadioInterface::onShow()
 
 void MenuVehicleRadioInterface::valuesToUI()
 {
-   if ( g_pCurrentModel->radioInterfacesParams.interface_card_model[m_iRadioInterface] < 0 )
-      m_pItemsSelect[1]->setSelection(1-g_pCurrentModel->radioInterfacesParams.interface_card_model[m_iRadioInterface]);
-   else
-      m_pItemsSelect[1]->setSelection(1+g_pCurrentModel->radioInterfacesParams.interface_card_model[m_iRadioInterface]);
+   setSelectionForCardModelSelector(m_pItemsSelect[0], g_pCurrentModel->radioInterfacesParams.interface_card_model[m_iRadioInterface] );
 
-   m_pItemsSelect[0]->setSelectedIndex(0);
+   m_pItemsSelect[1]->setSelectedIndex(0);
    if ( g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[m_iRadioInterface] & RADIO_HW_CAPABILITY_FLAG_HAS_BOOSTER_2W )
-      m_pItemsSelect[0]->setSelectedIndex(1);
+      m_pItemsSelect[1]->setSelectedIndex(1);
    if ( g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[m_iRadioInterface] & RADIO_HW_CAPABILITY_FLAG_HAS_BOOSTER_4W )
-      m_pItemsSelect[0]->setSelectedIndex(2);
+      m_pItemsSelect[1]->setSelectedIndex(2);
 }
 
 void MenuVehicleRadioInterface::Render()
@@ -145,14 +142,11 @@ void MenuVehicleRadioInterface::onSelectItem()
 
    if ( m_IndexCardModel == m_SelectedIndex )
    {
-      int iCardModel = m_pItemsSelect[1]->getSelectedIndex();
       u32 uParam = m_iRadioInterface;
-      if ( 0 == iCardModel )
-         uParam |= 0xFF00;
-      else if ( 1 == iCardModel )
-         uParam = uParam | (128<<8);
-      else
-         uParam = uParam | ((128-(iCardModel-1)) << 8);
+      u32 uCardModel = getSelectedCardForCardModelSelector(m_pItemsSelect[0]);
+      uParam |= ((uCardModel & 0xFF) << 8);
+
+      log_line("MenuVehicleRadioInterface: Selected card model %u, selection index: %d", uCardModel, m_pItemsSelect[0]->getSelectedIndex());
       if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_RADIO_CARD_MODEL, uParam, NULL, 0) )
          valuesToUI();
 
@@ -164,9 +158,9 @@ void MenuVehicleRadioInterface::onSelectItem()
       u32 uNewFlags = g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[m_iRadioInterface];
       uNewFlags &= ~RADIO_HW_CAPABILITY_FLAG_HAS_BOOSTER_2W;
       uNewFlags &= ~RADIO_HW_CAPABILITY_FLAG_HAS_BOOSTER_4W;
-      if ( 1 == m_pItemsSelect[0]->getSelectedIndex() )
+      if ( 1 == m_pItemsSelect[1]->getSelectedIndex() )
          uNewFlags |= RADIO_HW_CAPABILITY_FLAG_HAS_BOOSTER_2W;
-      if ( 2 == m_pItemsSelect[0]->getSelectedIndex() )
+      if ( 2 == m_pItemsSelect[1]->getSelectedIndex() )
          uNewFlags |= RADIO_HW_CAPABILITY_FLAG_HAS_BOOSTER_4W;
 
       if ( uNewFlags == g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[m_iRadioInterface] )

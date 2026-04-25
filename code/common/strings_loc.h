@@ -8,6 +8,7 @@ void initLocalizationData();
 int getLanguagesCount();
 const char* getLanguageName(int iIndex);
 void setActiveLanguage(int iLanguage);
+int getActiveLanguage();
 
 const char* L(const char* szString);
 

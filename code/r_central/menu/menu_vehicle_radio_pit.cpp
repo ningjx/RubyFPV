@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -11,9 +11,9 @@
         * Redistributions in binary form (partially or complete) must reproduce
         the above copyright notice, this list of conditions and the following disclaimer
         in the documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permitted.
@@ -110,12 +110,14 @@ void MenuVehicleRadioLinkPITModes::addItems()
       m_pItemsSelect[2]->setEnabled(false);
 
 
-   m_pItemsSlider[0] = new MenuItemSlider(L("Threshold Temperatures"), 0,120,50, 0.12);
+   m_pItemsSlider[0] = new MenuItemSlider(L("Threshold Temperature"), L("Sets the temperature at which to activate the PIT mode."), 0,120,50, 0.12);
    m_pItemsSlider[0]->setMargin(0.01 * Menu::getScaleFactor());
    m_iIndexPITTemperature = addMenuItem(m_pItemsSlider[0]);
 
    m_pItemsSlider[0]->setCurrentValue((g_pCurrentModel->hwCapabilities.uHWFlags & 0xFF00) >> 8);
    if ( ! (g_pCurrentModel->radioInterfacesParams.uFlagsRadioInterfaces & RADIO_INTERFACES_FLAGS_PIT_MODE_ENABLE) )
+      m_pItemsSlider[0]->setEnabled(false);
+   if ( ! (g_pCurrentModel->radioInterfacesParams.uFlagsRadioInterfaces & RADIO_INTERFACES_FLAGS_PIT_MODE_ENABLE_TEMP) )
       m_pItemsSlider[0]->setEnabled(false);
 
 

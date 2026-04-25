@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -118,16 +118,7 @@ void MenuControllerRadioInterface::valuesToUI()
    int iRadioLinkId = g_SM_RadioStats.radio_interfaces[m_iInterfaceIndex].assignedLocalRadioLinkId;
    u32 cardFlags = controllerGetCardFlags(pNIC->szMAC);
 
-   if ( pCardInfo->cardModel < 0 )
-   {
-      m_pItemsSelect[0]->setSelection(1-pCardInfo->cardModel);
-      m_pItemsSelect[0]->setEnabled(true);
-   }
-   else
-   {
-      m_pItemsSelect[0]->setSelection(1+pCardInfo->cardModel);
-      m_pItemsSelect[0]->setEnabled(true);
-   }
+   setSelectionForCardModelSelector(m_pItemsSelect[0], pCardInfo->cardModel );
 
    if ( NULL != m_pItemsEdit[0] )
       m_pItemsEdit[0]->setCurrentValue(controllerGetCardUserDefinedName(pNIC->szMAC));
@@ -190,7 +181,7 @@ void MenuControllerRadioInterface::valuesToUI()
 
    // Capabilities
 
-   if ( controllerIsCardDisabled(pNIC->szMAC) )
+   if ( controllerIsCardDisabled(pNIC->szMAC) || (1 == hardware_get_radio_interfaces_count()) )
       m_pItemsSelect[3]->setEnabled(false);
    else
       m_pItemsSelect[3]->setEnabled(true);
@@ -227,11 +218,12 @@ void MenuControllerRadioInterface::Render()
 
 void MenuControllerRadioInterface::showProgressInfo()
 {
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("controller update radio interface progress");
    m_pPopupProgress = new Popup(L("Updating Radio Configuration. Please wait..."), 0.3,0.4, 0.5, 15);
    popups_add_topmost(m_pPopupProgress);
 
    g_pRenderEngine->startFrame();
+   render_background_and_paddings(false);
    popups_render();
    popups_render_topmost();
    g_pRenderEngine->endFrame();
@@ -359,9 +351,6 @@ void MenuControllerRadioInterface::onSelectItem()
       return;
    }
 
-   if ( m_pMenuItems[m_SelectedIndex]->isEditing() )
-      return;
-
    radio_hw_info_t* pNIC = hardware_get_radio_info(m_iInterfaceIndex);
    if ( NULL == pNIC )
       return;
@@ -377,24 +366,23 @@ void MenuControllerRadioInterface::onSelectItem()
    if ( m_IndexCardModel == m_SelectedIndex )
    {
       t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pNIC->szMAC);
-      if ( NULL != pCardInfo )
+      if ( NULL == pCardInfo )
+         return;
+
+      u32 uCardModel = getSelectedCardForCardModelSelector(m_pItemsSelect[0]);
+
+      if ( 0xFF == uCardModel )
       {
-         if ( 0 == m_pItemsSelect[0]->getSelectedIndex() )
-         {
-            pCardInfo->cardModel = pNIC->iCardModel;
-            char szMsg[128];
-            sprintf(szMsg, "The radio interface was autodetected as: %s", str_get_radio_card_model_string(pCardInfo->cardModel));
-            addMessage2(0, szMsg, L("The selected value was updated."));
-         }
-         else
-         {
-            pCardInfo->cardModel = m_pItemsSelect[0]->getSelectedIndex()-1;
-            if ( pCardInfo->cardModel > 0 )
-               pCardInfo->cardModel = - pCardInfo->cardModel;
-         }
-         save_ControllerInterfacesSettings();
-         valuesToUI();
+         pCardInfo->cardModel = pNIC->iCardModel;
+         char szMsg[128];
+         sprintf(szMsg, "The radio interface was autodetected as: %s", str_get_radio_card_model_string(pCardInfo->cardModel));
+         addMessage2(0, szMsg, L("The selected value was updated."));
       }
+      else
+         pCardInfo->cardModel = -(int)uCardModel;
+
+      save_ControllerInterfacesSettings();
+      valuesToUI();
       return;
    }
 

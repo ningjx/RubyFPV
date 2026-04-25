@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -32,6 +32,7 @@
 
 #include "base.h"
 #include "hardware.h"
+#include "hardware_procs.h"
 #include "models.h"
 
 Model* s_pModelsSpectator[MAX_MODELS_SPECTATOR];
@@ -125,7 +126,7 @@ bool loadAllModels()
 
    log_line("Loaded controller models (%d):", s_iModelsCount);
    for( int i=0; i<s_iModelsCount; i++ )
-      log_line("Controller model %d: [%s], VID: %u", i+1, s_pModels[i]->getLongName(), s_pModels[i]->uVehicleId);
+      log_line("Controller model %d: [%s], VID: %u, freq1: %d Mhz, ptr: %X", i+1, s_pModels[i]->getLongName(), s_pModels[i]->uVehicleId, s_pModels[i]->radioLinksParams.link_frequency_khz[0]/1000, s_pModels[i]);
 
    return true;
 }
@@ -142,7 +143,7 @@ bool saveCurrentModel()
    strcpy(szFile, FOLDER_CONFIG);
    strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
 
-   log_line("Saving model id %u as current model", s_pCurrentModel->uVehicleId);
+   log_line("Saving model VID %u as current model", s_pCurrentModel->uVehicleId);
    s_pCurrentModel->saveToFile(szFile, hardware_is_station());
 
    if ( hardware_is_vehicle() )
@@ -160,7 +161,7 @@ bool saveCurrentModel()
       s_pModelsSpectator[i]->saveToFile(szBuff, hardware_is_station());
    }
 
-   log_line("Saving %d controller models.", s_iModelsCount);
+   log_line("Saving to controller models.", s_iModelsCount);
    strcpy(szFile, FOLDER_CONFIG);
    strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_COUNT);
    save_simple_config_fileI(szFile, s_iModelsCount);
@@ -168,12 +169,18 @@ bool saveCurrentModel()
    {
       if ( s_pModels[i]->uVehicleId != s_pCurrentModel->uVehicleId )
          continue;
+      log_line("Saving model VID %u as controller model index %d", s_pCurrentModel->uVehicleId, i);
       char szFolderM[MAX_FILE_PATH_SIZE];
       strcpy(szFolderM, FOLDER_CONFIG_MODELS);
       strcat(szFolderM, FILE_VEHICLE_CONTROLL);
       sprintf(szFile, szFolderM, i);
       s_pModels[i]->saveToFile(szFile, hardware_is_station());
    }
+
+   log_line("Saved controller models (%d):", s_iModelsCount);
+   for( int i=0; i<s_iModelsCount; i++ )
+      log_line("Controller model %d: [%s], VID: %u, freq1: %d Mhz, ptr: %X", i+1, s_pModels[i]->getLongName(), s_pModels[i]->uVehicleId, s_pModels[i]->radioLinksParams.link_frequency_khz[0]/1000, s_pModels[i]);
+
    return true;
 }
 
@@ -204,7 +211,7 @@ void setCurrentModel(u32 uVehicleId)
    {
        if ( (NULL != s_pModels[i]) && (s_pModels[i]->uVehicleId == uVehicleId) )
        {
-          log_line("Set current vehicle to controller vehicle index %d (VID %u)", i, uVehicleId);
+          log_line("Set current vehicle: Controller's vehicle index %d (VID %u)", i, uVehicleId);
           s_pCurrentModel = s_pModels[i];
           return;
        }
@@ -213,7 +220,7 @@ void setCurrentModel(u32 uVehicleId)
    {
        if ( (NULL != s_pModelsSpectator[i]) && (s_pModelsSpectator[i]->uVehicleId == uVehicleId) )
        {
-          log_line("Set current vehicle to controller spectator vehicle index %d (VID %u)", i, uVehicleId);
+          log_line("Set current vehicle: Controller's spectator vehicle index %d (VID %u)", i, uVehicleId);
           s_pCurrentModel = s_pModelsSpectator[i];
           return;
        }
@@ -315,14 +322,18 @@ Model* getModelAtIndex(int index)
    return s_pModels[index];
 }
 
-Model* addNewModel()
+Model* addNewModel(u32 uVehicleId, int iVersionMajor, int iVersionMinor)
 {
    if ( s_iModelsCount >= MAX_MODELS-1 )
       return NULL;
-   log_line("Adding a new model in the controller's models list...");
+   log_line("Adding a new model in the controller's models list for VID %u, SW: %d.%d ...",
+      uVehicleId, iVersionMajor, iVersionMinor);
+
    s_pModels[s_iModelsCount] = new Model();
-   s_pModels[s_iModelsCount]->resetToDefaults(true);
-   
+   s_pModels[s_iModelsCount]->resetToDefaults(false);
+   s_pModels[s_iModelsCount]->uVehicleId = uVehicleId;
+   s_pModels[s_iModelsCount]->sw_version = (iVersionMajor * 256 + iVersionMinor);
+
    char szBuff[256];
    char szFolderM[MAX_FILE_PATH_SIZE];
    strcpy(szFolderM, FOLDER_CONFIG_MODELS);
@@ -336,7 +347,7 @@ Model* addNewModel()
    strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_COUNT);
    save_simple_config_fileI(szFile, s_iModelsCount);
    
-   log_line("Added a new model in the controller's models list, VID: %u", s_pModels[s_iModelsCount-1]->uVehicleId);
+   log_line("Added a new model in the controller's models list, VID: %u, software version: %d.%d, b-%d", s_pModels[s_iModelsCount-1]->uVehicleId, get_sw_version_major(s_pModels[s_iModelsCount-1]), get_sw_version_minor(s_pModels[s_iModelsCount-1]), get_sw_version_build(s_pModels[s_iModelsCount-1]));
    return s_pModels[s_iModelsCount-1];
 }
 
@@ -365,7 +376,7 @@ void replaceModel(int index, Model* pModel)
       log_line("Current model VID: %u, ptr: %X", s_pCurrentModel->uVehicleId, s_pCurrentModel);
 }
 
-Model* findModelWithId(u32 uVehicleId, u32 uSrcId)
+Model* findModelWithId2(u32 uVehicleId, u32 uSrcId, bool bLog)
 {
    if ( ! s_bLoadedAllModels )
    {
@@ -384,16 +395,24 @@ Model* findModelWithId(u32 uVehicleId, u32 uSrcId)
       if ( s_pModelsSpectator[i]->uVehicleId == uVehicleId )
          return s_pModelsSpectator[i];
 
-   log_softerror_and_alarm("Tried to find an inexistent VID: %u (source id: %u). Current loaded vehicles:", uVehicleId, uSrcId);
-   for( int i=0; i<s_iModelsCount; i++ )
-      log_softerror_and_alarm("Vehicle Ctrlr %d: %u", i, s_pModels[i]->uVehicleId);
-   for( int i=0; i<s_iModelsSpectatorCount; i++ )
-      log_softerror_and_alarm("Vehicle Spect %d: %u", i, s_pModelsSpectator[i]->uVehicleId);
-   if ( NULL == s_pCurrentModel )
-      log_softerror_and_alarm("Current vehicle: NULL");
-   else
-      log_softerror_and_alarm("Current vehicle: %u", s_pCurrentModel->uVehicleId);
+   if ( bLog )
+   {
+      log_softerror_and_alarm("Tried to find an inexistent VID: %u (source id: %u). Current loaded vehicles:", uVehicleId, uSrcId);
+      for( int i=0; i<s_iModelsCount; i++ )
+         log_softerror_and_alarm("Vehicle Ctrlr %d: %u", i, s_pModels[i]->uVehicleId);
+      for( int i=0; i<s_iModelsSpectatorCount; i++ )
+         log_softerror_and_alarm("Vehicle Spect %d: %u", i, s_pModelsSpectator[i]->uVehicleId);
+      if ( NULL == s_pCurrentModel )
+         log_softerror_and_alarm("Current vehicle: NULL");
+      else
+         log_softerror_and_alarm("Current vehicle: %u", s_pCurrentModel->uVehicleId);
+   }
    return NULL;
+}
+
+Model* findModelWithId(u32 uVehicleId, u32 uSrcId)
+{
+   return findModelWithId2(uVehicleId, uSrcId, true);
 }
 
 bool modelIsInControllerList(u32 uVehicleId)
@@ -577,7 +596,7 @@ void saveControllerModel(Model* pModel)
       if ( s_pModels[i]->uVehicleId == pModel->uVehicleId )
       if ( s_pModels[i]->is_spectator == pModel->is_spectator )
       {
-         log_line("Found matching vehicle in controller's list while saving the model VID %u (mode: %s). Save it in controller's models list too.", pModel->uVehicleId, pModel->is_spectator?"spectator mode":"control mode");
+         log_line("Found matching vehicle (ptr:%X) in controller's list (pos %d of %d) while saving the model VID %u [%s], ptr: %X (mode: %s). Update it in controller's models list.", s_pModels[i], i+1, s_iModelsCount, pModel->uVehicleId, pModel->getLongName(), pModel, pModel->is_spectator?"spectator mode":"control mode");
          char szFile[MAX_FILE_PATH_SIZE];
          char szFolderM[MAX_FILE_PATH_SIZE];
          strcpy(szFolderM, FOLDER_CONFIG_MODELS);
@@ -594,7 +613,7 @@ void saveControllerModel(Model* pModel)
       if ( s_pModelsSpectator[i]->uVehicleId == pModel->uVehicleId )
       if ( s_pModelsSpectator[i]->is_spectator == pModel->is_spectator )
       {
-         log_line("Found matching spectator vehicle in list.");
+         log_line("Found matching vehicle (ptr: %X) in spectator's list (pos %d of %d) while saving the model VID %u [%s], ptr: %X (mode: %s). Update it in controller's models list.", s_pModelsSpectator[i], i+1, s_iModelsSpectatorCount, pModel->uVehicleId, pModel->getLongName(), pModel, pModel->is_spectator?"spectator mode":"control mode");
          char szFile[MAX_FILE_PATH_SIZE];
          char szFolderM[MAX_FILE_PATH_SIZE];
          strcpy(szFolderM, FOLDER_CONFIG_MODELS);
@@ -609,13 +628,18 @@ void saveControllerModel(Model* pModel)
    if ( NULL != s_pCurrentModel )
    if ( pModel->uVehicleId == s_pCurrentModel->uVehicleId )
    {
-      log_line("Saving model VID %u, ptr: %X, as current model", s_pCurrentModel->uVehicleId, s_pCurrentModel);
+      log_line("Saving model VID %u, [%s] ptr: %X, as current model (current model ptr: %X)", pModel->uVehicleId, pModel->getLongName(), pModel, s_pCurrentModel);
       char szFile[MAX_FILE_PATH_SIZE];
       strcpy(szFile, FOLDER_CONFIG);
       strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
       pModel->saveToFile(szFile, true);
       s_pCurrentModel->loadFromFile(szFile, true);
    }
+
+   log_line("Saved/Updated controller models (%d):", s_iModelsCount);
+   for( int i=0; i<s_iModelsCount; i++ )
+      log_line("Controller model %d: [%s], VID: %u, freq1: %d Mhz, ptr: %X", i+1, s_pModels[i]->getLongName(), s_pModels[i]->uVehicleId, s_pModels[i]->radioLinksParams.link_frequency_khz[0]/1000, s_pModels[i]);
+
 }
 
 Model* setControllerCurrentModel(u32 uVehicleId)

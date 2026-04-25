@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -46,6 +46,7 @@
 #include "menu_controller_recording.h"
 #include "menu_controller_dev.h"
 #include "menu_preferences_buttons.h"
+#include "menu_quick_menu_settings.h"
 #include "menu_preferences_ui.h"
 #include "menu_preferences.h"
 #include "menu_controller_radio.h"
@@ -86,7 +87,7 @@ void MenuController::addItems()
    removeAllTopLines();
    
    setTitle(L("Controller Settings"));
-   m_IndexVideo = addMenuItem(new MenuItem(L("Audio & video output"), L("Change Audio and Video Output Settings (HDMI, USB Tethering, Audio output device)")));
+   m_IndexVideo = addMenuItem(new MenuItem(L("Audio & Video Output"), L("Change Audio and Video Output Settings (HDMI, USB Tethering, Audio output device)")));
    //m_pMenuItems[m_IndexVideo]->showArrow();
 
    m_IndexTelemetry = addMenuItem(new MenuItem(L("Telemetry Input/Output"), L("Change the Telemetry Input/Output settings on the controller ports.")));
@@ -122,6 +123,10 @@ void MenuController::addItems()
    //m_pMenuItems[m_IndexEncryption]->setEnabled(false);
 
    m_IndexButtons = addMenuItem(new MenuItem(L("Buttons"), L("Change buttons actions.")));
+
+   m_IndexQuickMenu = addMenuItem(new MenuItem(L("Quick Menu Settings"), L("Configure which actions are enabled in the Quick menu.")));
+   //m_pMenuItems[m_IndexQuickMenu]->showArrow();
+
    m_IndexPreferences = -1;
    //m_IndexPreferences = addMenuItem(new MenuItem("Preferences", "Change preferences about messages."));
    m_IndexPreferencesUI = addMenuItem(new MenuItem(L("User Interface"), L("Change user interface preferences: language, fonts, colors, sizes, display units.")));
@@ -133,7 +138,7 @@ void MenuController::addItems()
    m_IndexDeveloper = -1;
    if ( (NULL != pCS) && pCS->iDeveloperMode )
    {
-      m_IndexDeveloper = addMenuItem( new MenuItem("Developer Settings") );
+      m_IndexDeveloper = addMenuItem( new MenuItem(L("Developer Settings")) );
       m_pMenuItems[m_IndexDeveloper]->showArrow();
       m_pMenuItems[m_IndexDeveloper]->setTextColor(get_Color_Dev());
    }
@@ -142,7 +147,8 @@ void MenuController::addItems()
 
    m_IndexPlugins = addMenuItem(new MenuItem(L("Manage Plugins"), L("Configure, add and remove controller software plugins.")));
    m_IndexUpdate = addMenuItem(new MenuItem(L("Update Software"), L("Updates software on this controller using a USB memory stick.")));
-   m_IndexReboot = addMenuItem(new MenuItem(L("Restart Controller"), L("Restarts the controller.")));
+   //m_IndexReboot = addMenuItem(new MenuItem(L("Restart Controller"), L("Restarts the controller.")));
+   m_IndexReboot = -1;
 }
 
 void MenuController::Render()
@@ -276,6 +282,12 @@ void MenuController::onSelectItem()
       return;
    }
 
+   if ( m_IndexQuickMenu == m_SelectedIndex )
+   {
+      add_menu_to_stack(new MenuQuickMenuSettings());
+      return;
+   }
+
    /*
    if ( m_IndexPreferences == m_SelectedIndex )
    {
@@ -298,7 +310,7 @@ void MenuController::onSelectItem()
       return;
    }
 
-   if ( m_IndexReboot == m_SelectedIndex )
+   if ( (-1 != m_IndexReboot) && (m_IndexReboot == m_SelectedIndex) )
    {
       if ( g_VehiclesRuntimeInfo[g_iCurrentActiveVehicleRuntimeInfoIndex].bGotFCTelemetry )
       if ( g_VehiclesRuntimeInfo[g_iCurrentActiveVehicleRuntimeInfoIndex].headerFCTelemetry.uFCFlags & FC_TELE_FLAGS_ARMED )
@@ -309,7 +321,7 @@ void MenuController::onSelectItem()
          else
             strcpy(szText, "Your vehicle is armed. Are you sure you want to reboot the controller?");
          MenuConfirmation* pMC = new MenuConfirmation(L("Warning! Reboot Confirmation"), szText, 10);
-         if ( g_pCurrentModel->rc_params.rc_enabled )
+         if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
          {
             pMC->addTopLine(" ");
             pMC->addTopLine(L("Warning: You have the RC link enabled, the vehicle flight controller might not go into failsafe mode during reboot."));

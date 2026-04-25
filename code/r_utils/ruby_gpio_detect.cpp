@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -34,7 +34,7 @@
 #include "../base/config.h"
 #include "../base/gpio.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/models.h"
 #include "../common/string_utils.h"
 #include <stdlib.h>
@@ -56,7 +56,6 @@
 
 
 bool g_bQuit = false;
-bool g_bDebug = false;
 
 void handle_sigint(int sig) 
 { 
@@ -76,8 +75,6 @@ int main(int argc, char *argv[])
 
 
    if ( strcmp(argv[argc-1], "-debug") == 0 )
-      g_bDebug = true;
-   if ( g_bDebug )
       log_enable_stdout();
    
    #ifdef HW_CAPABILITY_GPIO

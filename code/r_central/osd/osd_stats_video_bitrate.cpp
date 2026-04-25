@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -58,10 +58,10 @@ float osd_render_stats_video_bitrate_history_get_height()
    height += hGraph + height_text + height_text_small*s_OSDStatsLineSpacing;
 
    height += height_text*s_OSDStatsLineSpacing + height_text;
-   //if ( ! ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) )
+   //if ( ! ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) )
    //   height += height_text*s_OSDStatsLineSpacing;
    //else
-   if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION )
+   if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION )
       height += hGraph2;
    
    height += 4.0*height_text_small*s_OSDStatsLineSpacing;
@@ -190,7 +190,10 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
    for( int i=0; i<(int)g_SM_DevVideoBitrateHistory.uTotalDataPoints; i++ )
    {
       float hDatarate = g_SM_DevVideoBitrateHistory.history[i].uMinVideoDataRateMbps*hGraph/uMaxGraphValue;
-      float hDatarateLow = hDatarate*DEFAULT_VIDEO_LINK_MAX_LOAD_PERCENT/100.0;
+      float hDatarateLow = hDatarate * pActiveModel->radioLinksParams.uMaxLinkLoadPercent[0]/100.0;
+      if ( (pActiveModel->video_link_profiles[pActiveModel->video_params.iCurrentVideoProfile].iDefaultLinkLoad > 0) && (pActiveModel->video_link_profiles[pActiveModel->video_params.iCurrentVideoProfile].iDefaultLinkLoad <= 90) )
+         hDatarateLow = hDatarate * pActiveModel->video_link_profiles[pActiveModel->video_params.iCurrentVideoProfile].iDefaultLinkLoad / 100.0;
+
       float hVideoBitrate = g_SM_DevVideoBitrateHistory.history[i].uVideoBitrateKb*hGraph/uMaxGraphValue/1000.0;
       float hVideoBitrateAvg = g_SM_DevVideoBitrateHistory.history[i].uVideoBitrateAvgKb*hGraph/uMaxGraphValue/1000.0;
       float hTotalBitrateAvg = g_SM_DevVideoBitrateHistory.history[i].uTotalVideoBitrateAvgKb*hGraph/uMaxGraphValue/1000.0;
@@ -222,15 +225,7 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
          if ( g_SM_DevVideoBitrateHistory.history[i-1].uVideoProfileSwitches != g_SM_DevVideoBitrateHistory.history[i].uVideoProfileSwitches )
          if ( (g_SM_DevVideoBitrateHistory.history[i-1].uVideoProfileSwitches>>4) != (g_SM_DevVideoBitrateHistory.history[i].uVideoProfileSwitches>>4) )
          {
-            int iVideoProfile = (g_SM_DevVideoBitrateHistory.history[i-1].uVideoProfileSwitches)>>4;
-
-            if ( iVideoProfile == VIDEO_PROFILE_LQ )
-               g_pRenderEngine->setStroke(250,50,50, s_fOSDStatsGraphLinesAlpha);
-            else if ( iVideoProfile == VIDEO_PROFILE_MQ )
-               g_pRenderEngine->setStroke(200,250,50, s_fOSDStatsGraphLinesAlpha);
-            else
-               g_pRenderEngine->setStroke(50,250,50, s_fOSDStatsGraphLinesAlpha);
-
+            g_pRenderEngine->setStroke(50,250,50, s_fOSDStatsGraphLinesAlpha);
             g_pRenderEngine->drawLine(xBarMiddle - widthBar*0.5, y, xBarMiddle - widthBar*0.5, y + hGraph);
          }
 
@@ -302,7 +297,7 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
    y += height_text_small*s_OSDStatsLineSpacing;
    
    strcpy(szBuff, "Auto Quantization: On");
-   if (!((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION) )
+   if (!((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION) )
       strcpy(szBuff, "Auto Quantization: Off");
    g_pRenderEngine->drawText(xPos, y, s_idFontStats, szBuff);
    y += height_text*s_OSDStatsLineSpacing;
@@ -310,7 +305,7 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
    //---------------------------------------------------------------------------
    // Second graph
 
-   if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION )
+   if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION )
    {   
       u32 uMaxQuant = 0;
       u32 uMinQuant = 1000;
@@ -326,7 +321,7 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
 
       if ( uMaxQuant == uMinQuant || uMaxQuant == uMinQuant+1 )
       {
-         //if ( ! ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) )
+         //if ( ! ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) )
          //{
          //   g_pRenderEngine->drawText(xPos, y, s_idFontStats, "Auto Adjustments is Off.");
          //   return;
@@ -395,5 +390,149 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
       }
    }
    g_pRenderEngine->setStrokeSize(0);
+   osd_set_colors();
+}
+
+void osd_render_video_frames_stats()
+{
+   Model* pActiveModel = osd_get_current_data_source_vehicle_model();
+
+   float height_text = g_pRenderEngine->textHeight(s_idFontStats);
+   float height_text_small = g_pRenderEngine->textHeight(s_idFontStats);
+
+   float width = 1.0 - 2.0 * osd_getMarginX();
+   float height = height_text * 1.8;
+
+   float xPos = osd_getMarginX();
+   float yPos = 1.0 - height - osd_getMarginY();
+   if ( pActiveModel->telemetry_params.fc_telemetry_type != TELEMETRY_TYPE_NONE )
+      yPos -= osd_getBarHeight();
+   if ( pActiveModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MAVLINK )
+      yPos -= osd_getSecondBarHeight();
+
+   bool bAlphaEnabled = g_pRenderEngine->isAlphaBlendingEnabled();
+   //g_pRenderEngine->enableAlphaBlending();
+
+   char szBuff[128];
+   if ( ((g_SMControllerDebugVideoRTInfo.iComputedRxVideoFPS - pActiveModel->video_params.iVideoFPS) > 2) ||
+        ((g_SMControllerDebugVideoRTInfo.iComputedRxVideoFPS - pActiveModel->video_params.iVideoFPS) < -2) )
+      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "Video Frames, FPS: *%d", g_SMControllerDebugVideoRTInfo.iComputedRxVideoFPS);
+   else
+      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "Video Frames, FPS: %d", g_SMControllerDebugVideoRTInfo.iComputedRxVideoFPS);
+   float fTextWidth = g_pRenderEngine->textWidth(s_idFontStatsSmall, szBuff);
+
+   osd_set_colors_background_fill(g_fOSDStatsBgTransparency*0.7);
+   g_pRenderEngine->drawRect(xPos, yPos, width, height);
+   g_pRenderEngine->drawRect(xPos, yPos - height_text_small - 0.1*s_fOSDStatsMargin , fTextWidth + 1.0 * s_fOSDStatsMargin, height_text_small + 0.1*s_fOSDStatsMargin);
+   osd_set_colors();
+
+   g_pRenderEngine->drawText(xPos + 0.5*s_fOSDStatsMargin, yPos - height_text_small + 0.3 * s_fOSDStatsMargin, s_idFontStatsSmall, szBuff);
+
+   float fYMargin = 0.6*s_fOSDStatsMargin;
+   xPos += 0.8*s_fOSDStatsMargin/g_pRenderEngine->getAspectRatio();
+   yPos += fYMargin;
+   width -= 1.6*s_fOSDStatsMargin/g_pRenderEngine->getAspectRatio();
+   height -= 2.0 * fYMargin;
+
+   float widthMax = width;
+   float wPixel = g_pRenderEngine->getPixelWidth();
+   float hPixel = g_pRenderEngine->getPixelHeight();
+
+   double cSecond[] = {255,255,255,1.0};
+
+   float fWidthBar = widthMax/(float)SYSTEM_RT_INFO_INTERVALS_FRAMES;
+   float xBar = xPos;
+   u32 uTimeLastFrame = MAX_U32;
+
+   for( int i=0; i<SYSTEM_RT_INFO_INTERVALS_FRAMES; i++ )
+   {
+       if ( (uTimeLastFrame == MAX_U32) && g_SMControllerDebugVideoRTInfo.uReceivedFrameStartTime[i] != 0 )
+          uTimeLastFrame = g_SMControllerDebugVideoRTInfo.uReceivedFrameStartTime[i];
+
+       if ( g_SMControllerDebugVideoRTInfo.uReceivedFrameStartTime[i] != 0 )
+       if ( g_SMControllerDebugVideoRTInfo.uReceivedFrameStartTime[i]/1000 !=uTimeLastFrame/1000 )
+       {
+          uTimeLastFrame = g_SMControllerDebugVideoRTInfo.uReceivedFrameStartTime[i];
+          g_pRenderEngine->setColors(cSecond);
+          g_pRenderEngine->drawLine(xBar - 3.0*wPixel, yPos - fYMargin + 2.0*hPixel, xBar - 3.0*wPixel, yPos + height + fYMargin - 2.0 * hPixel);
+          g_pRenderEngine->drawLine(xBar - 2.0*wPixel, yPos - fYMargin + 2.0*hPixel, xBar - 2.0*wPixel, yPos + height + fYMargin - 2.0 * hPixel);
+       }
+
+       if ( i == g_SMControllerDebugVideoRTInfo.iCurrentFrameBufferIndex )
+       {
+          xBar += fWidthBar;
+          continue;
+       }
+
+       if ( g_SMControllerDebugVideoRTInfo.uReceivedFrameStartTime[i] == 0 )
+       {
+          g_pRenderEngine->setColors(osdGetColorVideoFrameMissing());
+          //g_pRenderEngine->drawLine(xBar + 0.5*fWidthBar, yPos + 0.5*height, xBar + 0.5*fWidthBar, yPos + 0.5*height + 2.0*hPixel);
+          //g_pRenderEngine->drawLine(xBar + 0.5*fWidthBar + wPixel, yPos + 0.5*height, xBar + 0.5*fWidthBar + wPixel, yPos + 0.5*height + 2.0*hPixel);
+          g_pRenderEngine->drawRect(xBar + 1.0 * wPixel, yPos + 0.5 * height - 4.0*hPixel, fWidthBar - 4.0*wPixel, 8.0*hPixel);
+          xBar += fWidthBar;
+          continue;
+       }
+
+       int iCountNAL = 0;
+       if ( g_SMControllerDebugVideoRTInfo.uOutputFramesInfo[i] & VIDEO_STATUS_FLAGS2_IS_NAL_I )
+          iCountNAL++;
+       if ( g_SMControllerDebugVideoRTInfo.uOutputFramesInfo[i] & VIDEO_STATUS_FLAGS2_IS_NAL_P )
+          iCountNAL++;
+       if ( g_SMControllerDebugVideoRTInfo.uOutputFramesInfo[i] & VIDEO_STATUS_FLAGS2_IS_NAL_O )
+          iCountNAL++;
+
+       if ( iCountNAL == 0 )
+       {
+          g_pRenderEngine->setColors(osdGetColorVideoFrameMissing());
+          g_pRenderEngine->drawRect(xBar, yPos, fWidthBar - 3.0*wPixel, height);
+          xBar += fWidthBar;
+          continue;
+       }
+
+       // Frame has retransmissions?
+       if ( g_SMControllerDebugVideoRTInfo.uOutputFramePackets[i] & 0x0000FF00 )
+       {
+          g_pRenderEngine->setColors(osdGetColorVideoFrameRetr());
+          g_pRenderEngine->drawRect(xBar, yPos, fWidthBar - 3.0*wPixel, height);
+          xBar += fWidthBar;
+          continue;
+       }
+
+       float ySemiBar = yPos;
+       float fHeightSemiBar = height/(float)iCountNAL;
+       if ( iCountNAL > 1 )
+          fHeightSemiBar = (height - 3.0*hPixel*(iCountNAL-1))/(float)iCountNAL;
+
+       if ( g_SMControllerDebugVideoRTInfo.uOutputFramesInfo[i] & VIDEO_STATUS_FLAGS2_IS_NAL_I )
+       {
+          g_pRenderEngine->setColors(osdGetColorVideoFrameI());
+          if ( g_SMControllerDebugVideoRTInfo.uOutputFramePackets[i] & (((u32)0x01)<<24) )
+             g_pRenderEngine->setColors(osdGetColorVideoFrameECMax());
+          else if ( g_SMControllerDebugVideoRTInfo.uOutputFramePackets[i] & 0x00FF0000 )
+             g_pRenderEngine->setColors(osdGetColorVideoFrameEC());
+          g_pRenderEngine->drawRect(xBar, ySemiBar, fWidthBar - 3.0*wPixel, fHeightSemiBar);
+          ySemiBar += fHeightSemiBar + 3.0 * hPixel;
+       }
+       if ( g_SMControllerDebugVideoRTInfo.uOutputFramesInfo[i] & VIDEO_STATUS_FLAGS2_IS_NAL_P )
+       {
+          g_pRenderEngine->setColors(osdGetColorVideoFrameNormal());
+          if ( g_SMControllerDebugVideoRTInfo.uOutputFramePackets[i] & (((u32)0x01)<<24) )
+             g_pRenderEngine->setColors(osdGetColorVideoFrameECMax());
+          else if ( g_SMControllerDebugVideoRTInfo.uOutputFramePackets[i] & 0x00FF0000 )
+             g_pRenderEngine->setColors(osdGetColorVideoFrameEC());
+          g_pRenderEngine->drawRect(xBar, ySemiBar, fWidthBar - 3.0*wPixel, fHeightSemiBar);
+          ySemiBar += fHeightSemiBar + 3.0 * hPixel;
+       }
+       if ( g_SMControllerDebugVideoRTInfo.uOutputFramesInfo[i] & VIDEO_STATUS_FLAGS2_IS_NAL_O )
+       {
+          g_pRenderEngine->setColors(osdGetColorVideoFrameO());
+          g_pRenderEngine->drawRect(xBar, ySemiBar, fWidthBar - 3.0*wPixel, fHeightSemiBar);
+          ySemiBar += fHeightSemiBar + 3.0 * hPixel;
+       }
+       xBar += fWidthBar;
+   }
+
+   g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
    osd_set_colors();
 }

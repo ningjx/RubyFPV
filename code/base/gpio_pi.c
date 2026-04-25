@@ -1,6 +1,6 @@
 #include "base.h"
 #include "gpio.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "config_hw.h"
 #include "config_file_names.h"
 #include <sys/stat.h>

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -34,7 +34,7 @@
 #include "../base/shared_mem.h"
 #include "../base/config.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ctrl_interfaces.h"
 #include "../base/ctrl_settings.h"
 #include "../base/shared_mem_i2c.h"
@@ -52,7 +52,6 @@
 
 
 bool g_bQuit = false;
-u32 g_TimeNow = 0;
 u32 g_TimeLastReloadCheck = 0;
 u32 g_TimeLastINARead = 0;
 u32 g_TimeLastRCInRead = 0;
@@ -126,12 +125,12 @@ void _init_INA()
 
    g_bHasINA = false;
    g_nINAAddress = 0;
-   if ( hardware_has_i2c_device_id(I2C_DEVICE_ADDRESS_INA219_1) )
+   if ( hardware_i2c_has_device_id(I2C_DEVICE_ADDRESS_INA219_1) )
    {
       g_bHasINA = true;
       g_nINAAddress = I2C_DEVICE_ADDRESS_INA219_1;
    }
-   if ( hardware_has_i2c_device_id(I2C_DEVICE_ADDRESS_INA219_2) )
+   if ( hardware_i2c_has_device_id(I2C_DEVICE_ADDRESS_INA219_2) )
    {
       g_bHasINA = true;
       g_nINAAddress = I2C_DEVICE_ADDRESS_INA219_2;
@@ -355,7 +354,7 @@ void _init_external_devices()
    {
       if ( g_nCountExternalDevices >= MAX_I2C_DEVICES )
          break;
-      if ( ! hardware_has_i2c_device_id(addr) )
+      if ( ! hardware_i2c_has_device_id(addr) )
          continue;
       _init_external_device(addr);
    }
@@ -379,7 +378,7 @@ void load_settings()
 
 #ifdef HW_CAPABILITY_I2C
  
-   if ( hardware_has_i2c_device_id(I2C_DEVICE_ADDRESS_PICO_RC_IN) )
+   if ( hardware_i2c_has_device_id(I2C_DEVICE_ADDRESS_PICO_RC_IN) )
    {
       g_pDeviceInfoRCIn = hardware_i2c_get_device_settings(I2C_DEVICE_ADDRESS_PICO_RC_IN);
       if ( NULL == g_pDeviceInfoRCIn || (!g_pDeviceInfoRCIn->bEnabled) )
@@ -397,7 +396,7 @@ void load_settings()
          g_SleepTime = 25;
    }
 
-   if ( hardware_has_i2c_device_id(I2C_DEVICE_ADDRESS_PICO_EXTENDER) )
+   if ( hardware_i2c_has_device_id(I2C_DEVICE_ADDRESS_PICO_EXTENDER) )
    {
       g_pDeviceInfoPicoExtender = hardware_i2c_get_device_settings(I2C_DEVICE_ADDRESS_PICO_EXTENDER);
       if ( NULL == g_pDeviceInfoPicoExtender || (!g_pDeviceInfoPicoExtender->bEnabled) )
@@ -489,7 +488,7 @@ void checkReadINA()
 void _read_RCIn_OldMethod()
 {
 #ifdef HW_CAPABILITY_I2C
-   if ( hardware_has_i2c_device_id(I2C_DEVICE_ADDRESS_PICO_RC_IN) )
+   if ( hardware_i2c_has_device_id(I2C_DEVICE_ADDRESS_PICO_RC_IN) )
    if ( g_nFileRCIn <= 0 )
    if ( NULL != g_pSMRCIn )
    {
@@ -497,7 +496,7 @@ void _read_RCIn_OldMethod()
       return;
    }
 
-   if (	hardware_has_i2c_device_id(I2C_DEVICE_ADDRESS_PICO_EXTENDER) )
+   if (	hardware_i2c_has_device_id(I2C_DEVICE_ADDRESS_PICO_EXTENDER) )
    if ( g_nFilePicoExtender <= 0 )
    if ( NULL != g_pSMRCIn )
    {
@@ -949,7 +948,7 @@ int main(int argc, char *argv[])
    
    if ( strcmp(argv[argc-1], "-ver") == 0 )
    {
-      printf("%d.%d (b%d)", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR/10, SYSTEM_SW_BUILD_NUMBER);
+      printf("%d.%d (b-%d)", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR, SYSTEM_SW_BUILD_NUMBER);
       return 0;
    }
    
@@ -965,7 +964,7 @@ int main(int argc, char *argv[])
 
    hardware_detectBoardAndSystemType();
    
-   hardware_enumerate_i2c_busses();
+   hardware_i2c_enumerate_busses(0);
 
    for( int i=0; i<MAX_I2C_DEVICES; i++ )
    {
@@ -1009,6 +1008,17 @@ int main(int argc, char *argv[])
 
    load_settings();
 
+   ControllerSettings* pCS = get_ControllerSettings();
+   if ( pCS->iCoresAdjustment )
+      hw_set_current_thread_affinity("ruby_i2c", CORE_AFFINITY_I2C, CORE_AFFINITY_I2C);
+   int iPrio = pCS->iThreadPriorityCentral;
+   if ( pCS->iPrioritiesAdjustment && (iPrio > 1) && (iPrio < 100) )
+   {
+      if ( iPrio > 2 )
+         iPrio--;
+      hw_set_priority_current_proc(iPrio); 
+   }
+
    char szFile[128];
    strcpy(szFile, FOLDER_RUBY_TEMP);
    strcat(szFile, FILE_TEMP_I2C_UPDATED);
@@ -1020,6 +1030,7 @@ int main(int argc, char *argv[])
 
    while ( !g_bQuit )
    {
+      g_uLoopCounter++;
       hardware_sleep_ms(g_SleepTime);
       if ( g_bQuit )
          break;

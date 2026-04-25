@@ -14,6 +14,7 @@ class MenuVehicleRadioLink: public Menu
       virtual void Render();
       virtual void onShow();
       virtual int onBack();
+      virtual void onVehicleCommandFinished(u32 uCommandId, u32 uCommandType, bool bSucceeded);
       virtual void onReturnFromChild(int iChildMenuId, int returnValue);  
       virtual void onSelectItem();
       void onChangeRadioConfigFinished(bool bSucceeded);
@@ -24,11 +25,16 @@ class MenuVehicleRadioLink: public Menu
       void addMenuItemsCapabilities();
       void addMenuItemsDataRates();
       void addMenuItemsMCS();
+
+      int convertMCSRateToLegacyRate(int iMCSRate, bool bIsHT40);
+      int convertLegacyRateToMCSRate(int iLegacyRate, bool bIsHT40);
       void sendRadioLinkCapabilities(int iRadioLink);
       void sendRadioLinkConfig(int linkIndex);
+      void sendRadioLinkConfigParams(type_radio_links_parameters* pRadioLinkParams, bool bCheckVideo);
       void sendNewRadioLinkFrequency(int iVehicleLinkIndex, u32 uNewFreqKhz);
 
-      int m_iRadioLink;
+      int m_iVehicleRadioLink;
+      int m_iVehicleRadioInterface;
 
       MenuItemSlider* m_pItemsSlider[20];
       MenuItemSelect* m_pItemsSelect[20];
@@ -39,19 +45,18 @@ class MenuVehicleRadioLink: public Menu
       int m_IndexFrequency;
       int m_IndexUsage;
       int m_IndexCapabilities;
+      int m_IndexMaxLoad;
       int m_IndexDataRatesType;
       int m_IndexDataRateVideo;
-      int m_IndexDataRateTypeDownlink;
-      int m_IndexDataRateTypeUplink;
       int m_IndexDataRateDataDownlink;
       int m_IndexDataRateDataUplink;
-      int m_IndexAutoTelemetryRates;
       int m_IndexHT;
       int m_IndexLDPC;
       int m_IndexSGI;
       int m_IndexSTBC;
-      int m_IndexReset; 
+      int m_IndexReset;
 
-      bool m_bMustSelectDatarate;
-      bool m_bSwitchedDataRatesType;
+      bool m_bWaitingConfirmationFromUser;
+      bool m_bWaitingVideoChangeConfirmationFromVehicle;
+      type_radio_links_parameters m_RadioLinksParamsToApply;
 };

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -108,7 +108,7 @@ RenderEngine::RenderEngine()
    m_fPixelHeight = 0.0;
    m_uClearBufferByte = 0;
    m_fGlobalAlfa = 1.0;
-   m_bEnableRectBlending = true;
+   m_bEnableAlphaBlending = true;
    m_bEnableFontScaling = false;
    m_bHighlightFirstWord = false;
    m_bDrawBackgroundBoundingBoxes = false;
@@ -234,24 +234,24 @@ float RenderEngine::getGlobalAlfa()
    return m_fGlobalAlfa;
 }
 
-bool RenderEngine::isRectBlendingEnabled()
+bool RenderEngine::isAlphaBlendingEnabled()
 {
-   return m_bEnableRectBlending;
+   return m_bEnableAlphaBlending;
 }
 
-void RenderEngine::setRectBlendingEnabled(bool bEnable)
+void RenderEngine::setAlphaBlendingEnabled(bool bEnable)
 {
-   m_bEnableRectBlending = bEnable;
+   m_bEnableAlphaBlending = bEnable;
 }
 
-void RenderEngine::enableRectBlending()
+void RenderEngine::enableAlphaBlending()
 {
-   m_bEnableRectBlending = true;
+   m_bEnableAlphaBlending = true;
 }
 
-void RenderEngine::disableRectBlending()
+void RenderEngine::disableAlphaBlending()
 {
-   m_bEnableRectBlending = false;
+   m_bEnableAlphaBlending = false;
 }
 
 void RenderEngine::setClearBufferByte(u8 uClearByte)
@@ -1125,36 +1125,59 @@ float RenderEngine::drawMessageLines(float xPos, float yPos, const char* text, f
    float xTmp = xPos;
    float yTmp = yPos;
 
-   while ( *szParse )
+   auto isChineseChar = [](const char* ptr) {
+      return (ptr[0] & 0xE0) == 0xE0; // The first byte range of Chinese UTF-8 is 0xE0-0xEF
+   };
+   char outputBuffer[256];
+   bool AddSpace = false;
+   while (*szParse)
    {
-      szWord = szParse;
-      while ( *szParse )
+      //If have space
+      while (*szParse == ' ' || *szParse == '\n')
       {
-         if ( ((*szParse) == ' ') || ((*szParse) == '\n') )
-         {
-            *szParse = 0;
-            szParse++;
-            break;
-         }
+         AddSpace = true;
          szParse++;
       }
-      if ( NULL == szWord )
+      if (!*szParse)
          break;
-      if ( 0 == szWord[0] )
+
+      memset(outputBuffer, 0, sizeof(outputBuffer));
+
+      if (isChineseChar(szParse))
+      {
+         // CN
+         strncpy(outputBuffer, szParse, 3);
+         szParse += 3;
+      }
+      else
+      {
+         // Latin or outhers
+         int i = 0;
+         while (*szParse && !isChineseChar(szParse) && *szParse != ' ' && *szParse != '\n')
+         {
+            outputBuffer[i++] = *szParse++;
+         }
+      }
+      
+      if (strlen(outputBuffer) > 0)
+         szWord = outputBuffer;
+      if (NULL == szWord)
+         break;
+      if (0 == szWord[0])
          continue;
 
       countWords++;
       countLineWords++;
 
       float fWidthWord = textRawWidthScaled(fontId, 1.0, szWord);
-
       if ( (line_width+fWidthWord) <= max_width+0.0002 )
       {
          // Draw on same line
-         if ( countLineWords > 1 )
+         if ( countLineWords > 1 && AddSpace == true)
          {
             line_width += space_width;
             xTmp += space_width;
+            AddSpace = false;
          }
          //if ( m_bEnableFontScaling )
          //   _drawSimpleTextScaled(pFont, szWord, xTmp, yTmp, 0.7);
@@ -1237,6 +1260,10 @@ void RenderEngine::drawRoundRect(float xPos, float yPos, float fWidth, float fHe
 {
 }
 
+void RenderEngine::drawRoundRectMenu(float xPos, float yPos, float fWidth, float fHeight, float fCornerRadius)
+{
+}
+     
 void RenderEngine::drawTriangle(float x1, float y1, float x2, float y2, float x3, float y3)
 {
 }

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -36,8 +36,8 @@
 #include "../base/shared_mem.h"
 #include "../base/ruby_ipc.h"
 #include "../base/commands.h"
-#include "../base/hw_procs.h"
-#include "../base/hardware_cam_maj.h"
+#include "../base/hardware_procs.h"
+#include "../base/hardware_camera.h"
 #include "../base/hardware_radio.h"
 #include "../base/hardware_radio_sik.h"
 #include "../base/hardware_serial.h"
@@ -67,59 +67,8 @@
 #include "process_cam_params.h"
 #include "events.h"
 #include "adaptive_video.h"
-#include "video_source_csi.h"
-#include "video_source_majestic.h"
-
-
-void update_priorities(type_processes_priorities* pOldPriorities, type_processes_priorities* pNewPriorities)
-{
-   if ( (NULL == pOldPriorities) || (NULL == pNewPriorities) )
-      return;
-
-   #ifdef HW_PLATFORM_RASPBERRY
-
-   if ( g_pCurrentModel->isActiveCameraVeye() )
-   {
-      hw_set_proc_priority(VIDEO_RECORDER_COMMAND_VEYE, g_pCurrentModel->processesPriorities.iNiceVideo, g_pCurrentModel->processesPriorities.ioNiceVideo, 1 );
-      hw_set_proc_priority(VIDEO_RECORDER_COMMAND_VEYE_SHORT_NAME, g_pCurrentModel->processesPriorities.iNiceVideo, g_pCurrentModel->processesPriorities.ioNiceVideo, 1 );
-   }
-   else
-      hw_set_proc_priority(VIDEO_RECORDER_COMMAND, g_pCurrentModel->processesPriorities.iNiceVideo, g_pCurrentModel->processesPriorities.ioNiceVideo, 1 );
-
-   hw_set_proc_priority("ruby_rt_vehicle", g_pCurrentModel->processesPriorities.iNiceRouter, g_pCurrentModel->processesPriorities.ioNiceRouter, 1);
-   hw_set_proc_priority("ruby_tx_telemetry", g_pCurrentModel->processesPriorities.iNiceTelemetry, 0, 1 );
-
-   // To fix, now rc and commands are part of ruby_start process
-   //hw_set_proc_priority("ruby_rx_rc", g_pCurrentModel->processesPriorities.iNiceRC, DEFAULT_IO_PRIORITY_RC, 1 );
-   //hw_set_proc_priority("ruby_rx_commands", g_pCurrentModel->processesPriorities.iNiceOthers, 0, 1 );
-
-   #endif
-
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-   if ( pOldPriorities->iNiceVideo != pNewPriorities->iNiceVideo )
-   {
-      int iPID = hw_process_exists("majestic");
-      if ( iPID > 1 )
-      {
-         log_line("Adjust majestic nice priority to %d", pNewPriorities->iNiceVideo);
-         char szComm[256];
-         sprintf(szComm,"renice -n %d -p %d", pNewPriorities->iNiceVideo, iPID);
-         hw_execute_bash_command(szComm, NULL);
-      }
-      else
-         log_softerror_and_alarm("Can't find the PID of majestic");
-   }
-   #endif
-
-   if ( g_pCurrentModel->processesPriorities.iThreadPriorityRouter > 0 )
-      hw_increase_current_thread_priority(NULL, g_pCurrentModel->processesPriorities.iThreadPriorityRouter);
-   else if ( g_iDefaultRouterThreadPriority != -1 )
-      hw_increase_current_thread_priority(NULL, g_iDefaultRouterThreadPriority);
-     
-   radio_rx_set_custom_thread_priority(g_pCurrentModel->processesPriorities.iThreadPriorityRadioRx);
-   radio_tx_set_custom_thread_priority(g_pCurrentModel->processesPriorities.iThreadPriorityRadioTx);
-
-}
+#include "video_sources.h"
+#include "radio_links.h"
 
 u32 _get_previous_frequency_switch(int nLink)
 {
@@ -310,23 +259,7 @@ u32 _get_next_frequency_switch(int nLink)
 void _process_local_notification_model_changed(t_packet_header* pPH, int changeType, int fromComponentId, int iExtraParam)
 {
    log_line("Received local notification to reload model. Change type: %d (%s), from component id: %d (%s)", changeType, str_get_model_change_type(changeType), fromComponentId, str_get_component_id(fromComponentId));
-   log_line("Developer mode is: %s", g_bDeveloperMode?"on":"off");
-   
-   if ( changeType == MODEL_CHANGED_DEBUG_MODE )
-   {
-      log_line("Received notification that developer mode changed from %s to %s",
-        g_bDeveloperMode?"yes":"no",
-        iExtraParam?"yes":"no");
-      if ( g_bDeveloperMode != (bool) iExtraParam )
-      {
-         g_bDeveloperMode = (bool)iExtraParam;
-         video_source_majestic_request_update_program(MODEL_CHANGED_DEBUG_MODE);
-      }
-      ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
-      if ( g_pCurrentModel->rc_params.rc_enabled )
-         ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)pPH, pPH->total_length);
-      return;
-   }
+   log_line("Developer mode is now: %s", (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off");
 
    if ( (changeType == MODEL_CHANGED_STATS) && (fromComponentId == PACKET_COMPONENT_TELEMETRY) )
    {
@@ -347,7 +280,7 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
       strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
       if ( ! g_pCurrentModel->loadFromFile(szFile, false) )
          log_error_and_alarm("Can't load current model vehicle.");
-      hardware_reload_serial_ports_settings();
+      hardware_serial_reload_ports_settings();
       ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
       if ( NULL != g_pProcessStats )
          g_pProcessStats->lastIPCOutgoingTime = g_TimeNow;
@@ -359,6 +292,7 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
    rc_parameters_t oldRCParams;
    audio_parameters_t oldAudioParams;
    type_relay_parameters oldRelayParams;
+   camera_profile_parameters_t oldCameraProfileParams;
    video_parameters_t oldVideoParams;
    type_video_link_profile oldVideoLinkProfiles[MAX_VIDEO_LINK_PROFILES];
    type_processes_priorities oldProcesses;
@@ -368,15 +302,15 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
    memcpy(&oldRCParams, &(g_pCurrentModel->rc_params), sizeof(rc_parameters_t));
    memcpy(&oldAudioParams, &(g_pCurrentModel->audio_params), sizeof(audio_parameters_t));
    memcpy(&oldRelayParams, &(g_pCurrentModel->relay_params), sizeof(type_relay_parameters));
+   memcpy(&oldCameraProfileParams, &(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].profiles[g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCurrentProfile]), sizeof(camera_profile_parameters_t));
    memcpy(&oldVideoParams, &(g_pCurrentModel->video_params), sizeof(video_parameters_t));
    memcpy(&(oldVideoLinkProfiles[0]), &(g_pCurrentModel->video_link_profiles[0]), MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile));
    memcpy(&oldProcesses, &g_pCurrentModel->processesPriorities, sizeof(type_processes_priorities));
    
-   bool bWasOneWayVideo = g_pCurrentModel->isVideoLinkFixedOneWay();
    u32 uOldDevFlags = g_pCurrentModel->uDeveloperFlags;
    u32 old_ef = g_pCurrentModel->enc_flags;
    bool bMustSignalOtherComponents = true;
-   int iPreviousRadioGraphsRefreshInterval = g_pCurrentModel->m_iRadioInterfacesGraphRefreshInterval;
+   int iPreviousRadioGraphsRefreshIntervalMs = g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs;
 
    if ( changeType == MODEL_CHANGED_RADIO_POWERS )
    {
@@ -399,110 +333,92 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
    if ( ! g_pCurrentModel->loadFromFile(szFile, false) )
       log_error_and_alarm("Can't load current model vehicle.");
 
-
-   if ( (g_pCurrentModel->uDeveloperFlags &DEVELOPER_FLAGS_USE_PCAP_RADIO_TX ) != (uOldDevFlags & DEVELOPER_FLAGS_USE_PCAP_RADIO_TX) )
+   if ( changeType == MODEL_CHANGED_DEVELOPER_FLAGS )
    {
-      log_line("Radio Tx mode (PPCAP/Socket) changed. Reinit radio interfaces...");
-      radio_links_close_rxtx_radio_interfaces();
-      if ( NULL != g_pProcessStats )
-      {
-         g_TimeNow = get_current_timestamp_ms();
-         g_pProcessStats->lastActiveTime = g_TimeNow;
-         g_pProcessStats->lastIPCIncomingTime = g_TimeNow;
-      }
-      if ( g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_USE_PCAP_RADIO_TX )
-         radio_set_use_pcap_for_tx(1);
-      else
-         radio_set_use_pcap_for_tx(0);
-      
-      if ( g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_BYPASS_SOCKETS_BUFFERS )
-         radio_set_bypass_socket_buffers(1);
-      else
-         radio_set_bypass_socket_buffers(0);
-      radio_links_open_rxtx_radio_interfaces();
+      log_line("Received notification that developer flags changed. Developer mode changed from %s to %s",
+        (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off",
+        (uOldDevFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off");
+
+      log_line("Old developer flags: %s", str_get_developer_flags(uOldDevFlags));
+      log_line("New developer flags: %s", str_get_developer_flags(g_pCurrentModel->uDeveloperFlags));
+      checkDeveloperFlagsChanges(uOldDevFlags, g_pCurrentModel->uDeveloperFlags);
+
+      ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
+      if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
+         ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)pPH, pPH->total_length);
+      return;
    }
    
    if ( (g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_BYPASS_SOCKETS_BUFFERS) != (oldRadioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_BYPASS_SOCKETS_BUFFERS) )
    {
       log_line("Radio bypass socket buffers changed. Reinit radio interfaces...");
-      radio_links_close_rxtx_radio_interfaces();
-      if ( NULL != g_pProcessStats )
-      {
-         g_TimeNow = get_current_timestamp_ms();
-         g_pProcessStats->lastActiveTime = g_TimeNow;
-         g_pProcessStats->lastIPCIncomingTime = g_TimeNow;
-      }
-      if ( g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_USE_PCAP_RADIO_TX )
-         radio_set_use_pcap_for_tx(1);
-      else
-         radio_set_use_pcap_for_tx(0);
-      
-      if ( g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_BYPASS_SOCKETS_BUFFERS )
-         radio_set_bypass_socket_buffers(1);
-      else
-         radio_set_bypass_socket_buffers(0);
-      radio_links_open_rxtx_radio_interfaces();
+      radio_links_restart(true);
    }
 
-   if ( iPreviousRadioGraphsRefreshInterval != g_pCurrentModel->m_iRadioInterfacesGraphRefreshInterval )
+   if ( iPreviousRadioGraphsRefreshIntervalMs != g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs )
+      radio_stats_set_graph_refresh_interval(&g_SM_RadioStats, g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs);
+
+   if ( changeType == MODEL_CHANGED_VIDEO_PARAMETERS )
    {
-      u32 uRefreshIntervalMs = 100;
-      switch ( g_pCurrentModel->m_iRadioInterfacesGraphRefreshInterval )
-      {
-         case 0: uRefreshIntervalMs = 10; break;
-         case 1: uRefreshIntervalMs = 20; break;
-         case 2: uRefreshIntervalMs = 50; break;
-         case 3: uRefreshIntervalMs = 100; break;
-         case 4: uRefreshIntervalMs = 200; break;
-         case 5: uRefreshIntervalMs = 500; break;
-      }
-      radio_stats_set_graph_refresh_interval(&g_SM_RadioStats, uRefreshIntervalMs);
-   }
-
-
-   // If video link was change from one way to adaptive or viceversa, set video params defaults
-   if ( bWasOneWayVideo != g_pCurrentModel->isVideoLinkFixedOneWay() )
-   {
-      log_line("Received notification that video link has changed (%s -> %s)",
-          bWasOneWayVideo?"oneway":"bidirectional",
-          g_pCurrentModel->isVideoLinkFixedOneWay()?"oneway":"bidirectional");
-      if ( g_pCurrentModel->isVideoLinkFixedOneWay() )
-      {
-         int iKeyframeMs = g_pCurrentModel->getInitialKeyframeIntervalMs(g_pCurrentModel->video_params.user_selected_video_link_profile);
-         // To fix video_link_auto_keyframe_set_local_requested_value(0, iKeyframeMs, "switched to one way video");
-      }
-
-// To fix
-//      u32 uPendingKF = g_SM_VideoLinkStats.overwrites.uCurrentPendingKeyframeMs;
-//      u32 uActiveKF = g_SM_VideoLinkStats.overwrites.uCurrentActiveKeyframeMs;
-
-//To fix       video_stats_overwrites_init();
-   //To fix    video_stats_overwrites_reset_to_highest_level();
-
-//      g_SM_VideoLinkStats.overwrites.uCurrentPendingKeyframeMs = uPendingKF;
-//      g_SM_VideoLinkStats.overwrites.uCurrentActiveKeyframeMs = uActiveKF;
-
-//To fix
-/*
-      if ( g_pCurrentModel->isVideoLinkFixedOneWay() ||
-           (! ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION)) ) 
-         video_link_set_fixed_quantization_values(0);
-*/
-      ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
-      if ( g_pCurrentModel->rc_params.rc_enabled )
-         ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)pPH, pPH->total_length);
+      video_sources_on_changed_video_params(&oldCameraProfileParams, &oldVideoParams, &oldVideoLinkProfiles[0]);
       return;
    }
 
    if ( changeType == MODEL_CHANGED_THREADS_PRIORITIES )
    {
-      log_line("Received notification to adjust threads priorities.");
+      log_line("Received notification to adjust threads priorities. Restart now? %s", iExtraParam?"yes":"no");
+      log_line("Different settings? %s", (0 == memcmp((u8*)&oldProcesses, (u8*)&(g_pCurrentModel->processesPriorities), sizeof(type_processes_priorities)))?"no":"yes");
       log_line("Old thread priorities: router %d, radio rx: %d, radio tx: %d",
          oldProcesses.iThreadPriorityRouter, oldProcesses.iThreadPriorityRadioRx, oldProcesses.iThreadPriorityRadioTx);
       log_line("New thread priorities: router %d, radio rx: %d, radio tx: %d",
          g_pCurrentModel->processesPriorities.iThreadPriorityRouter, g_pCurrentModel->processesPriorities.iThreadPriorityRadioRx, g_pCurrentModel->processesPriorities.iThreadPriorityRadioTx);
-      log_line("Current router/video nice values: %d/%d", g_pCurrentModel->processesPriorities.iNiceRouter, g_pCurrentModel->processesPriorities.iNiceVideo);
-      update_priorities(&oldProcesses, &g_pCurrentModel->processesPriorities);
+      
+      if ( iExtraParam )
+      {
+        log_line("Router and processes are marked for restart. Signal restart all procs and quit it.");
+
+        if ( packets_queue_has_packets(&g_QueueRadioPacketsOut) )
+           process_and_send_packets(false);
+      
+        sem_t* pSem = sem_open(SEMAPHORE_RESTART_VEHICLE_PROCS, O_CREAT, S_IWUSR | S_IRUSR, 0);
+        if ( (NULL == pSem) || (SEM_FAILED == pSem) )
+           log_softerror_and_alarm("Failed to open semaphore to signal restart: %s", SEMAPHORE_RESTART_VEHICLE_PROCS);
+        else
+        {
+           sem_post(pSem);
+           sem_close(pSem);
+           log_line("Signaled semaphore to restart all procs.");
+        }
+      }
+      else
+      {
+         log_line("Set new router raw priority: %d and radio rx/tx threads raw priorities: %d/%d (adjustments enabled: %d)",
+            g_pCurrentModel->processesPriorities.iThreadPriorityRouter, g_pCurrentModel->processesPriorities.iThreadPriorityRadioRx, g_pCurrentModel->processesPriorities.iThreadPriorityRadioTx,
+            (g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_PRIORITIES_ADJUSTMENTS)?1:0);
+         if ( g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_PRIORITIES_ADJUSTMENTS )
+         {
+           radio_rx_set_custom_thread_raw_priority(g_pCurrentModel->processesPriorities.iThreadPriorityRadioRx);
+           radio_tx_set_custom_thread_raw_priority(g_pCurrentModel->processesPriorities.iThreadPriorityRadioTx);
+           if ( oldProcesses.iThreadPriorityRouter != g_pCurrentModel->processesPriorities.iThreadPriorityRouter )
+              hw_set_current_thread_raw_priority("[router]", g_pCurrentModel->processesPriorities.iThreadPriorityRouter);
+         }
+      }
+      return;
+   }
+
+   if ( changeType == MODEL_CHANGED_OVERCLOCKING )
+   {
+      log_line("Received local notification that overclocking was updated: new ARM freq: %d, new GPU freq: %d, new overvoltage: %d",
+         g_pCurrentModel->processesPriorities.iFreqARM,
+         g_pCurrentModel->processesPriorities.iFreqGPU,
+         g_pCurrentModel->processesPriorities.iOverVoltage);
+
+      video_sources_stop_capture();
+      #if defined(HW_PLATFORM_OPENIPC_CAMERA)
+      log_line("Setting CPU speed for OpenIPC hardware to %d Mhz...", g_pCurrentModel->processesPriorities.iFreqARM);
+      hardware_set_oipc_cpu_freq(g_pCurrentModel->processesPriorities.iFreqARM);
+      #endif
+      video_sources_start_capture();
       return;
    }
 
@@ -563,7 +479,7 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
 
       ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
       ruby_ipc_channel_send_message(s_fIPCRouterToCommands, (u8*)pPH, pPH->total_length);
-      if ( g_pCurrentModel->rc_params.rc_enabled )
+      if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
          ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)pPH, pPH->total_length);
       return;
    }
@@ -676,7 +592,7 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
 
       ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
       ruby_ipc_channel_send_message(s_fIPCRouterToCommands, (u8*)pPH, pPH->total_length);
-      if ( g_pCurrentModel->rc_params.rc_enabled )
+      if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
          ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)pPH, pPH->total_length);
       
       send_alarm_to_controller(ALARM_ID_GENERIC, ALARM_ID_GENERIC_TYPE_SWAPPED_RADIO_INTERFACES, 0, 10);
@@ -709,6 +625,8 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
    if ( changeType == MODEL_CHANGED_RELAY_PARAMS )
    {
       log_line("Received notification from commands that relay params or mode changed.");
+      log_line("Old relay params: VID: %u, freq: %s, on vehicle's radio link %d, relay flags: (%s)", oldRelayParams.uRelayedVehicleId, str_format_frequency(oldRelayParams.uRelayFrequencyKhz), oldRelayParams.isRelayEnabledOnRadioLinkId, str_format_relay_flags(oldRelayParams.uRelayCapabilitiesFlags));
+      log_line("New relay params: VID: %u, freq: %s, on vehicle's radio link %d, relay flags: (%s)", g_pCurrentModel->relay_params.uRelayedVehicleId, str_format_frequency(g_pCurrentModel->relay_params.uRelayFrequencyKhz), g_pCurrentModel->relay_params.isRelayEnabledOnRadioLinkId, str_format_relay_flags(g_pCurrentModel->relay_params.uRelayCapabilitiesFlags));
       u8 uOldRelayMode = oldRelayParams.uCurrentRelayMode;
       oldRelayParams.uCurrentRelayMode = g_pCurrentModel->relay_params.uCurrentRelayMode;
       
@@ -747,91 +665,18 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
       // Relay link changed?
       if ( oldRelayParams.isRelayEnabledOnRadioLinkId != g_pCurrentModel->relay_params.isRelayEnabledOnRadioLinkId )
       {
-         // Notify main router and let the main router decide when to update the relay configuration. 
-         g_TimeLastNotificationRelayParamsChanged = g_TimeNow;
-      
+         log_line("Relay radio link has changed. Update relay params and state and signal router to update relay state.");
+         relay_on_relay_params_changed();
+         radio_links_restart(true);
       }
 
       // Relayed vehicle ID changed?
       if ( oldRelayParams.uRelayedVehicleId != g_pCurrentModel->relay_params.uRelayedVehicleId )
       {
-         log_line("Changed relayed vehicle id, from %u to %u.", oldRelayParams.uRelayedVehicleId, g_pCurrentModel->relay_params.uRelayedVehicleId);
-         radio_duplicate_detection_remove_data_for_all_except(g_uControllerId);
-         relay_on_relayed_vehicle_id_changed(g_pCurrentModel->relay_params.uRelayedVehicleId);
+         log_line("Changed relayed vehicle id, from %u to %u. Update relay params and state and signal router to update relay state.", oldRelayParams.uRelayedVehicleId, g_pCurrentModel->relay_params.uRelayedVehicleId);
+         relay_on_relay_params_changed();
+         radio_links_restart(true);
       }
-      return;
-   }
-
-   if ( changeType == MODEL_CHANGED_VIDEO_H264_QUANTIZATION )
-   {
-      int iQuant = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264quantization;
-      log_line("Received local notification that h264 quantization changed. New value: %d", iQuant);
-      if ( ! g_pCurrentModel->hasCamera() )
-         return;
-
-      bool bUseAdaptiveVideo = ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK)?true:false;
-      if ( ! bUseAdaptiveVideo )
-      {
-       // To fix
-       /*
-         if ( iQuant > 0 )
-            video_link_set_fixed_quantization_values((u8)iQuant);
-         else
-         {
-// To fix
-//            g_SM_VideoLinkStats.overwrites.currentH264QUantization = 0;
-            video_source_capture_mark_needs_update_or_restart(MODEL_CHANGED_VIDEO_H264_QUANTIZATION);
-         }
-         */
-      }
-      else
-      {
-// To fix
-/*
-         if ( g_SM_VideoLinkStats.overwrites.currentVideoLinkProfile == g_SM_VideoLinkStats.overwrites.userVideoLinkProfile )
-         {
-            if ( iQuant > 0 )
-            {
-               g_SM_VideoLinkStats.overwrites.currentH264QUantization = (u8)iQuant;
-               video_link_set_last_quantization_set(g_SM_VideoLinkStats.overwrites.currentH264QUantization);
-               if ( g_pCurrentModel->hasCamera() )
-               if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-                  video_source_csi_send_control_message( RASPIVID_COMMAND_ID_QUANTIZATION_MIN, g_SM_VideoLinkStats.overwrites.currentH264QUantization );
-            }
-         } 
-*/
-      }
-      return;
-   }
-
-   if ( changeType == MODEL_CHANGED_DEFAULT_MAX_ADATIVE_KEYFRAME )
-   {
-      log_line("Received local notification that default max adaptive keyframe interval changed. New value: %u ms", g_pCurrentModel->video_params.uMaxAutoKeyframeIntervalMs);
-      return;
-   }
-
-   if ( changeType == MODEL_CHANGED_VIDEO_KEYFRAME )
-   {
-     int iKeyFrameProfile = g_pCurrentModel->getInitialKeyframeIntervalMs(g_pCurrentModel->video_params.user_selected_video_link_profile);
-     log_line("Received local notification that video keyframe interval changed. New value for user selected video profile: %d ms (%s)", iKeyFrameProfile, str_get_video_profile_name(g_pCurrentModel->video_params.user_selected_video_link_profile));
-     adaptive_video_set_kf_for_current_video_profile((u16)iKeyFrameProfile);
-    // To fix
-
-/*      int iKeyFrameProfile = g_pCurrentModel->getInitialKeyframeIntervalMs(g_pCurrentModel->video_params.user_selected_video_link_profile);
-      int keyframe_ms = g_pCurrentModel->video_link_profiles[g_SM_VideoLinkStats.overwrites.currentVideoLinkProfile].keyframe_ms;
-      if ( keyframe_ms < 0 )
-         keyframe_ms = -keyframe_ms;
-      log_line("Received local notification that video keyframe interval changed. New value for user selected video profile: %d ms, value for current video profile (%s): %d ms", iKeyFrameProfile, str_get_video_profile_name(g_SM_VideoLinkStats.overwrites.currentVideoLinkProfile), keyframe_ms);
-      if ( ! (g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME) )
-      {
-         log_line("User video profile %s is on fixed keyframe, new value: %d ms. Adjust now the video capture keyframe param.", str_get_video_profile_name(g_pCurrentModel->video_params.user_selected_video_link_profile), iKeyFrameProfile);  
-         video_link_auto_keyframe_set_local_requested_value(0, iKeyFrameProfile, "user set a fixed keyframe");
-      }
-      else
-      {
-         log_line("User video profile %s is on auto keyframe. Set the default auto max keyframe value.", str_get_video_profile_name(g_pCurrentModel->video_params.user_selected_video_link_profile) ); 
-      }
- */
       return;
    }
 
@@ -911,10 +756,10 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
       }
       log_line("Received local notification that radio data rates have changed on radio link %d", iRadioLink+1);
       log_line("New radio data rates for link %d: v: %d, d: %d/%d, u: %d/%d",
-            iRadioLink+1, g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iRadioLink],
-            g_pCurrentModel->radioLinksParams.uDownlinkDataDataRateType[iRadioLink],
-            g_pCurrentModel->radioLinksParams.link_datarate_data_bps[iRadioLink],
-            g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[iRadioLink],
+            iRadioLink+1, g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[iRadioLink],
+            g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iRadioLink],
+            g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iRadioLink],
+            g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[iRadioLink],
             g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[iRadioLink]);
 
       // If downlink data rate for an Atheros card has changed, update it.
@@ -928,78 +773,13 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
             continue;
          if ( ! hardware_radio_driver_is_atheros_card(pRadioHWInfo->iRadioDriver) )
             continue;
-         int nRateTx = g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iRadioLink];
+         int nRateTx = g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[iRadioLink];
          update_atheros_card_datarate(g_pCurrentModel, i, nRateTx, g_pProcessStats);
          g_TimeNow = get_current_timestamp_ms();
       }
       return;
    }
-
-   if ( changeType == MODEL_CHANGED_ADAPTIVE_VIDEO_FLAGS )
-   {
-      log_line("Received local notification that adaptive video link capabilities changed.");
-      bMustSignalOtherComponents = false;
-
-      adaptive_video_on_capture_restarted();
-      adaptive_video_set_last_profile_requested_by_controller(g_pCurrentModel->video_params.user_selected_video_link_profile);
-      //bool bUseAdaptiveVideo = ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK)?true:false;
-
-      //if ( (! bOldUseAdaptiveVideo) && bUseAdaptiveVideo )
-      //To fix   video_stats_overwrites_init();
-      //if ( bOldUseAdaptiveVideo && (! bUseAdaptiveVideo ) )
-      //To fix   video_stats_overwrites_reset_to_highest_level();
-      return;
-   }
-
-   if ( changeType == MODEL_CHANGED_EC_SCHEME )
-   {
-      log_line("Received local notification that EC scheme was changed by user.");
-      bMustSignalOtherComponents = false;
-      if ( NULL != g_pVideoTxBuffers )
-         g_pVideoTxBuffers->updateVideoHeader(g_pCurrentModel);
-// To fix
-//      if ( g_SM_VideoLinkStats.overwrites.currentVideoLinkProfile == g_pCurrentModel->video_params.user_selected_video_link_profile )
-//         video_stats_overwrites_reset_to_highest_level();
-      return;
-   }
-
-   if ( changeType == MODEL_CHANGED_VIDEO_BITRATE )
-   {
-      u32 uBitrateBPS = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].bitrate_fixed_bps;
-      char szProfile[64];
-      strcpy(szProfile, str_get_video_profile_name(adaptive_video_get_current_active_video_profile()));
-      log_line("Received local notification that video bitrate was changed by user (from %u bps to %u bps) (current video profile: %s, user selected video profile: %s",
-         oldVideoLinkProfiles[g_pCurrentModel->video_params.user_selected_video_link_profile].bitrate_fixed_bps,
-         uBitrateBPS,
-         szProfile,
-         str_get_video_profile_name(g_pCurrentModel->video_params.user_selected_video_link_profile));
-
-      bMustSignalOtherComponents = false;
-      adaptive_video_on_user_video_bitrate_changed(oldVideoLinkProfiles[g_pCurrentModel->video_params.user_selected_video_link_profile].bitrate_fixed_bps, uBitrateBPS);
-      return;
-   }
-
-   if ( changeType == MODEL_CHANGED_VIDEO_IPQUANTIZATION_DELTA )
-   {
-      int iIPQuantizationDelta = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].iIPQuantizationDelta;
-      int iIPQuantizationDeltaNew = iExtraParam - 100;
-      char szProfile[64];
-      strcpy(szProfile, str_get_video_profile_name(adaptive_video_get_current_active_video_profile()));
-      log_line("Received local notification that video IP quantization delta was changed by user (from %d to %d) (current video profile: %s, user selected video profile: %s",
-         iIPQuantizationDelta,
-         iIPQuantizationDeltaNew,
-         szProfile,
-         str_get_video_profile_name(g_pCurrentModel->video_params.user_selected_video_link_profile));
-
-      if ( adaptive_video_get_current_active_video_profile() == g_pCurrentModel->video_params.user_selected_video_link_profile )
-      {
-         if ( g_pCurrentModel->hasCamera() )
-         if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-            hardware_camera_maj_set_qpdelta(iIPQuantizationDeltaNew);
-      }
-      return;
-   }
-
+   
    if ( changeType == MODEL_CHANGED_SIK_FREQUENCY )
    {
       log_line("Received local notification that a SiK radio frequency was changed. Updating SiK interfaces...");
@@ -1029,9 +809,9 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
       int iLink = iExtraParam;
       log_line("Received local notification that radio flags or datarates changed on radio link %d. Update radio frames type right away.", iLink+1);
       
-      u32 radioFlags = g_pCurrentModel->radioLinksParams.link_radio_flags[iLink];
-      log_line("Radio link %d new datarates: %d/%d", iLink+1, g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iLink], g_pCurrentModel->radioLinksParams.link_datarate_data_bps[iLink]);
-      log_line("Radio link %d new radio flags: %s", iLink+1, str_get_radio_frame_flags_description2(radioFlags));
+      log_line("Radio link %d new datarates: %d/%d", iLink+1, g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[iLink], g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iLink]);
+      log_line("Radio link %d new radio tx flags: %s", iLink+1, str_get_radio_frame_flags_description2(g_pCurrentModel->radioLinksParams.link_radio_flags_tx[iLink]));
+      log_line("Radio link %d new radio rx flags: %s", iLink+1, str_get_radio_frame_flags_description2(g_pCurrentModel->radioLinksParams.link_radio_flags_rx[iLink]));
       
       if( g_pCurrentModel->radioLinkIsSiKRadio(iLink) )
       {
@@ -1060,8 +840,19 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
 
    if ( changeType == MODEL_CHANGED_RC_PARAMS )
    {
+      if ( (oldRCParams.uRCFlags & RC_FLAGS_ENABLED) != (g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED) )
+      {
+         if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
+         {
+            log_line("RC link is enabled. Slow down telemetry packets frequency on slow links.");
+            radio_reset_packets_default_frequencies(1);
+         }
+         else
+            radio_reset_packets_default_frequencies(0);
+      }
+
       // If RC was disabled, stop Rx Rc process
-      if ( oldRCParams.rc_enabled && (! g_pCurrentModel->rc_params.rc_enabled) )
+      if ( (oldRCParams.uRCFlags & RC_FLAGS_ENABLED) && (! (g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED)) )
       {
          vehicle_stop_rx_rc();
          ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
@@ -1069,14 +860,14 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
       }
 
       // If RC was enabled, start Rx Rc process
-      if ( (! oldRCParams.rc_enabled) && g_pCurrentModel->rc_params.rc_enabled )
+      if ( (! (oldRCParams.uRCFlags & RC_FLAGS_ENABLED)) && (g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED) )
       {
          vehicle_launch_rx_rc(g_pCurrentModel);
          ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
          return;       
       }
 
-      if ( g_pCurrentModel->rc_params.rc_enabled )
+      if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
          ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)pPH, pPH->total_length);
       ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
 
@@ -1105,13 +896,13 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
       if ( fromComponentId == PACKET_COMPONENT_COMMANDS )
       {
          ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
-         if ( g_pCurrentModel->rc_params.rc_enabled )
+         if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
             ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)pPH, pPH->total_length);
       }
       if ( fromComponentId == PACKET_COMPONENT_TELEMETRY )
       {
          ruby_ipc_channel_send_message(s_fIPCRouterToCommands, (u8*)pPH, pPH->total_length);
-         if ( g_pCurrentModel->rc_params.rc_enabled )
+         if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
             ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)pPH, pPH->total_length);
       }
    }
@@ -1156,6 +947,12 @@ void process_local_control_packet(t_packet_header* pPH)
       log_line("Received controll message: Video is paused.");
       g_bVideoPaused = true;
    }
+   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_RESUME_VIDEO )
+   {
+      log_line("Received controll message: Video is resumed.");
+      g_bVideoPaused = false;
+   }
+
 
    if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_VEHICLE_CALIBRATION_FILE )
    {
@@ -1191,16 +988,22 @@ void process_local_control_packet(t_packet_header* pPH)
 
       if ( 0 == pCalibFileSegment->calibration_file_type )
       {
+         type_camera_parameters oldCamParams;
+         memcpy((u8*)(&oldCamParams), &(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera]), sizeof(type_camera_parameters));
+         oldCamParams.szCameraBinProfileName[MAX_CAMERA_BIN_PROFILE_NAME-1] = 0;
+
          g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCameraBinProfile = 0;
          g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].szCameraBinProfileName[0] = 0;
          saveCurrentModel();
+
+         log_line("Notify other processes to reload model (reset calibration file)");
          t_packet_header PH;
          radio_packet_init(&PH, PACKET_COMPONENT_LOCAL_CONTROL, PACKET_TYPE_LOCAL_CONTROL_MODEL_CHANGED, STREAM_ID_DATA);
          PH.vehicle_id_src = PACKET_COMPONENT_COMMANDS | (MODEL_CHANGED_CAMERA_CALIBRATION_FILE<<8);
          PH.total_length = sizeof(t_packet_header);
 
          ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)&PH, PH.total_length);
-         if ( g_pCurrentModel->rc_params.rc_enabled )
+         if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
             ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)&PH, PH.total_length);
 
          if ( NULL != g_pProcessStats )
@@ -1209,21 +1012,28 @@ void process_local_control_packet(t_packet_header* pPH)
             g_pProcessStats->lastActiveTime = get_current_timestamp_ms();
 
          if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
-            video_source_majestic_request_update_program(MODEL_CHANGED_CAMERA_CALIBRATION_FILE);
+            video_sources_on_changed_camera_params(&(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera]), &oldCamParams);
          return;
       }
       else if ( pCalibFileSegment->is_last_segment )
       {
+         type_camera_parameters oldCamParams;
+         memcpy((u8*)(&oldCamParams), &(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera]), sizeof(type_camera_parameters));
+         oldCamParams.szCameraBinProfileName[MAX_CAMERA_BIN_PROFILE_NAME-1] = 0;
+
          g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCameraBinProfile = pCalibFileSegment->calibration_file_type;
          strncpy(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].szCameraBinProfileName, pCalibFileSegment->szFileName, MAX_CAMERA_BIN_PROFILE_NAME);
+         g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].szCameraBinProfileName[MAX_CAMERA_BIN_PROFILE_NAME-1] = 0;
          saveCurrentModel();
+
+         log_line("Notify other processes to reload model (calibration file uploaded)");
          t_packet_header PH;
          radio_packet_init(&PH, PACKET_COMPONENT_LOCAL_CONTROL, PACKET_TYPE_LOCAL_CONTROL_MODEL_CHANGED, STREAM_ID_DATA);
          PH.vehicle_id_src = PACKET_COMPONENT_COMMANDS | (MODEL_CHANGED_CAMERA_CALIBRATION_FILE<<8);
          PH.total_length = sizeof(t_packet_header);
 
          ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)&PH, PH.total_length);
-         if ( g_pCurrentModel->rc_params.rc_enabled )
+         if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
             ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)&PH, PH.total_length);
 
          if ( NULL != g_pProcessStats )
@@ -1232,7 +1042,7 @@ void process_local_control_packet(t_packet_header* pPH)
             g_pProcessStats->lastActiveTime = get_current_timestamp_ms();
 
          if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
-            video_source_majestic_request_update_program(MODEL_CHANGED_CAMERA_CALIBRATION_FILE);
+            video_sources_on_changed_camera_params(&(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera]), &oldCamParams);
          return;
       }
       return;
@@ -1290,38 +1100,42 @@ void process_local_control_packet(t_packet_header* pPH)
       return;
    }
 
-   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_RESUME_VIDEO )
+   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_VEHICLE_APPLY_ALL_VIDEO_SETTINGS )
    {
-      log_line("Received controll message: Video is resumed.");
-      g_bVideoPaused = false;
-   }
-
-   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_START_VIDEO_PROGRAM )
-   {
-      log_line("Received controll message to start video capture program. Parameter: %u", pPH->vehicle_id_dest);
-      if ( g_pCurrentModel->hasCamera() )
-      {
-         if ( g_pCurrentModel->isActiveCameraHDMI() )
-            hardware_sleep_ms(800);
-         if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-            video_source_csi_request_restart_program();
-      }
-      else
-         log_line("Vehicle has no camera. No video capture started.");
+      log_line("Received controll message to apply all video settings.");
+      video_sources_apply_all_parameters();
       return;
    }
 
-   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_UPDATE_VIDEO_PROGRAM )
+   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_FORCE_CAMERA_TYPE )
    {
-      int iChangeType = (int)(pPH->vehicle_id_dest & 0xFF);
-      log_line("Received controll message to update video capture program. Parameter: %u (%s)", pPH->vehicle_id_dest & 0xFF, str_get_model_change_type(iChangeType));
-      if ( MODEL_CHANGED_USER_SELECTED_VIDEO_PROFILE == iChangeType )
+      log_line("Received controll message that camera type was forced to a value. Parameter: %u", pPH->vehicle_id_dest);
+      video_sources_stop_capture();
+
+      if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
       {
-          adaptive_video_init();
+         char szSensor[64];
+         szSensor[0] = 0;
+         switch( g_pCurrentModel->getActiveCameraType() )
+         {
+            case CAMERA_TYPE_OPENIPC_IMX307: strcpy(szSensor, "imx307"); break;
+            case CAMERA_TYPE_OPENIPC_IMX335: strcpy(szSensor, "imx335"); break;
+            case CAMERA_TYPE_OPENIPC_IMX415: strcpy(szSensor, "imx415"); break;
+         }
+         char szComm[256];
+         sprintf(szComm, "fw_setenv sensor %s", szSensor);
+         hw_execute_bash_command(szComm, NULL);
+
+         //if ( 0 == g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCameraBinProfile )
+         hardware_camera_set_default_oipc_calibration(g_pCurrentModel->getActiveCameraType());
+         hardware_reboot();
+         return;
       }
 
       if ( g_pCurrentModel->hasCamera() )
-         video_source_capture_mark_needs_update_or_restart(pPH->vehicle_id_dest);
+      if ( g_pCurrentModel->isActiveCameraHDMI() )
+         hardware_sleep_ms(800);
+      video_sources_start_capture();
       return;
    }
 
@@ -1350,34 +1164,19 @@ void process_local_control_packet(t_packet_header* pPH)
          g_pProcessStats->lastIPCIncomingTime = g_TimeNow;
       }
 
-      radio_links_close_rxtx_radio_interfaces();
-
-      if ( NULL != g_pProcessStats )
-      {
-         g_TimeNow = get_current_timestamp_ms();
-         g_pProcessStats->lastActiveTime = g_TimeNow;
-         g_pProcessStats->lastIPCIncomingTime = g_TimeNow;
-      }
-
-      radio_links_open_rxtx_radio_interfaces();
-
-      if ( NULL != g_pProcessStats )
-      {
-         g_TimeNow = get_current_timestamp_ms();
-         g_pProcessStats->lastActiveTime = g_TimeNow;
-         g_pProcessStats->lastIPCIncomingTime = g_TimeNow;
-      }
-
-      log_line("Completed reinitializing radio interfaces due to local request from a controller command.");
+      radio_links_restart(true);
+      log_line("Completed signaling async reinitialization of radio interfaces due to local request from a controller command.");
       return;
    }
 
    if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_REBOOT )
    {
+      log_line("Received reboot request command. Save model too? %s", (pPH->vehicle_id_dest != 0)?"yes":"no");
       // Signal other components about the reboot request
       if ( pPH->vehicle_id_src == PACKET_COMPONENT_COMMANDS )
       {
          log_line("Received reboot request from RX Commands. Sending it to telemetry.");
+         adaptive_video_save_state();
          ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
          g_uTimeRequestedReboot = g_TimeNow;
       }
@@ -1396,10 +1195,6 @@ void process_local_control_packet(t_packet_header* pPH)
       ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)pPH, pPH->total_length);
       if ( NULL != g_pProcessStats )
          g_pProcessStats->lastIPCOutgoingTime = g_TimeNow;
-
-      //if ( g_pCurrentModel->hasCamera() )
-      //if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      //   video_source_csi_send_control_message( (pPH->stream_packet_idx) & 0xFF, (((pPH->stream_packet_idx)>>8) & 0xFFFF), 0 );
       return;
    }
 

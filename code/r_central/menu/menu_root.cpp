@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -74,7 +74,7 @@ MenuRoot::~MenuRoot()
 void MenuRoot::onShow()
 {
    int iPrevSelectedItem = m_SelectedIndex;
-   log_line("Entering root menu...");
+   log_line("MenuRoot: onShow...");
    
    load_Preferences();
    addItems();
@@ -93,22 +93,31 @@ void MenuRoot::addItems()
    removeAllItems();
    m_iIndexSpectator = -1;
 
-   m_iIndexSimpleSetup = addMenuItem(new MenuItem(L("Quick vehicle setup"), L("Quickly change the most common vehicle settings.")));
-   m_iIndexSearch = addMenuItem(new MenuItem(L("Search"), L("Search for vehicles.")));
+   Preferences* pP = get_Preferences();
+   
+   if ( pP->iShowCompactMenus )
+      m_iIndexSimpleSetup = addMenuItem(new MenuItem(L("Quick vehicle setup"), L("Quickly change the most common vehicle settings.")));
+   else
+      m_iIndexSimpleSetup = addMenuItem(new MenuItem(L("Vehicle Settings"), L("Change current vehicle settings.")));
    m_iIndexMyVehicles = addMenuItem(new MenuItem(L("My vehicles"), L("Manage my vehicles.")));
+   m_iIndexSearch = addMenuItem(new MenuItem(L("Search"), L("Search for vehicles.")));
    addSeparator();
    //m_iIndexSpectator = addMenuItem(new MenuItem("Spectator Vehicles", "See the list of vehicles you recently connected to as a spectator."));
-   m_iIndexVehicle = addMenuItem(new MenuItem(L("Vehicle settings"), L("Change vehicle settings.")));
+
+   if ( pP->iShowCompactMenus )
+      m_iIndexVehicle = addMenuItem(new MenuItem(L("Vehicle settings"), L("Change vehicle settings.")));
+   else
+      m_iIndexVehicle = -1;
    m_iIndexController = addMenuItem(new MenuItem(L("Controller settings"), L("Change controller settings and user interface preferences.")));
    m_iIndexSystem = addMenuItem(new MenuItem(L("System"), L("Configure system options, shows detailed information about the system.")));
    addSeparator();
-   m_iIndexMedia = addMenuItem(new MenuItem(L("Media & storage"), L("Manage saved logs, screenshots and videos.")));
+   m_iIndexMedia = addMenuItem(new MenuItem(L("Media & Storage"), L("Manage saved logs, screenshots and videos.")));
    
    m_pMenuItems[m_ItemsCount-1]->setExtraHeight(m_sfMenuPaddingY);
    char szBuff[256];
    char szBuff2[64];
    getSystemVersionString(szBuff2, (SYSTEM_SW_VERSION_MAJOR<<8) | SYSTEM_SW_VERSION_MINOR);
-   sprintf(szBuff, "Version %s (b.%d)", szBuff2, SYSTEM_SW_BUILD_NUMBER);
+   sprintf(szBuff, "Version %s (b-%d)", szBuff2, SYSTEM_SW_BUILD_NUMBER);
 
    addMenuItem(new MenuItemText(szBuff, true, 0.01 * Menu::getScaleFactor()));
    sprintf(szBuff, "Running on: %s", str_get_hardware_board_name_short(hardware_getBoardType()));
@@ -170,7 +179,6 @@ void MenuRoot::RenderVehicleInfo()
       if ( (NULL != g_pCurrentModel) && link_is_vehicle_online_now(g_pCurrentModel->uVehicleId) )
       {
          sprintf(szLine1, L("Connected to %s"), g_pCurrentModel->getLongName() );
-         //sprintf(szBuff, "Running ver %d.%d", ((g_pCurrentModel->sw_version>>8) & 0xFF), (g_pCurrentModel->sw_version & 0xFF));
          height += g_pRenderEngine->textHeight(g_idFontMenuSmall);
          height += g_pRenderEngine->textHeight(g_idFontMenuSmall);
       }
@@ -277,7 +285,7 @@ void MenuRoot::RenderVehicleInfo()
 
       if ( (NULL != g_pCurrentModel) && link_is_vehicle_online_now(g_pCurrentModel->uVehicleId) )
       {
-         sprintf(szBuff, "Running ver %d.%d, on:", get_sw_version_major(g_pCurrentModel), get_sw_version_minor(g_pCurrentModel) / 10 );
+         sprintf(szBuff, "Running ver %d.%d on:", get_sw_version_major(g_pCurrentModel), get_sw_version_minor(g_pCurrentModel) );
          g_pRenderEngine->drawText(xPos, yPos, g_idFontMenuSmall, szBuff);
          yPos += g_pRenderEngine->textHeight(g_idFontMenuSmall);
          sprintf(szBuff, "%s", str_get_hardware_board_name(g_pCurrentModel->hwCapabilities.uBoardType));
@@ -337,7 +345,7 @@ void MenuRoot::onSelectItem()
       if ( (NULL == g_pCurrentModel) || (0 == g_uActiveControllerModelVID) ||
         (g_bFirstModelPairingDone && (0 == getControllerModelsCount()) && (0 == getControllerModelsSpectatorCount())) )
       {
-         addMessage2(0, "Not paired with any vehicle.", "Search for vehicles to find one and connect to.");
+         addMessage2(0, L("Not paired with any vehicle"), L("Search for vehicles to find one and connect to."));
          return;
       }
 
@@ -346,17 +354,21 @@ void MenuRoot::onSelectItem()
          addMessage2(0, "Not connected to a vehicle.", "Can't change settings when not connected to the vehicle. Connect to a vehicle first.");
          return;
       }
-      MenuVehicleSimpleSetup* pMenu = new MenuVehicleSimpleSetup();
-      add_menu_to_stack(pMenu);
+
+      Preferences* pP = get_Preferences();
+      if ( pP->iShowCompactMenus )
+         add_menu_to_stack(new MenuVehicleSimpleSetup());
+      else
+         add_menu_to_stack(new MenuVehicle());
       return;
    }
 
-   if ( m_iIndexVehicle == m_SelectedIndex )
+   if ( (-1 != m_iIndexVehicle) && (m_iIndexVehicle == m_SelectedIndex) )
    {
       if ( (NULL == g_pCurrentModel) || (0 == g_uActiveControllerModelVID) ||
         (g_bFirstModelPairingDone && (0 == getControllerModelsCount()) && (0 == getControllerModelsSpectatorCount())) )
       {
-         addMessage2(0, "Not paired with any vehicle.", "Search for vehicles to find one and connect to.");
+         addMessage2(0, L("Not paired with any vehicle"), L("Search for vehicles to find one and connect to."));
          return;
       }
       add_menu_to_stack(new MenuVehicle());

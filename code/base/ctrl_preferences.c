@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -33,7 +33,7 @@
 #include "base.h"
 #include "config.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "ctrl_preferences.h"
 #include <ctype.h>
 
@@ -94,12 +94,10 @@ void reset_Preferences()
    s_Preferences.iDebugRestartOnRadioSilence = 0;
    s_Preferences.iOSDFont = 1;
    s_Preferences.iPersistentMessages = 1;
-   s_Preferences.nLogLevel = 1;
+   s_Preferences.nLogLevel = 0;
    s_Preferences.iDebugShowDevVideoStats = 0;
    s_Preferences.iDebugShowDevRadioStats = 0;
    s_Preferences.iDebugShowFullRXStats = 0;
-   s_Preferences.iDebugShowVehicleVideoStats = 0;
-   s_Preferences.iDebugShowVehicleVideoGraphs = 0;
    s_Preferences.iDebugShowVideoSnapshotOnDiscard = 0;
    s_Preferences.iDebugWiFiChangeDelay = DEFAULT_DELAY_WIFI_CHANGE;
 
@@ -117,11 +115,12 @@ void reset_Preferences()
 
    s_Preferences.iDebugStatsQAButton = 0;
    s_Preferences.uDebugStatsFlags = CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_TX_PACKETS |
-      CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_H264265_FRAMES |
+      //CTRL_RT_DEBUG_INFO_FLAG_SHOW_OUTPUT_VIDEO_FRAMES |
       //CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_DBM |
       //CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_MISSING_PACKETS_MAX_GAP |
       //CTRL_RT_DEBUG_INFO_FLAG_SHOW_MIN_MAX_ACK_TIME |
-      CTRL_RT_DEBUG_INFO_FLAG_SHOW_ACK_TIME_HISTORY |
+      //CTRL_RT_DEBUG_INFO_FLAG_SHOW_ACK_TIME_HISTORY |
+      CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_SNR |
       CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_MAX_EC_USED |
       CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_UNRECOVERABLE_BLOCKS |
       CTRL_RT_DEBUG_INFO_FLAG_SHOW_VIDEO_PROFILE_CHANGES;
@@ -138,6 +137,9 @@ void reset_Preferences()
    s_Preferences.iOSDFont = 1;
    s_Preferences.iOSDFontBold = 1;
    #endif
+
+   s_Preferences.iShowCompactMenus = 1;
+   s_Preferences.uEnabledQuickMenu = 0xFFFFFFFF;
 }
 
 int save_Preferences()
@@ -191,7 +193,7 @@ int save_Preferences()
    // Extra values
 
    fprintf(fd, "%d\n", s_Preferences.iDebugShowVideoSnapshotOnDiscard);
-   fprintf(fd, "%d %d\n", s_Preferences.iDebugShowVehicleVideoStats, s_Preferences.iDebugShowVehicleVideoGraphs);
+   fprintf(fd, "%d %d\n", 0, 0);
 
    fprintf(fd, "%d %d %d\n", s_Preferences.iAutoExportSettings, s_Preferences.iAutoExportSettingsWasModified, s_Preferences.iShowProcessesMonitor);
 
@@ -213,6 +215,8 @@ int save_Preferences()
    fprintf(fd, "%d\n", s_Preferences.iUnitsHeight);
    fprintf(fd, "%d %d\n", s_Preferences.iOSDFontBold, s_Preferences.iMenuFontBold);
    fprintf(fd, "%d %d %d\n", s_Preferences.iMSPOSDSize, s_Preferences.iMSPOSDDeltaX, s_Preferences.iMSPOSDDeltaY);
+   fprintf(fd, "%d\n", s_Preferences.iShowCompactMenus);
+   fprintf(fd, "%u\n", s_Preferences.uEnabledQuickMenu);
    fclose(fd);
    log_line("Saved preferences to file: %s", szFile);
    return 1;
@@ -232,7 +236,8 @@ int load_Preferences()
    }
 
    int failed = 0;
-
+   int iDummy1 = 0;
+   int iDummy2 = 0;
    char szBuff[256];
    szBuff[0] = 0;
    if ( 1 != fscanf(fd, "%s", szBuff) )
@@ -355,10 +360,8 @@ int load_Preferences()
       bOk = 0;
    }
 
-   if ( bOk && 2 != fscanf(fd, "%d %d", &s_Preferences.iDebugShowVehicleVideoStats, &s_Preferences.iDebugShowVehicleVideoGraphs) )
+   if ( bOk && 2 != fscanf(fd, "%d %d", &iDummy1, &iDummy2) )
    {
-      s_Preferences.iDebugShowVehicleVideoStats = 0;
-      s_Preferences.iDebugShowVehicleVideoGraphs = 0;
       bOk = 0;
    }
 
@@ -404,7 +407,10 @@ int load_Preferences()
    if ( bOk && (1 != fscanf(fd, "%d", &s_Preferences.iLanguage)) )
    {
       s_Preferences.iLanguage = 1;
+      bOk = 0;
    }
+   if (! bOk )
+      s_Preferences.iLanguage = 1;
 
    if ( bOk )
    {
@@ -431,6 +437,12 @@ int load_Preferences()
       s_Preferences.iMSPOSDDeltaX = 0;
       s_Preferences.iMSPOSDDeltaY = 0;
    }
+
+   if ( bOk && (1 != fscanf(fd, "%d", &s_Preferences.iShowCompactMenus)) )
+      s_Preferences.iShowCompactMenus = 1;
+
+   if ( bOk && (1 != fscanf(fd, "%u", &s_Preferences.uEnabledQuickMenu)) )
+      s_Preferences.uEnabledQuickMenu = 0xFFFFFFFF;
 
    // ----------------------------------------------------
    // End reading file;

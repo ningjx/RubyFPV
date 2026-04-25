@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,6 +35,7 @@
 #include "../base/ruby_ipc.h"
 #include "../base/radio_utils.h"
 #include "../base/hardware_camera.h"
+#include "../base/hardware_procs.h"
 #include "../radio/radiopackets2.h"
 #include "../radio/radio_rx.h"
 #include "../radio/radio_tx.h"
@@ -43,14 +44,14 @@
 #include "timers.h"
 #include "radio_links.h"
 #include "adaptive_video.h"
-#include "video_source_csi.h"
-#include "video_source_majestic.h"
+#include "video_sources.h"
 
 int s_iTestLinkState = TEST_LINK_STATE_NONE;
 int s_iTestLinkIndex = -1;
 int s_iTestLinkCurrentRunCount = 0;
 type_radio_links_parameters s_RadioLinksParamsToTest;
 type_radio_links_parameters s_RadioLinksParamsOriginal;
+u32 s_uOriginalVideoBitrate = 0;
 
 bool s_bTestLinkOnlyFreqChanged = false;
 bool s_bTestLinkCurrentTestSucceeded = false;
@@ -70,7 +71,6 @@ bool s_bMustReopenRadioInterfacesForRead[MAX_RADIO_INTERFACES];
 bool s_bMustReopenRadioInterfacesForWrite[MAX_RADIO_INTERFACES];
 
 u32 s_uTestLinkCountPingsReceived = 0;
-bool s_bSwitchedToTemporaryVideoBitrateOnTest = false;
 
 bool test_link_is_in_progress()
 {
@@ -87,24 +87,65 @@ bool test_link_is_applying_radio_params()
 void _test_link_end_and_notify()
 {
    log_line("[TestLink-%d] Save new tested radio parameters to current model", s_iTestLinkCurrentRunCount);
-   g_pCurrentModel->logVehicleRadioLinkDifferences(&s_RadioLinksParamsOriginal, &s_RadioLinksParamsToTest);
+   char szPrefix[32];
+   sprintf(szPrefix, "[TestLink-%d]", s_iTestLinkCurrentRunCount);
+   int iCountDiff = g_pCurrentModel->logVehicleRadioLinkDifferences(szPrefix, &s_RadioLinksParamsOriginal, &s_RadioLinksParamsToTest);
 
    memcpy(&(g_pCurrentModel->radioLinksParams), &s_RadioLinksParamsToTest, sizeof(type_radio_links_parameters));
-   g_pCurrentModel->updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+   g_pCurrentModel->validateRadioSettings();
    
-   log_line("Current radio power levels:");
+   log_line("[TestLink-%d] Current radio power levels:", s_iTestLinkCurrentRunCount);
    for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
-      log_line("Radio interface %d raw power level: %d", i+1, g_pCurrentModel->radioInterfacesParams.interface_raw_power[i]);
+      log_line("[TestLink-%d] Radio interface %d raw power level: %d", s_iTestLinkCurrentRunCount, i+1, g_pCurrentModel->radioInterfacesParams.interface_raw_power[i]);
       
-   log_line("Current radio interfaces count: RTL8812AU: %d, RTL8812EU: %d, RTL8733BU: %d, Atheros: %d",
-      hardware_radio_has_rtl8812au_cards(), hardware_radio_has_rtl8812eu_cards(), hardware_radio_has_rtl8733bu_cards(), hardware_radio_has_atheros_cards());
+   log_line("[TestLink-%d] Current radio interfaces count: RTL8812AU: %d, RTL8812EU: %d, RTL8733BU: %d, Atheros: %d",
+      s_iTestLinkCurrentRunCount, hardware_radio_has_rtl8812au_cards(), hardware_radio_has_rtl8812eu_cards(), hardware_radio_has_rtl8733bu_cards(), hardware_radio_has_atheros_cards());
 
-   saveCurrentModel();
+   for( int i=0; i<g_pCurrentModel->radioLinksParams.links_count; i++ )
+   {
+      log_line("[TestLink-%d] Radio Link %d data rates: video %d, downlink: %d, uplink %d",
+          s_iTestLinkCurrentRunCount, s_iTestLinkIndex+1, 
+          g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[i],
+          g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[i],
+          g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[i]);
+   }
+   if ( (iCountDiff > 0) || s_bTestLinkCurrentTestSucceeded )
+   {
+      bool bUpdated = g_pCurrentModel->validateVideoProfilesMaxVideoBitrate();
+      u32 uMaxVideoBitrate = g_pCurrentModel->getMaxVideoBitrateSupportedForCurrentRadioLinks();
+      if ( s_uOriginalVideoBitrate > uMaxVideoBitrate )
+         s_uOriginalVideoBitrate = uMaxVideoBitrate;
 
-   if ( s_bSwitchedToTemporaryVideoBitrateOnTest )
-      adaptive_video_set_temporary_bitrate(0);
-   s_bSwitchedToTemporaryVideoBitrateOnTest = false;
+      if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uTargetVideoBitrateBPS > uMaxVideoBitrate )
+         bUpdated = true;
+      if ( bUpdated )
+      {
+         log_line("[TestLink-%d] Must adjust current video profile bitrate (%.2f Mbps) to max allowed on current links: %.1f Mbps",
+            s_iTestLinkCurrentRunCount,
+            g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uTargetVideoBitrateBPS/1000.0/1000.0, uMaxVideoBitrate/1000.0/1000.0);
+      
+         type_video_link_profile oldVideoLinkProfiles[MAX_VIDEO_LINK_PROFILES];
+         memcpy(&(oldVideoLinkProfiles[0]), &(g_pCurrentModel->video_link_profiles[0]), MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile));
+         g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uTargetVideoBitrateBPS = uMaxVideoBitrate;
+         if ( g_pCurrentModel->validateVideoProfilesMaxVideoBitrate() )
+            log_line("[TestLink-%d] Video bitrate was adjusted again to match max allowed on links");
+         video_sources_on_changed_video_params(&(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].profiles[g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCurrentProfile]), &(g_pCurrentModel->video_params), &oldVideoLinkProfiles[0]);
+         log_line("[TestLink-%d] Done adjusting current video profile bitrate (%.1f Mbps) to max allowed on current links: %.1f Mbps",
+            s_iTestLinkCurrentRunCount,
+            g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uTargetVideoBitrateBPS/1000.0/1000.0, uMaxVideoBitrate/1000.0/1000.0);
+      }
+      log_line("[TestLink-%d] Saving final model.", s_iTestLinkCurrentRunCount);
+      saveCurrentModel();
+   }
 
+   adaptive_video_check_update_params();
+   if ( 0 != s_uOriginalVideoBitrate )
+   {
+      video_sources_set_video_bitrate(s_uOriginalVideoBitrate, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].iIPQuantizationDelta, "TestLinkParams OnEnd");
+      s_uOriginalVideoBitrate = 0;
+   }
+
+   log_line("[TestLink-%d] Notify other components to reload model (end test)", s_iTestLinkCurrentRunCount);
    t_packet_header PH;
    radio_packet_init(&PH, PACKET_COMPONENT_LOCAL_CONTROL, PACKET_TYPE_LOCAL_CONTROL_MODEL_CHANGED, STREAM_ID_DATA);
    PH.vehicle_id_src = PACKET_COMPONENT_RUBY | (MODEL_CHANGED_RADIO_LINK_PARAMS<<8) | (((u32)s_iTestLinkIndex)<<16);
@@ -116,7 +157,7 @@ void _test_link_end_and_notify()
 
    ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, (u8*)&PH, PH.total_length);
    ruby_ipc_channel_send_message(s_fIPCRouterToCommands, (u8*)&PH, PH.total_length);
-   if ( g_pCurrentModel->rc_params.rc_enabled )
+   if ( g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED )
       ruby_ipc_channel_send_message(s_fIPCRouterToRC, (u8*)&PH, PH.total_length);
    
    if ( NULL != g_pProcessStats )
@@ -263,7 +304,10 @@ void _test_link_reopen_interfaces()
 static void * _thread_test_link_worker_apply(void *argument)
 {
    log_line("[TestLink-%d] Started worker thread to update radio interfaces for vehicle radio link %d.", s_iTestLinkCurrentRunCount, s_iTestLinkIndex+1);
-   g_pCurrentModel->logVehicleRadioLinkDifferences(&s_RadioLinksParamsOriginal, &s_RadioLinksParamsToTest);
+   hw_log_current_thread_attributes("test link apply");
+   char szPrefix[32];
+   sprintf(szPrefix, "[TestLink-%d]", s_iTestLinkCurrentRunCount);
+   g_pCurrentModel->logVehicleRadioLinkDifferences(szPrefix, &s_RadioLinksParamsOriginal, &s_RadioLinksParamsToTest);
 
    radio_links_apply_settings(g_pCurrentModel, s_iTestLinkIndex, &s_RadioLinksParamsOriginal, &s_RadioLinksParamsToTest);
         
@@ -276,7 +320,10 @@ static void * _thread_test_link_worker_apply(void *argument)
 static void * _thread_test_link_worker_revert(void *argument)
 {
    log_line("[TestLink-%d] Started worker thread to revert radio interfaces for vehicle radio link %d.", s_iTestLinkCurrentRunCount, s_iTestLinkIndex+1);
-   g_pCurrentModel->logVehicleRadioLinkDifferences(&s_RadioLinksParamsToTest, &s_RadioLinksParamsOriginal);
+   hw_log_current_thread_attributes("test link revert");
+   char szPrefix[32];
+   sprintf(szPrefix, "[TestLink-%d]", s_iTestLinkCurrentRunCount);   
+   g_pCurrentModel->logVehicleRadioLinkDifferences(szPrefix, &s_RadioLinksParamsToTest, &s_RadioLinksParamsOriginal);
 
    radio_links_apply_settings(g_pCurrentModel, s_iTestLinkIndex, &s_RadioLinksParamsToTest, &s_RadioLinksParamsOriginal);
         
@@ -308,11 +355,10 @@ void _test_link_switch_to_state(int iNewState, u32 uTimeout)
       s_bTestLinkCurrentTestSucceeded = false;
       s_uTimeLastUpdateCurrentState = g_TimeNow-100;
 
-      if ( !s_bSwitchedToTemporaryVideoBitrateOnTest )
-      {
-         s_bSwitchedToTemporaryVideoBitrateOnTest = true;
-         adaptive_video_set_temporary_bitrate(DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE);
-      }
+      adaptive_video_check_update_params();
+
+      s_uOriginalVideoBitrate = video_sources_get_last_set_video_bitrate();
+      video_sources_set_video_bitrate(DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].iIPQuantizationDelta, "TestLinkParams Start");
       return;
    }
 
@@ -325,7 +371,7 @@ void _test_link_switch_to_state(int iNewState, u32 uTimeout)
          _test_link_close_interfaces();
 
       memcpy(&(g_pCurrentModel->radioLinksParams), &s_RadioLinksParamsToTest, sizeof(type_radio_links_parameters));
-      g_pCurrentModel->updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+      g_pCurrentModel->validateRadioSettings();
 
       if ( 0 != pthread_create(&s_pThreadTestLinkWorker, NULL, &_thread_test_link_worker_apply, NULL) )
       {
@@ -338,6 +384,7 @@ void _test_link_switch_to_state(int iNewState, u32 uTimeout)
          _test_link_switch_to_state(TEST_LINK_STATE_ENDED, TIMEOUT_TEST_LINK_STATE_END);
          return;
       }
+      pthread_detach(s_pThreadTestLinkWorker);
       return;
    }
 
@@ -364,7 +411,7 @@ void _test_link_switch_to_state(int iNewState, u32 uTimeout)
          _test_link_close_interfaces();
 
       memcpy(&(g_pCurrentModel->radioLinksParams), &s_RadioLinksParamsOriginal, sizeof(type_radio_links_parameters));
-      g_pCurrentModel->updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+      g_pCurrentModel->validateRadioSettings();
 
       if ( 0 != pthread_create(&s_pThreadTestLinkWorker, NULL, &_thread_test_link_worker_revert, NULL) )
       {
@@ -377,22 +424,23 @@ void _test_link_switch_to_state(int iNewState, u32 uTimeout)
          _test_link_switch_to_state(TEST_LINK_STATE_ENDED, TIMEOUT_TEST_LINK_STATE_END);
          return;
       }
+      pthread_detach(s_pThreadTestLinkWorker);
       return;
    }
 
    if ( s_iTestLinkState == TEST_LINK_STATE_END )
    {
-      if ( s_bSwitchedToTemporaryVideoBitrateOnTest )
-         adaptive_video_set_temporary_bitrate(0);
-      s_bSwitchedToTemporaryVideoBitrateOnTest = false;
       return;
    }
 
    if ( s_iTestLinkState == TEST_LINK_STATE_ENDED )
    {
-      if ( s_bSwitchedToTemporaryVideoBitrateOnTest )
-         adaptive_video_set_temporary_bitrate(0);
-      s_bSwitchedToTemporaryVideoBitrateOnTest = false;
+      adaptive_video_check_update_params();
+      if ( 0 != s_uOriginalVideoBitrate )
+      {
+         video_sources_set_video_bitrate(s_uOriginalVideoBitrate, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].iIPQuantizationDelta, "TestLinkParams Ended");
+         s_uOriginalVideoBitrate = 0;
+      }
 
       s_iTestLinkState = TEST_LINK_STATE_NONE;
       return;
@@ -472,7 +520,9 @@ void test_link_process_received_message(int iInterfaceIndex, u8* pPacketBuffer)
 
       memcpy(&s_RadioLinksParamsOriginal, &(g_pCurrentModel->radioLinksParams), sizeof(type_radio_links_parameters));
       memcpy(&s_RadioLinksParamsToTest, pPacketBuffer + sizeof(t_packet_header) + PACKET_TYPE_TEST_RADIO_LINK_HEADER_SIZE, sizeof(type_radio_links_parameters));
-      int iDifferences = g_pCurrentModel->logVehicleRadioLinkDifferences(&s_RadioLinksParamsOriginal, &s_RadioLinksParamsToTest);
+      char szPrefix[32];
+      sprintf(szPrefix, "[TestLink-%d]", s_iTestLinkCurrentRunCount);
+      int iDifferences = g_pCurrentModel->logVehicleRadioLinkDifferences(szPrefix, &s_RadioLinksParamsOriginal, &s_RadioLinksParamsToTest);
 
       s_bTestLinkOnlyFreqChanged = false;
       if ( (1 == iDifferences) && (s_RadioLinksParamsOriginal.link_frequency_khz[s_iTestLinkIndex] != s_RadioLinksParamsToTest.link_frequency_khz[s_iTestLinkIndex]) )
@@ -635,6 +685,11 @@ void test_link_process_received_message(int iInterfaceIndex, u8* pPacketBuffer)
 
       return;
    }
+}
+
+type_radio_links_parameters* test_link_get_temp_radio_params()
+{
+   return &s_RadioLinksParamsToTest;
 }
 
 void test_link_loop()

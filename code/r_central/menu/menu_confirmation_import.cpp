@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,7 +35,7 @@
 #include "../../base/ctrl_interfaces.h"
 #include "../../base/ctrl_settings.h"
 #include "../../base/hardware.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 #include "../../utils/utils_controller.h"
 #include "../local_stats.h"
 

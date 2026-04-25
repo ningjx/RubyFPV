@@ -4,7 +4,7 @@
 #include "../base/config.h"
 #include "../base/shared_mem.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 
 bool g_bQuit = false;
 u32 g_TimeNow = 0;

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -32,7 +32,7 @@
 
 #include "hw_config_check.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../radio/radiolink.h"
 #include "../common/string_utils.h"
 
@@ -48,8 +48,11 @@ void log_full_current_radio_configuration(Model* pModel)
       radio_hw_info_t* pRadioInfo = hardware_get_radio_info(i);
       if ( NULL == pRadioInfo )
          continue;
-      log_line("* Radio HW Interface %d: MAC: %s, name: %s, driver: %s, card model: %s",
-         i+1, pRadioInfo->szMAC, pRadioInfo->szName, pRadioInfo->szDriver, str_get_radio_card_model_string(pRadioInfo->iCardModel));
+      log_line("* Radio HW Interface %d: MAC: %s, name: %s, driver str: %s, driver id: %d (%s), radio type: %d (%s), card model: %s",
+         i+1, pRadioInfo->szMAC, pRadioInfo->szName, pRadioInfo->szDriver, 
+         pRadioInfo->iRadioDriver, str_get_radio_driver_description(pRadioInfo->iRadioDriver),
+         pRadioInfo->iRadioType, str_get_radio_type_description(pRadioInfo->iRadioType),
+         str_get_radio_card_model_string(pRadioInfo->iCardModel));
    }
 
    if ( NULL != pModel )
@@ -77,6 +80,11 @@ bool _check_update_hardware_one_interface_after_and_before(Model* pModel)
    }
 
    log_line("[HW Radio Check] Radio hardware check: The single radio interface has changed in the system. Updating system to the new one.");
+   log_line("[HW Radio Check] Radio HW Interface 1: MAC: %s, name: %s, driver str: %s, driver id: %d (%s), radio type: %d (%s), card model: %s",
+         pRadioHWInfo->szMAC, pRadioHWInfo->szName, pRadioHWInfo->szDriver, 
+         pRadioHWInfo->iRadioDriver, str_get_radio_driver_description(pRadioHWInfo->iRadioDriver),
+         pRadioHWInfo->iRadioType, str_get_radio_type_description(pRadioHWInfo->iRadioType),
+         str_get_radio_card_model_string(pRadioHWInfo->iCardModel));
 
    type_radio_interfaces_parameters currentRadioInterfacesParams;
    type_radio_links_parameters currentRadioLinksParams;
@@ -104,8 +112,8 @@ bool _check_update_hardware_one_interface_after_and_before(Model* pModel)
             pModel->radioLinksParams.link_frequency_khz[0] = DEFAULT_FREQUENCY_915;
          pModel->radioLinksParams.link_capabilities_flags[0] = RADIO_HW_CAPABILITY_FLAG_CAN_RX | RADIO_HW_CAPABILITY_FLAG_CAN_TX | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA;
          pModel->radioLinksParams.link_capabilities_flags[0] &= ~(RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO);
-         pModel->radioLinksParams.link_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
-         pModel->radioLinksParams.link_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+         pModel->radioLinksParams.downlink_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+         pModel->radioLinksParams.downlink_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
          pModel->radioLinksParams.uplink_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
          pModel->radioLinksParams.uplink_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
       }
@@ -117,8 +125,8 @@ bool _check_update_hardware_one_interface_after_and_before(Model* pModel)
          pModel->radioLinksParams.link_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK;
          if ( pRadioHWInfo->iCardModel == CARD_MODEL_SERIAL_RADIO_ELRS )
             pModel->radioLinksParams.link_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK_ELRS;
-         pModel->radioLinksParams.link_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
-         pModel->radioLinksParams.link_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+         pModel->radioLinksParams.downlink_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+         pModel->radioLinksParams.downlink_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
          pModel->radioLinksParams.uplink_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
          pModel->radioLinksParams.uplink_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
 
@@ -131,7 +139,7 @@ bool _check_update_hardware_one_interface_after_and_before(Model* pModel)
             pModel->radioLinksParams.link_frequency_khz[0] = DEFAULT_FREQUENCY58;
 
          pModel->resetRadioLinkDataRatesAndFlags(0);
-         pModel->setDefaultVideoBitrate();
+         pModel->setVideoProfilesDefaultVideoBitrates();
       }
    }
    else
@@ -139,15 +147,19 @@ bool _check_update_hardware_one_interface_after_and_before(Model* pModel)
       if ( hardware_radio_index_is_wifi_radio(0) )
       {
          pModel->resetRadioLinkDataRatesAndFlags(0);
-         pModel->setDefaultVideoBitrate();
+         pModel->radioInterfacesParams.interface_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY;
+         pModel->radioInterfacesParams.interface_capabilities_flags[0] &= ~RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK;
+         pModel->radioLinksParams.link_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO;
+         pModel->radioLinksParams.link_capabilities_flags[0] &= ~RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK;
+      
+         pModel->setVideoProfilesDefaultVideoBitrates();
       }
    }
    // Populate radio interfaces radio flags and rates from radio links radio flags and rates
 
    pModel->radioInterfacesParams.interface_current_frequency_khz[0] = pModel->radioLinksParams.link_frequency_khz[0];
-   pModel->radioInterfacesParams.interface_current_radio_flags[0] = pModel->radioLinksParams.link_radio_flags[0];
+   pModel->radioInterfacesParams.interface_supported_radio_flags[0] = RADIO_FLAGS_FRAME_TYPE_DATA | RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES | RADIO_FLAG_HT40;
    pModel->radioInterfacesParams.interface_raw_power[0] = DEFAULT_RADIO_TX_POWER;
-   pModel->radioInterfacesParams.interface_dummy2[0] = 0;
 
    log_line("[HW Radio Check] Radio hardware check: Updated radio links based on current hardware radio interfaces. Completed.");
    return true;
@@ -215,9 +227,8 @@ bool _check_update_hardware_one_interface_after_multiple_before(Model* pModel)
       pModel->radioInterfacesParams.interface_card_model[0] = pRadioInfo->iCardModel;
       pModel->radioInterfacesParams.interface_link_id[0] = 0;
       pModel->radioInterfacesParams.interface_current_frequency_khz[0] = pModel->radioLinksParams.link_frequency_khz[0];
-      pModel->radioInterfacesParams.interface_current_radio_flags[0] = pModel->radioLinksParams.link_radio_flags[0];
+      pModel->radioInterfacesParams.interface_supported_radio_flags[0] = RADIO_FLAGS_FRAME_TYPE_DATA | RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES | RADIO_FLAG_HT40;
       pModel->radioInterfacesParams.interface_raw_power[0] = DEFAULT_RADIO_TX_POWER;
-      pModel->radioInterfacesParams.interface_dummy2[0] = 0;
 
       pModel->radioInterfacesParams.interface_radiotype_and_driver[0] = (pRadioInfo->iRadioType & 0xFF) | ((pRadioInfo->iRadioDriver << 8) & 0xFF00);
       pModel->radioInterfacesParams.interface_supported_bands[0] = pRadioInfo->supportedBands;
@@ -234,7 +245,14 @@ bool _check_update_hardware_one_interface_after_multiple_before(Model* pModel)
       pModel->radioInterfacesParams.interfaces_count = 1;
 
       pModel->resetRadioLinkDataRatesAndFlags(0);
-      pModel->setDefaultVideoBitrate();
+      if ( hardware_radio_index_is_wifi_radio(0) )
+      {
+         pModel->radioInterfacesParams.interface_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY;
+         pModel->radioInterfacesParams.interface_capabilities_flags[0] &= ~RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK;
+         pModel->radioLinksParams.link_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO;
+         pModel->radioLinksParams.link_capabilities_flags[0] &= ~RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK;
+      }
+      pModel->setVideoProfilesDefaultVideoBitrates();
       log_line("[HW Radio Check] Radio hardware check: Updated radio link and radio interface based on current hardware radio interface. Completed.");
       return true;
    }
@@ -259,9 +277,6 @@ bool _check_update_hardware_one_interface_after_multiple_before(Model* pModel)
    pModel->radioInterfacesParams.interface_card_model[0] = pRadioInfo->iCardModel;
    pModel->radioInterfacesParams.interface_link_id[0] = 0;
    pModel->radioInterfacesParams.interface_current_frequency_khz[0] = pModel->radioLinksParams.link_frequency_khz[0];
-   pModel->radioInterfacesParams.interface_current_radio_flags[0] = pModel->radioLinksParams.link_radio_flags[0];
-   pModel->radioInterfacesParams.interface_dummy2[0] = 0;
-
    pModel->radioInterfacesParams.interface_radiotype_and_driver[0] = (pRadioInfo->iRadioType & 0xFF) | ((pRadioInfo->iRadioDriver << 8) & 0xFF00);
    pModel->radioInterfacesParams.interface_supported_bands[0] = pRadioInfo->supportedBands;
    if ( pRadioInfo->isSupported )
@@ -276,7 +291,7 @@ bool _check_update_hardware_one_interface_after_multiple_before(Model* pModel)
    pModel->radioInterfacesParams.interface_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA;
    pModel->radioInterfacesParams.interfaces_count = 1;
 
-   pModel->updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+   pModel->validateRadioSettings();
    log_line("[HW Radio Check] Radio hardware check: Updated radio links based on current hardware radio interfaces. Completed.");
    return true;
 }
@@ -307,7 +322,14 @@ void _add_new_radio_link_for_hw_radio_interface(int iInterfaceIndex, Model* pMod
    
    pModel->radioLinksParams.link_frequency_khz[iRadioLink] = 0;
    pModel->resetRadioLinkDataRatesAndFlags(iRadioLink);
-   pModel->setDefaultVideoBitrate();
+   if ( hardware_radio_index_is_wifi_radio(iInterfaceIndex) )
+   {
+      pModel->radioInterfacesParams.interface_capabilities_flags[iInterfaceIndex] |= RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY;
+      pModel->radioInterfacesParams.interface_capabilities_flags[iInterfaceIndex] &= ~RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK;
+      pModel->radioLinksParams.link_capabilities_flags[iRadioLink] |= RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO;
+      pModel->radioLinksParams.link_capabilities_flags[iRadioLink] &= ~RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK;
+   }
+   pModel->setVideoProfilesDefaultVideoBitrates();
 
    if ( 0 == iRadioLink )
    {
@@ -329,8 +351,8 @@ void _add_new_radio_link_for_hw_radio_interface(int iInterfaceIndex, Model* pMod
          pModel->radioLinksParams.link_frequency_khz[iRadioLink] = DEFAULT_FREQUENCY_915;
 
       pModel->radioLinksParams.link_capabilities_flags[iRadioLink] &= ~(RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO);
-      pModel->radioLinksParams.link_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
-      pModel->radioLinksParams.link_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+      pModel->radioLinksParams.downlink_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+      pModel->radioLinksParams.downlink_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
       pModel->radioLinksParams.uplink_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
       pModel->radioLinksParams.uplink_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
    }
@@ -342,8 +364,8 @@ void _add_new_radio_link_for_hw_radio_interface(int iInterfaceIndex, Model* pMod
       if ( pRadioHWInfo->iCardModel == CARD_MODEL_SERIAL_RADIO_ELRS )
          pModel->radioLinksParams.link_capabilities_flags[iRadioLink] |= RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK_ELRS;
 
-      pModel->radioLinksParams.link_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
-      pModel->radioLinksParams.link_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+      pModel->radioLinksParams.downlink_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+      pModel->radioLinksParams.downlink_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
       pModel->radioLinksParams.uplink_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
       pModel->radioLinksParams.uplink_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
 
@@ -354,7 +376,7 @@ void _add_new_radio_link_for_hw_radio_interface(int iInterfaceIndex, Model* pMod
    // Assign the radio link to the radio interface
 
    pModel->radioInterfacesParams.interface_link_id[iInterfaceIndex] = iRadioLink;
-   pModel->radioInterfacesParams.interface_current_radio_flags[iInterfaceIndex] = pModel->radioLinksParams.link_radio_flags[iRadioLink];
+   pModel->radioInterfacesParams.interface_supported_radio_flags[iInterfaceIndex] = RADIO_FLAGS_FRAME_TYPE_DATA | RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES | RADIO_FLAG_HT40;
    
    // Assign a frequency to the new radio link and the radio interface
 
@@ -416,7 +438,7 @@ bool recheck_disabled_radio_interfaces(Model* pModel)
 
 bool check_update_hardware_nics_vehicle(Model* pModel)
 {
-   log_line("[HW Radio Check] Checking for Radio interfaces hardware change...");
+   log_line("[HW Radio Check] Checking for radio interfaces hardware changes...");
    if ( NULL == pModel )
    {
       log_error_and_alarm("[HW Radio Check] Checking forRadio hardware change failed: No model.");
@@ -530,63 +552,9 @@ bool check_update_hardware_nics_vehicle(Model* pModel)
             if ( k != i )
             {
                log_line("[HW Radio Check] Found HW radio interface %s on hardware position %d and on model radio interface position %d.", pRadioInfo->szMAC, i+1, k+1);
-               log_line("[HW Radio Check] Moving existing model radio interface %s (%s, now at %s) from slot index %d to slot index %d", pRadioInfo->szMAC, str_get_radio_driver_description(pModel->radioInterfacesParams.interface_radiotype_and_driver[k]), str_format_frequency(pModel->radioInterfacesParams.interface_current_frequency_khz[k]), k+1, i+1);
+               log_line("[HW Radio Check] Moving existing model radio interface %s (%s, now at %s) from slot index %d to slot index %d", pRadioInfo->szMAC, str_get_radio_driver_description((pModel->radioInterfacesParams.interface_radiotype_and_driver[k]>>8) & 0xFF), str_format_frequency(pModel->radioInterfacesParams.interface_current_frequency_khz[k]), k+1, i+1);
                iCountMovedInterfaces++;
-               int tmp;
-               u32 u;
-               char szTmp[MAX_MAC_LENGTH+1];
-
-               tmp = pModel->radioInterfacesParams.interface_card_model[i];
-               pModel->radioInterfacesParams.interface_card_model[i] = pModel->radioInterfacesParams.interface_card_model[k];
-               pModel->radioInterfacesParams.interface_card_model[k] = tmp;
-
-               tmp = pModel->radioInterfacesParams.interface_link_id[i];
-               pModel->radioInterfacesParams.interface_link_id[i] = pModel->radioInterfacesParams.interface_link_id[k];
-               pModel->radioInterfacesParams.interface_link_id[k] = tmp;
-
-               tmp = pModel->radioInterfacesParams.interface_raw_power[i];
-               pModel->radioInterfacesParams.interface_raw_power[i] = pModel->radioInterfacesParams.interface_raw_power[k];
-               pModel->radioInterfacesParams.interface_raw_power[k] = tmp;
-
-               u = pModel->radioInterfacesParams.interface_radiotype_and_driver[i];
-               pModel->radioInterfacesParams.interface_radiotype_and_driver[i] = pModel->radioInterfacesParams.interface_radiotype_and_driver[k];
-               pModel->radioInterfacesParams.interface_radiotype_and_driver[k] = u;
-
-               u = pModel->radioInterfacesParams.interface_supported_bands[i];
-               pModel->radioInterfacesParams.interface_supported_bands[i] = pModel->radioInterfacesParams.interface_supported_bands[k];
-               pModel->radioInterfacesParams.interface_supported_bands[k] = u;
-
-               strcpy( szTmp, pModel->radioInterfacesParams.interface_szMAC[i]);
-               strncpy( pModel->radioInterfacesParams.interface_szMAC[i], pModel->radioInterfacesParams.interface_szMAC[k], MAX_MAC_LENGTH-1);
-               pModel->radioInterfacesParams.interface_szMAC[i][MAX_MAC_LENGTH-1] = 0;
-               strncpy( pModel->radioInterfacesParams.interface_szMAC[k], szTmp, MAX_MAC_LENGTH-1);
-               pModel->radioInterfacesParams.interface_szMAC[k][MAX_MAC_LENGTH-1] = 0;
-
-               strcpy( szTmp, pModel->radioInterfacesParams.interface_szPort[i]);
-               strncpy( pModel->radioInterfacesParams.interface_szPort[i], pModel->radioInterfacesParams.interface_szPort[k], MAX_RADIO_PORT_NAME_LENGTH-1);
-               pModel->radioInterfacesParams.interface_szPort[i][MAX_RADIO_PORT_NAME_LENGTH-1] = 0;
-               strncpy( pModel->radioInterfacesParams.interface_szPort[k], szTmp, MAX_RADIO_PORT_NAME_LENGTH-1);
-               pModel->radioInterfacesParams.interface_szPort[k][MAX_RADIO_PORT_NAME_LENGTH-1] = 0;
-
-               u = pModel->radioInterfacesParams.interface_capabilities_flags[i];
-               pModel->radioInterfacesParams.interface_capabilities_flags[i] = pModel->radioInterfacesParams.interface_capabilities_flags[k];
-               pModel->radioInterfacesParams.interface_capabilities_flags[k] = u;
-
-               u = pModel->radioInterfacesParams.interface_current_frequency_khz[i];
-               pModel->radioInterfacesParams.interface_current_frequency_khz[i] = pModel->radioInterfacesParams.interface_current_frequency_khz[k];
-               pModel->radioInterfacesParams.interface_current_frequency_khz[k] = u;
-
-               u = pModel->radioInterfacesParams.interface_current_radio_flags[i];
-               pModel->radioInterfacesParams.interface_current_radio_flags[i] = pModel->radioInterfacesParams.interface_current_radio_flags[k];
-               pModel->radioInterfacesParams.interface_current_radio_flags[k] = u;
-
-               tmp = pModel->radioInterfacesParams.interface_raw_power[i];
-               pModel->radioInterfacesParams.interface_raw_power[i] = pModel->radioInterfacesParams.interface_raw_power[k];
-               pModel->radioInterfacesParams.interface_raw_power[k] = tmp;
-
-               tmp = pModel->radioInterfacesParams.interface_dummy2[i];
-               pModel->radioInterfacesParams.interface_dummy2[i] = pModel->radioInterfacesParams.interface_dummy2[k];
-               pModel->radioInterfacesParams.interface_dummy2[k] = tmp;
+               pModel->swapRadioInterfaces(i,k);
             }
             break;
          }
@@ -630,9 +598,8 @@ bool check_update_hardware_nics_vehicle(Model* pModel)
       log_line("[HW Radio Check] Add new radio interface to model's radio interfaces: %s, hardware index: %d, model interface index: %d", pRadioInfo->szName, i+1, i+1);
       pModel->radioInterfacesParams.interface_card_model[i] = pRadioInfo->iCardModel;
       pModel->radioInterfacesParams.interface_current_frequency_khz[i] = 0;
-      pModel->radioInterfacesParams.interface_current_radio_flags[i] = 0;
+      pModel->radioInterfacesParams.interface_supported_radio_flags[i] = 0;
       pModel->radioInterfacesParams.interface_raw_power[i] = DEFAULT_RADIO_TX_POWER;
-      pModel->radioInterfacesParams.interface_dummy2[i] = 0;
 
       pModel->radioInterfacesParams.interface_radiotype_and_driver[i] = (pRadioInfo->iRadioType & 0xFF) | ((pRadioInfo->iRadioDriver << 8) & 0xFF00);
       pModel->radioInterfacesParams.interface_supported_bands[i] = pRadioInfo->supportedBands;

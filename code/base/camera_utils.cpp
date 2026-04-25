@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -47,11 +47,7 @@ int camera_get_active_camera_h264_slices(Model* pModel)
       return pModel->video_params.iH264Slices;
 
    if ( pModel->isActiveCameraCSICompatible() )
-   { 
-      if ( pModel->video_link_profiles[pModel->video_params.user_selected_video_link_profile].width > 1280 )
-         return 1;
-      if ( pModel->video_link_profiles[pModel->video_params.user_selected_video_link_profile].height > 720 )
-         return 1;
-   }
+   if ( (pModel->video_params.iVideoWidth > 1280) || (pModel->video_params.iVideoHeight > 720) )
+      return 1;
    return pModel->video_params.iH264Slices;
 }

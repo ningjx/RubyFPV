@@ -9,12 +9,11 @@ void relay_process_received_single_radio_packet_from_controller_to_relayed_vehic
 void relay_on_relay_params_changed();
 void relay_on_relay_mode_changed(u8 uOldMode, u8 uNewMode);
 void relay_on_relay_flags_changed(u32 uNewFlags);
-void relay_on_relayed_vehicle_id_changed(u32 uNewVehicleId);
 
 u32 relay_get_time_last_received_ruby_telemetry_from_relayed_vehicle();
 
 void relay_send_packet_to_controller(u8* pBufferData, int iBufferLength);
-void relay_send_single_packet_to_relayed_vehicle(u8* pBufferData, int iBufferLength);
-
+void relay_queue_single_packet_to_relayed_vehicle(u8* pBufferData, int iBufferLength);
+int  relay_send_outgoing_radio_packets_to_relayed_vehicle();
 bool relay_current_vehicle_must_send_own_video_feeds();
 bool relay_current_vehicle_must_send_relayed_video_feeds();

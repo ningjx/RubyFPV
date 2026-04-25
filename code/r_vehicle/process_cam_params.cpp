@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -33,24 +33,24 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/hardware_camera.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include <math.h>
 #include "shared_vars.h"
 #include "timers.h"
-#include "video_source_csi.h"
+#include "video_sources.h"
 #include "ruby_rt_vehicle.h"
 
-bool _try_process_live_changes(int iNewCameraIndex, type_camera_parameters* pNewCamParams, int iCurrentCameraIndex, type_camera_parameters* pCurrentCamParams)
+int _try_process_live_changes(int iNewCameraIndex, type_camera_parameters* pNewCamParams, int iCurrentCameraIndex, type_camera_parameters* pCurrentCamParams)
 {
    if ( (NULL == pNewCamParams) || (NULL == pCurrentCamParams) )
-      return false;
+      return -1;
 
    int iCurCamProfile = pCurrentCamParams[iCurrentCameraIndex].iCurrentProfile;
    int iNewCamProfile = pNewCamParams[iNewCameraIndex].iCurrentProfile;
    camera_profile_parameters_t* pCurCamProfile = &(pCurrentCamParams[iCurrentCameraIndex].profiles[iCurCamProfile]);
    camera_profile_parameters_t* pNewCamProfile = &(pNewCamParams[iNewCameraIndex].profiles[iNewCamProfile]);
 
-   bool bUpdated = false;
+   int iCountUpdates = 0;
    if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
    {
       u32 uCurrentFlags = pCurCamProfile->uFlags;
@@ -59,13 +59,13 @@ bool _try_process_live_changes(int iNewCameraIndex, type_camera_parameters* pNew
       {
          hardware_camera_maj_set_irfilter_off(uNewFlags & CAMERA_FLAG_IR_FILTER_OFF, true);
          pNewCamProfile->uFlags = uCurrentFlags;
-         bUpdated = true;
+         iCountUpdates++;
       }
       if ( (uCurrentFlags & CAMERA_FLAG_OPENIPC_DAYLIGHT_OFF) != (uNewFlags & CAMERA_FLAG_OPENIPC_DAYLIGHT_OFF) )
       {
-         hardware_camera_maj_set_daylight_off(uNewFlags & CAMERA_FLAG_OPENIPC_DAYLIGHT_OFF);
+         hardware_camera_maj_set_daylight_off(uNewFlags & CAMERA_FLAG_OPENIPC_DAYLIGHT_OFF, true);
          pNewCamProfile->uFlags = uCurrentFlags;
-         bUpdated = true;
+         iCountUpdates++;
       }
    }
 
@@ -75,13 +75,13 @@ bool _try_process_live_changes(int iNewCameraIndex, type_camera_parameters* pNew
       {
          hardware_camera_maj_set_brightness(pNewCamProfile->brightness);
          pNewCamProfile->brightness = pCurCamProfile->brightness;
-         bUpdated = true;
+         iCountUpdates++;
       }
       else if ( g_pCurrentModel->isActiveCameraCSICompatible() )
       {
          video_source_csi_send_control_message( RASPIVID_COMMAND_ID_BRIGHTNESS, pNewCamProfile->brightness, 0 );
          pNewCamProfile->brightness = pCurCamProfile->brightness;
-         bUpdated = true;       
+         iCountUpdates++;
       }
    }
 
@@ -91,13 +91,13 @@ bool _try_process_live_changes(int iNewCameraIndex, type_camera_parameters* pNew
       {
          hardware_camera_maj_set_contrast(pNewCamProfile->contrast);
          pNewCamProfile->contrast = pCurCamProfile->contrast;
-         bUpdated = true;
+         iCountUpdates++;
       }
       else if ( g_pCurrentModel->isActiveCameraCSICompatible() )
       {
          video_source_csi_send_control_message( RASPIVID_COMMAND_ID_CONTRAST, pNewCamProfile->contrast, 0 );
          pNewCamProfile->contrast = pCurCamProfile->contrast;
-         bUpdated = true;       
+         iCountUpdates++;
       }
    }
 
@@ -107,13 +107,13 @@ bool _try_process_live_changes(int iNewCameraIndex, type_camera_parameters* pNew
       {
          hardware_camera_maj_set_saturation(pNewCamProfile->saturation);
          pNewCamProfile->saturation = pCurCamProfile->saturation;
-         bUpdated = true;
+         iCountUpdates++;
       }
       else if ( g_pCurrentModel->isActiveCameraCSICompatible() )
       {
          video_source_csi_send_control_message( RASPIVID_COMMAND_ID_SATURATION, pNewCamProfile->saturation, 0 );
          pNewCamProfile->saturation = pCurCamProfile->saturation;
-         bUpdated = true;       
+         iCountUpdates++;
       }
    }
 
@@ -123,7 +123,7 @@ bool _try_process_live_changes(int iNewCameraIndex, type_camera_parameters* pNew
       {
          video_source_csi_send_control_message( RASPIVID_COMMAND_ID_SHARPNESS, pNewCamProfile->sharpness, 0 );
          pNewCamProfile->sharpness = pCurCamProfile->sharpness;
-         bUpdated = true;       
+         iCountUpdates++;
       }
    }
 
@@ -133,28 +133,11 @@ bool _try_process_live_changes(int iNewCameraIndex, type_camera_parameters* pNew
       {
          hardware_camera_maj_set_hue(pNewCamProfile->hue);
          pNewCamProfile->hue = pCurCamProfile->hue;
-         bUpdated = true;
+         iCountUpdates++;
       }
    }
 
-   return bUpdated;
-}
-
-void _apply_all_camera_params(type_camera_parameters* pNewCamParams, type_camera_parameters* pOldCamParams)
-{
-   if ( (NULL == pNewCamParams) || (NULL == pOldCamParams) )
-      return;
-   log_line("Start applying all camera params due to received changes...");
-
-   if ( g_pCurrentModel->isActiveCameraVeye307() && (fabs(pNewCamParams->profiles[pNewCamParams->iCurrentProfile].hue - pOldCamParams->profiles[pOldCamParams->iCurrentProfile].hue) > 0.1 ) )
-      vehicle_update_camera_params_csi(g_pCurrentModel, g_pCurrentModel->iCurrentCamera);
-   else if ( g_pCurrentModel->isActiveCameraVeye327290() )
-      vehicle_update_camera_params_csi(g_pCurrentModel, g_pCurrentModel->iCurrentCamera);
-   else if ( g_pCurrentModel->isActiveCameraVeye307() )
-      vehicle_update_camera_params_csi(g_pCurrentModel, g_pCurrentModel->iCurrentCamera);
-   else if ( g_pCurrentModel->hasCamera() )
-      video_source_capture_mark_needs_update_or_restart(MODEL_CHANGED_CAMERA_PARAMS);
-   log_line("Done applying all camera params due to received changes.");
+   return iCountUpdates;
 }
 
 void process_camera_params_changed(u8* pPacketBuffer, int iPacketLength)
@@ -163,29 +146,36 @@ void process_camera_params_changed(u8* pPacketBuffer, int iPacketLength)
       return;
 
    int iOldCameraIndex = g_pCurrentModel->iCurrentCamera;
+   u8 uNewCameraIndex = 0;
    type_camera_parameters oldCamParams;
-   memcpy((u8*)(&oldCamParams), &(g_pCurrentModel->camera_params[iOldCameraIndex]), sizeof(type_camera_parameters));
-   
-   u8 uCameraChangedIndex = 0;
    type_camera_parameters newCamParams;
 
-   memcpy(&uCameraChangedIndex, pPacketBuffer + sizeof(t_packet_header), sizeof(u8));
+   memcpy((u8*)(&oldCamParams), &(g_pCurrentModel->camera_params[iOldCameraIndex]), sizeof(type_camera_parameters));
    memcpy((u8*)&newCamParams, pPacketBuffer + sizeof(t_packet_header) + sizeof(u8), sizeof(type_camera_parameters));
+   memcpy(&uNewCameraIndex, pPacketBuffer + sizeof(t_packet_header), sizeof(u8));
 
    // Do not save model. Saved by rx_commands. Just update to the new values.
-   memcpy(&(g_pCurrentModel->camera_params[uCameraChangedIndex]), (u8*)&newCamParams, sizeof(type_camera_parameters));
-   g_pCurrentModel->iCurrentCamera = uCameraChangedIndex;
+   memcpy(&(g_pCurrentModel->camera_params[uNewCameraIndex]), (u8*)&newCamParams, sizeof(type_camera_parameters));
+   g_pCurrentModel->iCurrentCamera = uNewCameraIndex;
 
+   oldCamParams.szCameraBinProfileName[MAX_CAMERA_BIN_PROFILE_NAME-1] = 0;
+   newCamParams.szCameraBinProfileName[MAX_CAMERA_BIN_PROFILE_NAME-1] = 0;
 
-   // Do changes on the fly, if possible
-   _try_process_live_changes(uCameraChangedIndex, &newCamParams, iOldCameraIndex, &oldCamParams);
+   log_line("Active camera changed from camera %d to camera %d", iOldCameraIndex, (int)uNewCameraIndex);
+   log_line("Active camera profile changed from profile %d to profile %d", oldCamParams.iCurrentProfile, newCamParams.iCurrentProfile);
+   log_line("Active camera type changed from (%d, forced %d) to (%d, forced %d)", oldCamParams.iCameraType, oldCamParams.iForcedCameraType, newCamParams.iCameraType, newCamParams.iForcedCameraType);
+   log_line("Active camera bin file changed from (%d, %s) to (%d, %s)", oldCamParams.iCameraBinProfile, oldCamParams.szCameraBinProfileName, newCamParams.iCameraBinProfile, newCamParams.szCameraBinProfileName);
    
+   // Do changes on the fly, if possible
+   int iCountUpdates = _try_process_live_changes((int)uNewCameraIndex, &newCamParams, iOldCameraIndex, &oldCamParams);
+   if ( iCountUpdates > 0 )
+      log_line("Did %d live updates to camera.", iCountUpdates);
+   else
+      log_line("No live updates where done to camera.");
    // Do all the other remaining changes if any are remaining
    if ( 0 != memcmp(&newCamParams, &oldCamParams, sizeof(type_camera_parameters)) )
-   {
-      g_pCurrentModel->log_camera_profiles_differences(&(oldCamParams.profiles[oldCamParams.iCurrentProfile]), &(newCamParams.profiles[newCamParams.iCurrentProfile]), oldCamParams.iCurrentProfile, newCamParams.iCurrentProfile);
-      _apply_all_camera_params(&(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera]), &oldCamParams);
-   }
+      video_sources_on_changed_camera_params(&(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera]), &oldCamParams);
+
    #if defined HW_PLATFORM_RASPBERRY
    if ( g_pCurrentModel->isActiveCameraVeye() )
        g_uTimeToSaveVeyeCameraParams = g_TimeNow + 5000;
@@ -203,7 +193,7 @@ void process_camera_periodic_loop()
       if ( g_pCurrentModel->isActiveCameraVeye() )
       {
          log_line("Saving Veye camera parameters to flash memory.");
-         int nBus = hardware_get_i2c_device_bus_number(I2C_DEVICE_ADDRESS_CAMERA_VEYE);
+         int nBus = hardware_i2c_get_device_bus_number(I2C_DEVICE_ADDRESS_CAMERA_VEYE);
          char szComm[256];
          if ( g_pCurrentModel->isActiveCameraVeye307() )
             sprintf(szComm, "current_dir=$PWD; cd %s/; ./cs_mipi_i2c.sh -w -f paramsave -b %d; cd $current_dir", VEYE_COMMANDS_FOLDER307, nBus);

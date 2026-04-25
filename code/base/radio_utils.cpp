@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,7 +35,7 @@
 #include "../base/models.h"
 #include "../base/radio_utils.h"
 #include "../base/utils.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ctrl_preferences.h"
 #include "../common/string_utils.h"
 #include "../radio/radiopackets2.h"

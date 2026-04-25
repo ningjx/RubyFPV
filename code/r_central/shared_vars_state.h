@@ -25,26 +25,6 @@ typedef struct
 extern t_structure_file_upload g_CurrentUploadingFile;
 extern bool g_bHasFileUploadInProgress;
 
-typedef struct
-{
-   t_packet_header_telemetry_msp headerTelemetryMSP;
-
-   u8  uMSPRawCommand[256]; // Max size is one byte long
-   int iMSPRawCommandFilledBytes;
-   int iMSPState;
-   int iMSPDirection;
-   u8  uMSPCommandData[256]; // Max size is one byte long
-   int iMSPCommandDataSize;
-   int iMSPParsedCommandDataSize;
-   u8  uMSPChecksum;
-   u8  uMSPCommand;
-   u32 uLastMSPCommandReceivedTime;
-
-   u16 uScreenChars[MAX_MSP_CHARS_BUFFER]; // Max 64x24
-   u16 uScreenCharsTmp[MAX_MSP_CHARS_BUFFER]; // Max 64x24
-   bool bEmptyBuffer;
-} ALIGN_STRUCT_SPEC_INFO type_msp_parse_state;
-
 typedef struct 
 {
    u32 uVehicleId;
@@ -68,13 +48,13 @@ typedef struct
    bool bRubyTelemetryLost;
 
    type_u32_couters vehicleDebugRouterCounters;
-   type_radio_tx_timers vehicleDebugRadioTxTimers;
 
-   t_packet_header_ruby_telemetry_extended_v4 headerRubyTelemetryExtended;
+   t_packet_header_ruby_telemetry_extended_v6 headerRubyTelemetryExtended;
    t_packet_header_ruby_telemetry_extended_extra_info headerRubyTelemetryExtraInfo;
    t_packet_header_ruby_telemetry_extended_extra_info_retransmissions headerRubyTelemetryExtraInfoRetransmissions;
    t_packet_header_ruby_telemetry_short headerRubyTelemetryShort;
    type_msp_parse_state mspState;
+   t_packet_header_relay_radio_info headerRelayRadioLinksInfo;
    shared_mem_radio_stats_radio_interface SMVehicleRxStats[MAX_RADIO_INTERFACES];
 
    // FC telemetry
@@ -107,6 +87,7 @@ typedef struct
    int iComputedBatteryCellCount;
    bool bNotificationPairingRequestSent;
    bool bPairedConfirmed;
+   bool bIsAdaptiveVideoPaused;
 
    bool bIsArmed;
    bool bHomeSet;
@@ -155,7 +136,8 @@ extern bool g_bIsRouterReady;
 
 extern bool g_bFirstModelPairingDone;
 extern bool g_bIsFirstConnectionToCurrentVehicle;
-extern bool g_bVideoLost;
+extern bool g_bIsVideoLost;
+extern bool g_bAdaptiveVideoIsPaused;
 
 extern bool g_bDidAnUpdate;
 extern bool g_bUpdateInProgress;
@@ -185,7 +167,7 @@ void reset_vehicle_telemetry_runtime_info(t_structure_vehicle_info* pInfo);
 void shared_vars_state_reset_all_vehicles_runtime_info();
 void reset_model_settings_download_buffers(u32 uVehicleId);
 t_structure_vehicle_info* get_vehicle_runtime_info_for_vehicle_id(u32 uVehicleId);
-t_packet_header_ruby_telemetry_extended_v4* get_received_relayed_vehicle_telemetry_info();
+t_packet_header_ruby_telemetry_extended_v6* get_received_relayed_vehicle_telemetry_info();
 void log_current_runtime_vehicles_info();
 bool vehicle_runtime_has_received_fc_telemetry(u32 uVehicleId);
 u32  vehicle_runtime_get_time_last_received_ruby_telemetry(u32 uVehicleId);

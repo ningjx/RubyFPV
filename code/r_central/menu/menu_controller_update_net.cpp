@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -127,16 +127,13 @@ void MenuControllerUpdateNet::Render()
       float fHeight = (m_RenderYPos + m_RenderHeight - m_sfMenuPaddingY) - yPos - 2.0 * height_text;
 
       float fAlpha = g_pRenderEngine->setGlobalAlfa(0.9);
-      bool bBlending = g_pRenderEngine->isRectBlendingEnabled();
-      g_pRenderEngine->enableRectBlending();
+      bool bAlpha = g_pRenderEngine->isAlphaBlendingEnabled();
+      g_pRenderEngine->enableAlphaBlending();
       g_pRenderEngine->setColors(get_Color_MenuBg());
       //g_pRenderEngine->setStroke(get_Color_MenuText());
       g_pRenderEngine->setStroke(0,0,0,0);
       g_pRenderEngine->drawRoundRect(xPos - g_pRenderEngine->getPixelWidth(), yPos - g_pRenderEngine->getPixelHeight(), fWidth + 2.0 * g_pRenderEngine->getPixelWidth(), fHeight + 2.0*g_pRenderEngine->getPixelHeight(), 0.01*Menu::getMenuPaddingY());
-      if ( bBlending )
-         g_pRenderEngine->enableRectBlending();
-      else
-         g_pRenderEngine->disableRectBlending();
+      g_pRenderEngine->setAlphaBlendingEnabled(bAlpha);
       g_pRenderEngine->setGlobalAlfa(fAlpha);
 
       yPos += fHeight*0.3;
@@ -187,10 +184,7 @@ bool MenuControllerUpdateNet::periodicLoop()
       {
          m_bNeedsUserConsent = false;
          char szBuff[256];
-         int iMinor = SYSTEM_SW_VERSION_MINOR;
-         if ( iMinor >= 10 )
-            iMinor /= 10;
-         sprintf(szBuff, "Your controller has software version %d.%d and software version %d.%d is available to download. Do you want to upgrade?", SYSTEM_SW_VERSION_MAJOR, iMinor, m_iOnlineVersionMajor, m_iOnlineVersionMinor);
+         sprintf(szBuff, "Your controller has software version %d.%d and software version %d.%d is available to download. Do you want to upgrade?", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR, m_iOnlineVersionMajor, m_iOnlineVersionMinor);
          MenuConfirmation* pMC = new MenuConfirmation( L("Upgrade Confirmation"), szBuff, 2);
          pMC->setDefaultActionPositive();
          add_menu_to_stack(pMC);
@@ -203,6 +197,7 @@ bool MenuControllerUpdateNet::periodicLoop()
 void* _thread_check_update(void *argument)
 {
    MenuControllerUpdateNet* pMenu = (MenuControllerUpdateNet*)argument;
+   hw_log_current_thread_attributes("check net update");
 
    hardware_sleep_ms(200);
    pMenu->onUpdateCounter();
@@ -253,12 +248,8 @@ void* _thread_check_update(void *argument)
    }
 
    pMenu->onUpdateCounter();
-
-   int iMinorNow = SYSTEM_SW_VERSION_MINOR;
-   if ( iMinorNow >= 10 )
-      iMinorNow = iMinorNow/10;
-
-   if ( (iMajor == SYSTEM_SW_VERSION_MAJOR) && (iMinor == iMinorNow) )
+   
+   if ( (iMajor == SYSTEM_SW_VERSION_MAJOR) && (iMinor == SYSTEM_SW_VERSION_MINOR) )
    {
       pMenu->onFinishCheckAsync(2);
       return NULL;
@@ -361,7 +352,7 @@ void MenuControllerUpdateNet::onSelectItem()
       m_bNeedsUserConsent = false;
       m_iUserConsentResult = 0;
       pthread_attr_t attr;
-      hw_init_worker_thread_attrs(&attr);
+      hw_init_worker_thread_attrs(&attr, CORE_AFFINITY_OTHERS, -1, SCHED_OTHER, 0, "check update from net");
       if ( 0 != pthread_create(&m_pThreadCheckUpdate, &attr, &_thread_check_update, (void*)this) )
       {
          pthread_attr_destroy(&attr);

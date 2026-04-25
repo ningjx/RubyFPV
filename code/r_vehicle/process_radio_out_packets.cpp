@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -32,6 +32,7 @@
 
 #include "process_radio_out_packets.h"
 #include "../base/ruby_ipc.h"
+#include "../base/tx_powers.h"
 #include "../radio/radiolink.h"
 #include "packets_utils.h"
 #include "shared_vars.h"
@@ -42,13 +43,12 @@ extern u16 s_countTXDataPacketsOutPerSec[2];
 extern u16 s_countTXCompactedPacketsOutPerSec[2];
 
 
-void preprocess_radio_out_packet(u8* pPacketBuffer, int iPacketLength)
+void preprocess_radio_out_packet(u8* pPacketBuffer, int iPacketLength, bool bIsEndOfTransmissionFrame)
 {
    if ( (NULL == pPacketBuffer) || (iPacketLength <= 0) )
       return;
 
    t_packet_header* pPH = (t_packet_header*)pPacketBuffer;
-   pPH->packet_flags &= (~PACKET_FLAGS_BIT_CAN_START_TX);
 
    if ( pPH->packet_type == PACKET_TYPE_RUBY_PAIRING_CONFIRMATION )
       log_line("Sending pairing request confirmation to controller (from VID %u to CID %u)", pPH->vehicle_id_src, pPH->vehicle_id_dest);
@@ -62,9 +62,6 @@ void preprocess_radio_out_packet(u8* pPacketBuffer, int iPacketLength)
       {
          type_u32_couters* pCounters = (type_u32_couters*) (pPacketBuffer + sizeof(t_packet_header));
          memcpy(pCounters, &g_CoutersMainLoop, sizeof(type_u32_couters));
-
-         type_radio_tx_timers* pRadioTxInfo = (type_radio_tx_timers*) (pPacketBuffer + sizeof(t_packet_header) + sizeof(type_u32_couters));
-         memcpy(pRadioTxInfo, &g_RadioTxTimers, sizeof(type_radio_tx_timers));
       }
 
       if ( pPH->packet_type == PACKET_TYPE_RUBY_TELEMETRY_SHORT )
@@ -83,7 +80,7 @@ void preprocess_radio_out_packet(u8* pPacketBuffer, int iPacketLength)
 
       if ( pPH->packet_type == PACKET_TYPE_RUBY_TELEMETRY_EXTENDED )
       {
-         t_packet_header_ruby_telemetry_extended_v4* pPHRTE = (t_packet_header_ruby_telemetry_extended_v4*) (pPacketBuffer + sizeof(t_packet_header));
+         t_packet_header_ruby_telemetry_extended_v6* pPHRTE = (t_packet_header_ruby_telemetry_extended_v6*) (pPacketBuffer + sizeof(t_packet_header));
          
          g_iVehicleSOCTemperatureC = pPHRTE->temperatureC;
          pPHRTE->downlink_tx_video_bitrate_bps = g_pProcessorTxVideo->getCurrentVideoBitrateAverageLastMs(500);
@@ -105,8 +102,20 @@ void preprocess_radio_out_packet(u8* pPacketBuffer, int iPacketLength)
 
             pPHRTE->last_recv_datarate_bps[i] = g_UplinkInfoRxStats[i].lastReceivedDataRate;
 
-            pPHRTE->uplink_rssi_dbm[i] = g_UplinkInfoRxStats[i].lastReceivedDBM + 200;
-            pPHRTE->uplink_noise_dbm[i] = g_UplinkInfoRxStats[i].lastReceivedNoiseDBM;
+            pPHRTE->uplink_rssi_dbm[i] = 0;
+            if ( g_UplinkInfoRxStats[i].lastReceivedDBM < 500 )
+            if ( g_UplinkInfoRxStats[i].lastReceivedDBM > -200 )
+               pPHRTE->uplink_rssi_dbm[i] = g_UplinkInfoRxStats[i].lastReceivedDBM + 200;
+
+            if ( g_UplinkInfoRxStats[i].lastReceivedSNR < 500 )
+            {
+               pPHRTE->uplink_rssi_snr[i] = 0;
+               if ( g_UplinkInfoRxStats[i].lastReceivedSNR >= 0 )
+                  pPHRTE->uplink_rssi_snr[i] = g_UplinkInfoRxStats[i].lastReceivedSNR;
+            }
+            else
+               pPHRTE->uplink_rssi_snr[i] = 0xFF;
+
             pPHRTE->uplink_link_quality[i] = g_SM_RadioStats.radio_interfaces[i].rxQuality;
             
             if ( hardware_radio_index_is_wifi_radio(i))
@@ -133,8 +142,6 @@ void preprocess_radio_out_packet(u8* pPacketBuffer, int iPacketLength)
                pPHRTE->uplink_link_quality[i] = 0;
          }
 
-         pPHRTE->txTimePerSec = g_RadioTxTimers.uComputedTotalTxTimeMilisecPerSecondAverage;
-
          if ( g_bHasFastUplinkFromController )
             pPHRTE->uRubyFlags |= FLAG_RUBY_TELEMETRY_HAS_FAST_UPLINK_FROM_CONTROLLER;
          else
@@ -155,13 +162,45 @@ void preprocess_radio_out_packet(u8* pPacketBuffer, int iPacketLength)
          else
             pPHRTE->uExtraRubyFlags &= ~FLAG_RUBY_TELEMETRY_EXTRA_FLAGS_IS_IN_TX_PIT_MODE_HOT;
          
+         // Update tx powers info
+         for( int iLink=0; iLink<g_pCurrentModel->radioLinksParams.links_count; iLink++ )
+         {
+            pPHRTE->iTxPowers[iLink] = 0;
+
+            for( int iInt=0; iInt < hardware_get_radio_interfaces_count(); iInt++ )
+            {
+                if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[iInt] == iLink )
+                if ( hardware_radio_index_is_wifi_radio(iInt) )
+                {
+                   int iRawTxPower = get_last_tx_power_used_for_radiointerface(iInt);
+                   if ( iRawTxPower != 0 )
+                   {
+                      int iRadioInterfacelModel = g_pCurrentModel->radioInterfacesParams.interface_card_model[iInt];
+                      if ( iRadioInterfacelModel < 0 )
+                         iRadioInterfacelModel = -iRadioInterfacelModel;
+                      int imWPower = tx_powers_convert_raw_to_mw(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel, iRawTxPower);
+
+                      if ( g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[iInt] & RADIO_HW_CAPABILITY_FLAG_HAS_BOOSTER_2W )
+                         imWPower = tx_powers_get_mw_boosted_value_from_mw(imWPower, true, false);
+                      else if ( g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[iInt] & RADIO_HW_CAPABILITY_FLAG_HAS_BOOSTER_4W )
+                         imWPower = tx_powers_get_mw_boosted_value_from_mw(imWPower, false, true);
+                      
+                      if ( iRawTxPower < 0 )
+                         imWPower = -imWPower;
+                      pPHRTE->iTxPowers[iLink] = imWPower;
+                   }
+                   break;
+                }
+            }
+         }
+
          // Update extra info: retransmissions
          
          if ( pPHRTE->extraSize > 0 )
          if ( pPHRTE->extraSize == sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions) )
-         if ( pPH->total_length == (sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v4) + sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions)) )
+         if ( pPH->total_length == (sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v6) + sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions)) )
          {
-            memcpy( pPacketBuffer + sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v4), (u8*)&g_PHTE_Retransmissions, sizeof(g_PHTE_Retransmissions));
+            memcpy( pPacketBuffer + sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v6), (u8*)&g_PHTE_Retransmissions, sizeof(g_PHTE_Retransmissions));
          }
       }
    }

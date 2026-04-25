@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -139,6 +139,7 @@ int main(int argc, char *argv[])
 
    while ( ! gbQuit )
    {
+      g_uLoopCounter++;
       u32 uTimeStart = get_current_timestamp_ms();
 
       _check_cpu_watchdog(uTimeStart, counter);

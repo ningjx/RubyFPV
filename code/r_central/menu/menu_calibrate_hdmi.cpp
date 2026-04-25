@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -62,6 +62,7 @@ MenuCalibrateHDMI::MenuCalibrateHDMI(void)
           log_line("Loaded image for TV mira for HDMI calibration.");
    }
    addTopLine("Adjust your controller output display brightness, contrast and saturation so that the colors and the shades of grey look as best as possible.");
+   addTopLine("Press [Menu]/[Ok] to go full screen.");
    addTopLine("Press [Back]/[Cancel] when you are done.");
 }
 
@@ -88,9 +89,23 @@ void MenuCalibrateHDMI::Render()
       g_pRenderEngine->drawImage(m_RenderXPos+0.04, yTop+0.02, m_RenderWidth*0.8, m_RenderWidth*0.8, s_idImageCalibrateHDMI);
 }
 
+
+int MenuCalibrateHDMI::onBack()
+{
+   if ( ruby_central_is_showing_mira() )
+      ruby_central_show_mira(false);
+   return Menu::onBack();
+}
+
 void MenuCalibrateHDMI::onSelectItem()
 {
    Menu::onSelectItem();
+
+
+   if ( ruby_central_is_showing_mira() )
+      ruby_central_show_mira(false);
+   else
+      ruby_central_show_mira(true);
 
    if ( (-1 == m_SelectedIndex) || (m_pMenuItems[m_SelectedIndex]->isEditing()) )
       return;
@@ -100,5 +115,4 @@ void MenuCalibrateHDMI::onSelectItem()
       handle_commands_show_popup_progress();
       return;
    }
-
 }
