@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -337,6 +337,15 @@ MenuVehicleOSDElements::MenuVehicleOSDElements(void)
    m_pItemsSelect[21]->setIsEditable();
    m_IndexRadioInterfaces = addMenuItem(m_pItemsSelect[21]);
 
+
+   m_pItemsSelect[36] = new MenuItemSelect(L("Radio Tx Power"), L("Shows radio tx power in the current OSD screen."));
+   m_pItemsSelect[36]->addSelection(L("No"));
+   m_pItemsSelect[36]->addSelection(L("Yes"));
+   if ( bUseMultiSelection )
+      m_pItemsSelect[36]->setUseMultiViewLayout();
+   m_IndexShowTxPower = addMenuItem(m_pItemsSelect[36]);
+
+
    m_IndexRCRSSI = -1;
    if ( g_pCurrentModel->telemetry_params.fc_telemetry_type != TELEMETRY_TYPE_MSP )
    {
@@ -539,6 +548,11 @@ void MenuVehicleOSDElements::valuesToUI()
       m_pItemsSelect[21]->setSelectedIndex(0);
 
    
+   m_pItemsSelect[36]->setSelectedIndex(0);
+   if ( g_pCurrentModel->osd_params.osd_flags2[iScreenIndex] & OSD_FLAG2_SHOW_TX_POWER )
+      m_pItemsSelect[36]->setSelectedIndex(1);
+
+
    m_pItemsSelect[22]->setSelectedIndex((g_pCurrentModel->osd_params.osd_flags[iScreenIndex] & OSD_FLAG_SHOW_SIGNAL_BARS)?1:0);
    m_pItemsSelect[23]->setSelectedIndex((g_pCurrentModel->osd_params.osd_flags[iScreenIndex] & OSD_FLAG_SIGNAL_BARS_MASK)>>14);
    if ( g_pCurrentModel->osd_params.osd_flags[iScreenIndex] & OSD_FLAG_SHOW_SIGNAL_BARS )
@@ -1090,6 +1104,16 @@ void MenuVehicleOSDElements::onSelectItem()
          params.osd_flags2[iScreenIndex] |= OSD_FLAG2_SHOW_RADIO_LINK_INTERFACES_EXTENDED;
       }
 
+      params.osd_layout_preset[iScreenIndex] = OSD_PRESET_CUSTOM;
+      sendToVehicle = true;
+   }
+
+   if ( m_IndexShowTxPower == m_SelectedIndex )
+   {
+      if ( 0 == m_pItemsSelect[36]->getSelectedIndex() )
+         params.osd_flags2[iScreenIndex] &= ~OSD_FLAG2_SHOW_TX_POWER;
+      else
+         params.osd_flags2[iScreenIndex] |= OSD_FLAG2_SHOW_TX_POWER;
       params.osd_layout_preset[iScreenIndex] = OSD_PRESET_CUSTOM;
       sendToVehicle = true;
    }

@@ -11,9 +11,13 @@ char* str_capitalize_first_letter(char* szText);
 
 char* str_format_time(u32 miliseconds);
 char* str_format_binary_number(u32 uNumber);
+char* str_format_schedule_policy(int iSchedulePolicy);
 
 void str_getDataRateDescription(int dataRateBPS, int iHT40, char* szOutput);
 void str_getDataRateDescriptionNoSufix(int dataRateBPS, char* szOutput);
+char* str_getDataRateDescriptionAlternative(int dataRateBPS);
+char* str_format_datarate_inline(int dataRateBPS);
+
 char* str_format_bitrate_inline(int iBitrateBPS);
 void str_format_bitrate(int bitrate_bps, char* szBuffer);
 void str_format_bitrate_no_sufix(int bitrate_bps, char* szBuffer);
@@ -27,6 +31,7 @@ char* str_get_packet_history_symbol(int iPacketType, int iRepeatCount);
 char* str_get_packet_test_link_command(int iTestCommandId);
 
 char* str_get_pipe_flags(int iFlags);
+char* str_format_processes_flags(u32 uProcessesFlags);
 
 const char* str_get_hardware_board_name(u32 board_type);
 const char* str_get_hardware_board_name_short(u32 board_type);
@@ -38,13 +43,15 @@ const char* str_get_radio_type_description(int iRadioType);
 const char* str_get_radio_driver_description(int iDriverType);
 const char* str_get_radio_card_model_string(int cardModel);
 const char* str_get_radio_card_model_string_short(int cardModel);
-void str_get_radio_capabilities_description(u32 flags, char* szOutput);
+void str_get_radio_capabilities_description(u32 uFlags, char* szOutput);
+char* str_get_radio_capabilities_description2(u32 uFlags);
 
 void str_get_radio_frame_flags_description(u32 radioFlags, char* szOutput);
 char* str_get_radio_frame_flags_description2(u32 radioFlags);
 
+char* str_format_adaptive_video_flags(u8 uFlags);
+char* str_format_video_profile_flags(u32 uVideoProfileFlags);
 char* str_format_video_encoding_flags(u32 uVideoProfileEncodingFlags);
-char* str_format_video_frame_and_nal_flags(u32 uFrameAndNALFlags);
 char* str_get_video_profile_name(u32 videoProfileId);
 char* str_get_decode_h264_profile_name(u8 uH264Profile, u8 uH264ProfileConstrains, u8 uH264Level);
 

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -69,8 +69,6 @@ bool s_isRXStarted = false;
 bool s_isVideoReceiving = false;
 bool s_bPairingIsRouterReady = false;
 
-u32 s_uTimeToSetAffinities = 0;
-
 void _pairing_open_shared_mem();
 void _pairing_close_shared_mem();
 
@@ -131,7 +129,7 @@ bool _pairing_start()
    if ( NULL != g_pCurrentModel && (! g_pCurrentModel->is_spectator) )
       g_pCurrentModel->b_mustSyncFromVehicle = true;
 
-   if ( NULL != g_pCurrentModel && g_pCurrentModel->rc_params.rc_enabled )
+   if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->rc_params.uRCFlags & RC_FLAGS_ENABLED) )
    {
        Popup* p = new Popup(true, "RC link is enabled", 3 );
        p->setIconId(g_idIconJoystick, get_Color_IconWarning());
@@ -142,8 +140,6 @@ bool _pairing_start()
 
    g_bMenuPopupUpdateVehicleShown = false;
 
-   s_uTimeToSetAffinities = g_TimeNow + 8000;
-   
    log_line("-----------------------------------------");
    log_line("Started pairing processes successfully.");
    log_line("-----------------------------------------");
@@ -220,7 +216,6 @@ bool pairing_stop()
    log_line("----------------------------------");
    log_line("Stopping pairing processes...");
 
-   s_uTimeToSetAffinities = 0;
    s_uPairingStartTime = 0;
    onEventBeforePairingStop();
    s_bPairingIsRouterReady = false;
@@ -230,8 +225,6 @@ bool pairing_stop()
       hardware_led_green_set_off();
 
    _pairing_close_shared_mem();
-
-   ruby_stop_recording();
 
    handle_commands_stop_on_pairing();
 
@@ -301,14 +294,14 @@ void _pairing_open_shared_mem()
 
    for(int i=0; i<iRetryCount; i++ )
    {
-      if ( NULL != g_pSMVehicleRTInfo )
+      if ( NULL != g_pSMControllerDebugVideoRTInfo )
          break;
-      g_pSMVehicleRTInfo = vehicle_rt_info_open_for_read();
+      g_pSMControllerDebugVideoRTInfo = controller_debug_video_rt_info_open_for_read();
       
       hardware_sleep_ms(2);
       iAnyNewOpen++;
    }
-   if ( NULL == g_pSMVehicleRTInfo )
+   if ( NULL == g_pSMControllerDebugVideoRTInfo )
       iAnyFailed++;
 
    for( int i=0; i<iRetryCount; i++ )
@@ -334,21 +327,6 @@ void _pairing_open_shared_mem()
    if ( NULL == g_pSM_RadioStats )
       iAnyFailed++;
 
-// To fix
-     /*
-   ruby_signal_alive();
-   for( int i=0; i<iRetryCount; i++ )
-   {
-      if ( NULL != g_pSM_VideoLinkStats )
-         break;
-      g_pSM_VideoLinkStats = shared_mem_video_link_stats_open_for_read();
-      hardware_sleep_ms(5);
-      iAnyNewOpen++;
-   }
-   if ( NULL == g_pSM_VideoLinkStats )
-      iAnyFailed++;
-   */
-     
    ruby_signal_alive();
    for( int i=0; i<iRetryCount; i++ )
    {
@@ -374,18 +352,6 @@ void _pairing_open_shared_mem()
    if ( NULL == g_pSM_VideoInfoStatsRadioIn )
       iAnyFailed++;
    */
-
-   ruby_signal_alive();
-   for( int i=0; i<iRetryCount; i++ )
-   {
-      if ( NULL != g_pSM_VideoLinkGraphs )
-         break;
-      g_pSM_VideoLinkGraphs = shared_mem_video_link_graphs_open_for_read();
-      hardware_sleep_ms(5);
-      iAnyNewOpen++;
-   }
-   if ( NULL == g_pSM_VideoLinkGraphs )
-      iAnyFailed++;
 
    ruby_signal_alive();
    for( int i=0; i<iRetryCount; i++ )
@@ -455,8 +421,8 @@ void _pairing_close_shared_mem()
    controller_rt_info_close(g_pSMControllerRTInfo);
    g_pSMControllerRTInfo = NULL;
 
-   vehicle_rt_info_close(g_pSMVehicleRTInfo);
-   g_pSMVehicleRTInfo = NULL;
+   controller_debug_video_rt_info_close(g_pSMControllerDebugVideoRTInfo);
+   g_pSMControllerDebugVideoRTInfo = NULL;
 
    shared_mem_router_vehicles_runtime_info_close(g_pSM_RouterVehiclesRuntimeInfo);
    g_pSM_RouterVehiclesRuntimeInfo = NULL;
@@ -468,18 +434,11 @@ void _pairing_close_shared_mem()
    g_pSM_RadioStats = NULL;
 
 
-// To fix
-   //shared_mem_video_link_stats_close(g_pSM_VideoLinkStats);
-   //g_pSM_VideoLinkStats = NULL;
-
    shared_mem_video_frames_stats_close(g_pSM_VideoFramesStatsOutput);
    g_pSM_VideoFramesStatsOutput = NULL;
 
    //shared_mem_video_frames_stats_radio_in_close(g_pSM_VideoInfoStatsRadioIn);
    //g_pSM_VideoInfoStatsRadioIn = NULL;
-
-   shared_mem_video_link_graphs_close(g_pSM_VideoLinkGraphs);
-   g_pSM_VideoLinkGraphs = NULL;
 
    shared_mem_video_stream_stats_rx_processors_close(g_pSM_VideoDecodeStats);
    g_pSM_VideoDecodeStats = NULL;
@@ -517,12 +476,4 @@ void pairing_loop()
    
    if ( g_bSearching )
       return;
-
-
-   if ( (s_uTimeToSetAffinities != 0) && s_isRXStarted )
-   if ( g_TimeNow > s_uTimeToSetAffinities )
-   {
-      controller_check_update_processes_affinities();
-      s_uTimeToSetAffinities = 0;
-   }
 }

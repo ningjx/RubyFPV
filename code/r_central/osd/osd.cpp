@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -55,8 +55,9 @@
 #include "../../base/ctrl_interfaces.h"
 #include "../../base/ctrl_settings.h"
 #include "../../base/hardware.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 #include "../../base/utils.h"
+#include "../../base/tx_powers.h"
 
 #include "../link_watch.h"
 #include "../pairing.h"
@@ -121,6 +122,10 @@ void osd_add_stats_total_flights()
 
 void osd_show_voltage(float x, float y, float voltage, bool bRightAlign)
 {
+   Model* pActiveModel = osd_get_current_data_source_vehicle_model();
+   if ( (NULL == pActiveModel) || (pActiveModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MSP) )
+      return;
+
    osd_set_colors();
 
    bool bMultiLine = false;
@@ -220,20 +225,28 @@ void osd_show_voltage(float x, float y, float voltage, bool bRightAlign)
    osd_set_colors();
 }
 
-float osd_show_amps(float x, float y, float amps, bool bRightAlign)
+void osd_show_amps(float x, float y, float amps, bool bRightAlign)
 {
+   Model* pActiveModel = osd_get_current_data_source_vehicle_model();
+   if ( (NULL == pActiveModel) || (pActiveModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MSP) )
+      return;
+
    if ( g_pCurrentModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_LEFT_RIGHT )
       bRightAlign = false;
    char szBuff[32];
    snprintf(szBuff, 31, "%.1f", amps);
    if ( bRightAlign )
-      return osd_show_value_sufix_left(x,y, szBuff, "A", g_idFontOSDBig, g_idFontOSD);
+      osd_show_value_sufix_left(x,y, szBuff, "A", g_idFontOSDBig, g_idFontOSD);
    else
-      return osd_show_value_sufix(x,y, szBuff, "A", g_idFontOSDBig, g_idFontOSD);
+      osd_show_value_sufix(x,y, szBuff, "A", g_idFontOSDBig, g_idFontOSD);
 }
 
 float osd_show_mah(float x, float y, u32 mah, bool bRightAlign)
 {
+   Model* pActiveModel = osd_get_current_data_source_vehicle_model();
+   if ( (NULL == pActiveModel) || (pActiveModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MSP) )
+      return 0.0;
+
    if ( g_pCurrentModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_LEFT_RIGHT )
       bRightAlign = false;
 
@@ -258,6 +271,10 @@ float osd_show_mah(float x, float y, u32 mah, bool bRightAlign)
 
 float _osd_show_gps(float x, float y, bool bMultiLine)
 {
+   Model* pActiveModel = osd_get_current_data_source_vehicle_model();
+   if ( (NULL == pActiveModel) || (pActiveModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MSP) )
+      return 0.0;
+
    int iOSVehicleDataSourceIndex = osd_get_current_data_source_vehicle_index();
 
    char szBuff[32];
@@ -420,7 +437,10 @@ float osd_show_video_link_mbs(float xPos, float yPos, bool bLeft)
    if ( pActiveModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_LEFT_RIGHT )
       bMultiLine = true;
 
+   u32 uVideoBitrate = 0;
    u32 totalMaxVideo_bps = 0;
+   if ( g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].bGotRubyTelemetryInfo )
+      uVideoBitrate = g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerRubyTelemetryExtended.downlink_tx_video_bitrate_bps;
    if ( g_bIsRouterReady )
    {
       for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
@@ -432,23 +452,18 @@ float osd_show_video_link_mbs(float xPos, float yPos, bool bLeft)
       }
    }
 
+   u32 uMaxVideoRadioBitrate = pActiveModel->getMaxVideoBitrateSupportedForCurrentRadioLinks();
+
    strcpy(szSuffix, "Mbps");
 
-   //if ( ! g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].bGotRubyTelemetryInfo )
+   if ( ! g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].bGotRubyTelemetryInfo )
       sprintf(szBuff,"%.1f", totalMaxVideo_bps/1000.0/1000.0);
-   //else
+   else
       //sprintf(szBuff, "%.1f (%.1f)", totalMaxVideo_bps/1000.0/1000.0, g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerRubyTelemetryExtended.downlink_tx_video_bitrate_bps/1000.0/1000.0);
-      //sprintf(szBuff, "%.1f", g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerRubyTelemetryExtended.downlink_tx_video_bitrate_bps/1000.0/1000.0);
+      //sprintf(szBuff, "%.1f", uVideoBitrate/1000.0/1000.0);
+      sprintf(szBuff,"%.1f", totalMaxVideo_bps/1000.0/1000.0);
 
-   u32 uMaxVideoRadioDataRate = pActiveModel->getRadioLinkVideoDataRateBSP(0);
-   if ( pActiveModel->radioLinksParams.links_count > 1 )
-   if ( pActiveModel->getRadioLinkVideoDataRateBSP(1) > uMaxVideoRadioDataRate )
-      uMaxVideoRadioDataRate = pActiveModel->getRadioLinkVideoDataRateBSP(1);
-   if ( pActiveModel->radioLinksParams.links_count > 2 )
-   if ( pActiveModel->getRadioLinkVideoDataRateBSP(2) > uMaxVideoRadioDataRate )
-      uMaxVideoRadioDataRate = pActiveModel->getRadioLinkVideoDataRateBSP(2);
-
-   if ( totalMaxVideo_bps >= (float)(uMaxVideoRadioDataRate) * DEFAULT_VIDEO_LINK_MAX_LOAD_PERCENT / 100.0 )
+   if ( uVideoBitrate >= uMaxVideoRadioBitrate )
       g_pRenderEngine->setColors(get_Color_IconWarning());
    if ( g_bHasVideoDataOverloadAlarm && (g_TimeLastVideoDataOverloadAlarm > 0) && (g_TimeNow <  g_TimeLastVideoDataOverloadAlarm + 5000) )
       g_pRenderEngine->setColors(get_Color_IconError());
@@ -458,15 +473,15 @@ float osd_show_video_link_mbs(float xPos, float yPos, bool bLeft)
       if ( bMultiLine )
       {
          float height_text = osd_getFontHeight();
-         osd_show_value_left(xPos,yPos-0.4*osd_getSpacingV(), szBuff, g_idFontOSD);
+         osd_show_value_left(xPos,yPos, szBuff, g_idFontOSD);
          yPos += height_text;
-         osd_show_value_left(xPos,yPos-0.4*osd_getSpacingV(), szSuffix, g_idFontOSDSmall);
+         osd_show_value_left(xPos,yPos, szSuffix, g_idFontOSDSmall);
       }
       else
-         w = osd_show_value_sufix_left(xPos,yPos-0.4*osd_getSpacingV(), szBuff, szSuffix, g_idFontOSD, g_idFontOSDSmall);
+         w = osd_show_value_sufix_left(xPos,yPos, szBuff, szSuffix, g_idFontOSDSmall, g_idFontOSDSmall);
    }
    else
-      w = osd_show_value_sufix(xPos,yPos-0.4*osd_getSpacingV(), szBuff, szSuffix, g_idFontOSD, g_idFontOSDSmall);
+      w = osd_show_value_sufix(xPos,yPos, szBuff, szSuffix, g_idFontOSDSmall, g_idFontOSDSmall);
 
    osd_set_colors();
    return w;
@@ -640,6 +655,107 @@ float osd_show_home(float xPos, float yPos, bool showHeading, float fScale)
    return fWidth + 0.01;
 }
 
+// Returns new xPos
+float osd_show_txpowers(float xPos)
+{
+   Model* pActiveModel = osd_get_current_data_source_vehicle_model();
+   if ( NULL == pActiveModel )
+      return xPos;
+
+   float height_text = osd_getFontHeight();
+
+   for( int iVehicleRadioLink=pActiveModel->radioLinksParams.links_count-1; iVehicleRadioLink >= 0; iVehicleRadioLink-- )
+   {
+      char szTxPower[32];
+      bool bRed = true;
+      bool bYellow = false;
+      bool bPITMode = false;
+
+      t_structure_vehicle_info* pVRTInfo = get_vehicle_runtime_info_for_vehicle_id(pActiveModel->uVehicleId);
+      if ( (NULL != pVRTInfo) && pVRTInfo->bGotRubyTelemetryInfo && (pVRTInfo->headerRubyTelemetryExtended.uExtraRubyFlags & FLAG_RUBY_TELEMETRY_EXTRA_FLAGS_IS_IN_TX_PIT_MODE) )
+         bPITMode = true;
+      if ( (NULL != pVRTInfo) && pVRTInfo->bGotRubyTelemetryInfo && (pVRTInfo->headerRubyTelemetryExtended.uExtraRubyFlags & FLAG_RUBY_TELEMETRY_EXTRA_FLAGS_IS_IN_TX_PIT_MODE_HOT) )
+         bPITMode = true;
+
+      strcpy(szTxPower, "0 mW");
+      if ( pActiveModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
+         strcpy(szTxPower, "- mW");
+      else if ( pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink] == 0 )
+      {
+         strcpy(szTxPower, "N/A mW");
+         bYellow = true;
+      }
+      else
+      {
+         /*
+         int iPowerMw = -1;
+         for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
+         {
+            if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] != iVehicleRadioLink )
+               continue;
+            if ( ! hardware_radio_type_is_wifi(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) )
+               continue;
+
+            int iCardModel = g_pCurrentModel->radioInterfacesParams.interface_card_model[i];
+            iPowerMw = tx_powers_convert_raw_to_mw(g_pCurrentModel->hwCapabilities.uBoardType, iCardModel, g_pCurrentModel->radioInterfacesParams.interface_raw_power[i]);
+            break;
+         }
+         */
+         char szPowerPref[16];
+         szPowerPref[0] = 0;
+         int iPowerMw = pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink];
+         if ( iPowerMw < 0 )
+         {
+            iPowerMw = -iPowerMw;
+            strcpy(szPowerPref, "*");
+         }
+         if ( iPowerMw < 1000 )
+            sprintf(szTxPower, "%s%d mW", szPowerPref, iPowerMw);
+         else
+            sprintf(szTxPower, "%s%.1f W", szPowerPref, ((float)iPowerMw)/1000.0);
+
+         if ( iPowerMw >= 0 )
+            bRed = false;
+         if ( iPowerMw < 10 )
+            bYellow = true;
+
+         if ( !(pActiveModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS) )
+            bRed = true;
+
+         if ( !(pActiveModel->radioInterfacesRuntimeCapab.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED) )
+            bRed = true;
+      }
+      if ( pActiveModel->radioLinksParams.links_count > 1 )
+      {
+         char szTmp[64];
+         snprintf(szTmp, sizeof(szTmp)/sizeof(szTmp[0]), "%d: %s", iVehicleRadioLink+1, szTxPower);
+         strncpy(szTxPower, szTmp, sizeof(szTxPower)/sizeof(szTxPower[0]));
+      }
+
+      if ( bRed || bPITMode )
+         g_pRenderEngine->setColors(get_Color_IconError());
+      else if ( bYellow )
+         g_pRenderEngine->setColors(get_Color_IconWarning());
+      else
+         g_pRenderEngine->setColors(get_Color_OSDText());
+
+      float fyPower = osd_getMarginY() + 0.5*osd_getSpacingV();
+      float fPowerWidth = g_pRenderEngine->textWidth(g_idFontOSD, szTxPower);
+      float fwPowerIcon = osd_getFontHeight()*0.6;
+      osd_show_value_left(xPos, fyPower, szTxPower, g_idFontOSD);
+      if ( pActiveModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
+         osd_show_value(xPos-fPowerWidth*0.7, fyPower + height_text, "DIS", g_idFontOSD);
+      else if ( bPITMode )
+         osd_show_value(xPos-fPowerWidth*0.7, fyPower + height_text, "PIT", g_idFontOSD);
+      else
+         g_pRenderEngine->drawIcon(xPos - 0.5*fPowerWidth - 0.5 * fwPowerIcon, fyPower + height_text, fwPowerIcon, fwPowerIcon * g_pRenderEngine->getAspectRatio(), g_idIconRadio);
+      g_pRenderEngine->setColors(get_Color_OSDText());
+      xPos -= fPowerWidth;
+      xPos -= osd_getSpacingH();
+   }
+   return xPos;
+}
+
 float osd_show_throttle(float xPos, float yPos, bool bLeft)
 {
    char szBuff[32];
@@ -688,7 +804,7 @@ float _osd_show_rc_rssi(float xPos, float yPos, float fScale)
    if ( (NULL == pActiveModel) || (iRuntimeIndex < 0) )
       return 0.0;
 
-   if ( pActiveModel->rc_params.rc_enabled && (!pActiveModel->is_spectator) )
+   if ( (pActiveModel->rc_params.uRCFlags & RC_FLAGS_ENABLED) && (!pActiveModel->is_spectator) )
       bHasRubyRC = true;
  
    osd_set_colors();
@@ -1018,14 +1134,14 @@ float osd_show_total_distance(float xPos, float yPos, float fScale)
    if ( pP->iUnits == prefUnitsImperial || pP->iUnits == prefUnitsFeets )
    {
       if ( _osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0) > 1.0 )
-         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d mi", szPrefix, (int)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
+         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %.1f mi", szPrefix, (float)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
       else
          snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d ft", szPrefix, (int)_osd_convertMeters(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100));
    }
    else
    {
       if ( _osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0) > 1.0 )
-         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d km", szPrefix, (int)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
+         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %.1f km", szPrefix, (float)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
       else
          snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d m", szPrefix, (int)_osd_convertMeters(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100));
    }
@@ -1062,7 +1178,7 @@ void osd_show_recording(bool bShowWhenStopped, float xPos, float yPos)
    //static long s_lMemDiskOSDTotal = 0;
    //static u32  s_lMemDiskLastTime = 0;
 
-   if ( (! g_bVideoRecordingStarted) && (!s_bDebugOSDShowAll) )
+   if ( (! g_bIsVideoRecording) && (!s_bDebugOSDShowAll) )
    {
       if ( !(g_pCurrentModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_LEFT_RIGHT) )
       if ( g_pCurrentModel->osd_params.osd_flags[osd_get_current_layout_index()] & OSD_FLAG_SHOW_VIDEO_MODE )
@@ -1107,7 +1223,7 @@ void osd_show_recording(bool bShowWhenStopped, float xPos, float yPos)
    Preferences *p = get_Preferences();
 
    char szTime[64];
-   u32 tMili = g_TimeNow - g_uVideoRecordStartTime;
+   u32 tMili = g_TimeNow - g_uVideoRecordingStartTime;
 
    //if ( p->iVideoDestination == prefVideoDestination_Disk )
    {
@@ -1760,11 +1876,33 @@ void _render_osd_left_right()
    }
 
    if ( s_bDebugOSDShowAll || (pActiveModel->osd_params.osd_flags[osd_get_current_layout_index()] & OSD_FLAG_SHOW_RADIO_LINKS) || (g_pCurrentModel->osd_params.osd_flags[osd_get_current_layout_index()] & OSD_FLAG_SHOW_VEHICLE_RADIO_LINKS) )
-      for( int iRadioLink=0; iRadioLink<g_SM_RadioStats.countLocalRadioLinks; iRadioLink++ )
+   {
+      for( int iVehicleRadioLink=g_pCurrentModel->radioLinksParams.links_count-1; iVehicleRadioLink >= 0; iVehicleRadioLink-- )
       {
-         y += osd_show_local_radio_link_new(1.0 - osd_getMarginX() - osd_getVerticalBarWidth() ,y, iRadioLink, false);
+         if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
+            continue;
+         if ( (g_pCurrentModel->relay_params.uRelayedVehicleId == 0) || (g_pCurrentModel->relay_params.isRelayEnabledOnRadioLinkId != iVehicleRadioLink) )
+            continue;
+         y += osd_show_relay_radio_link_new(1.0 - osd_getMarginX() - osd_getVerticalBarWidth() ,y, iVehicleRadioLink, false);
          y += 2.0*vSpacing;
       }
+
+      for( int iVehicleRadioLink=g_pCurrentModel->radioLinksParams.links_count-1; iVehicleRadioLink >= 0; iVehicleRadioLink-- )
+      {
+         if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
+            continue;
+         if ( (g_pCurrentModel->relay_params.uRelayedVehicleId != 0) && (g_pCurrentModel->relay_params.isRelayEnabledOnRadioLinkId == iVehicleRadioLink) )
+            continue;
+         for( int iLocalRadioLink=0; iLocalRadioLink < g_SM_RadioStats.countLocalRadioLinks; iLocalRadioLink++ )
+         {
+            if ( g_SM_RadioStats.radio_links[iLocalRadioLink].matchingVehicleRadioLinkId == iVehicleRadioLink )
+            {
+               y += osd_show_local_radio_link_new(1.0 - osd_getMarginX() - osd_getVerticalBarWidth() ,y, iLocalRadioLink, false);
+               y += 2.0*vSpacing;
+            }
+         }
+      }
+   }
 
    if ( s_bDebugOSDShowAll || (pActiveModel->osd_params.osd_flags[osd_get_current_layout_index()] & OSD_FLAG_SHOW_VIDEO_MODE) )
    {
@@ -1796,7 +1934,13 @@ void _render_osd_left_right()
       if ( link_has_received_videostream(uVehicleIdVideo) && (NULL != pVDS) )
       {
          if ( pActiveModel->osd_params.osd_flags[osd_get_current_layout_index()] & OSD_FLAG_SHOW_VIDEO_MODE )
-            sprintf(szBuff, "%d fps", pVDS->iCurrentVideoFPS); 
+         {
+            if ( ((pVDS->iCurrentVideoTxSourceFPS - pActiveModel->video_params.iVideoFPS) > 2) ||
+                 ((pVDS->iCurrentVideoTxSourceFPS - pActiveModel->video_params.iVideoFPS) < -2) )
+               sprintf(szBuff, "*%d FPS", pVDS->iCurrentVideoTxSourceFPS);
+            else
+               sprintf(szBuff, "%d FPS", pVDS->iCurrentVideoTxSourceFPS);
+         }
       }
       else
          sprintf(szBuff, "[waiting]");
@@ -2119,6 +2263,18 @@ void osd_render_elements()
       {
          if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
             continue;
+         if ( (g_pCurrentModel->relay_params.uRelayedVehicleId == 0) || (g_pCurrentModel->relay_params.isRelayEnabledOnRadioLinkId != iVehicleRadioLink) )
+            continue;
+         x -= osd_show_relay_radio_link_new(x,osd_getMarginY() + 0.5*osd_getSpacingV(), iVehicleRadioLink, true);
+         x -= osd_getSpacingH();
+      }
+
+      for( int iVehicleRadioLink=g_pCurrentModel->radioLinksParams.links_count-1; iVehicleRadioLink >= 0; iVehicleRadioLink-- )
+      {
+         if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
+            continue;
+         if ( (g_pCurrentModel->relay_params.uRelayedVehicleId !=  0) && (g_pCurrentModel->relay_params.isRelayEnabledOnRadioLinkId == iVehicleRadioLink) )
+            continue;
          for( int iLocalRadioLink=0; iLocalRadioLink < g_SM_RadioStats.countLocalRadioLinks; iLocalRadioLink++ )
          {
             if ( g_SM_RadioStats.radio_links[iLocalRadioLink].matchingVehicleRadioLinkId == iVehicleRadioLink )
@@ -2129,6 +2285,9 @@ void osd_render_elements()
          }
       }
    }
+
+   if ( s_bDebugOSDShowAll || (pActiveModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_SHOW_TX_POWER) )
+      x = osd_show_txpowers(x);
 
    float xStartRecording = x;
    osd_show_recording(true,x,y);
@@ -2156,7 +2315,11 @@ void osd_render_elements()
          strcpy(szBuff, "N/A");
       else if ( link_has_received_videostream(uVehicleIdVideo) )
       {
-         sprintf(szBuff, "%s %d fps", getOptionVideoResolutionName(pVDS->iCurrentVideoWidth, pVDS->iCurrentVideoHeight), pVDS->iCurrentVideoFPS);
+         if ( ((pVDS->iCurrentVideoTxSourceFPS - pActiveModel->video_params.iVideoFPS) > 2) ||
+              ((pVDS->iCurrentVideoTxSourceFPS - pActiveModel->video_params.iVideoFPS) < -2) )
+            sprintf(szBuff, "%s *%d FPS", getOptionVideoResolutionName(pVDS->iCurrentVideoWidth, pVDS->iCurrentVideoHeight), pVDS->iCurrentVideoTxSourceFPS);
+         else
+            sprintf(szBuff, "%s %d FPS", getOptionVideoResolutionName(pVDS->iCurrentVideoWidth, pVDS->iCurrentVideoHeight), pVDS->iCurrentVideoTxSourceFPS);
       }
       else
          sprintf(szBuff, "[waiting]");
@@ -2597,36 +2760,30 @@ void osd_render_warnings()
    osd_warnings_render();
 }
 
-void _osd_render_msp(Model* pModel)
+void osd_render_msposd_buffer(int iFCType, int iOSDFontType, int iCols, int iRows, u16* pCharBuffer)
 {
-   if ( NULL == pModel )
-      return;
-
-   t_structure_vehicle_info* pRuntimeInfo = get_vehicle_runtime_info_for_vehicle_id(pModel->uVehicleId);
-   if ( NULL == pRuntimeInfo )
-      return;
-
-   if ( (pRuntimeInfo->mspState.headerTelemetryMSP.uRows == 0) ||
-        (pRuntimeInfo->mspState.headerTelemetryMSP.uCols == 0) ||
-        ((pRuntimeInfo->mspState.headerTelemetryMSP.uFlags & MSP_FLAGS_FC_TYPE_MASK) == 0) )
+   if ( (iCols <= 0) || (iRows <= 0) || (NULL == pCharBuffer) )
       return;
 
    Preferences* pP = get_Preferences();
 
    u32 uImgId = g_idImgMSPOSDBetaflight;
-   if ( (pRuntimeInfo->mspState.headerTelemetryMSP.uFlags & MSP_FLAGS_FC_TYPE_MASK) == MSP_FLAGS_FC_TYPE_INAV )
+   if ( iFCType == MSP_FLAGS_FC_TYPE_INAV )
       uImgId = g_idImgMSPOSDINAV;
-   if ( (pRuntimeInfo->mspState.headerTelemetryMSP.uFlags & MSP_FLAGS_FC_TYPE_MASK) == MSP_FLAGS_FC_TYPE_ARDUPILOT )
+   if ( iFCType == MSP_FLAGS_FC_TYPE_ARDUPILOT )
       uImgId = g_idImgMSPOSDArdupilot;
-   if ( (pModel->osd_params.uFlags & OSD_BIT_FLAGS_MASK_MSPOSD_FONT) != 0 )
+   if ( iFCType == MSP_FLAGS_FC_TYPE_PITLAB )
+      uImgId = g_idImgMSPOSDPitLab;
+   if ( iOSDFontType != 0 )
    {
-      u32 uFont = pModel->osd_params.uFlags & OSD_BIT_FLAGS_MASK_MSPOSD_FONT;
-      if ( uFont == 1 )
+      if ( iOSDFontType == 1 )
          uImgId = g_idImgMSPOSDBetaflight;
-      if ( uFont == 2 )
+      if ( iOSDFontType == 2 )
          uImgId = g_idImgMSPOSDINAV;
-      if ( uFont == 3 )
+      if ( iOSDFontType == 3 )
          uImgId = g_idImgMSPOSDArdupilot;
+      if ( iOSDFontType == 4 )
+         uImgId = g_idImgMSPOSDPitLab;
    }
    
    int iImgCharWidth = 36;
@@ -2636,8 +2793,8 @@ void _osd_render_msp(Model* pModel)
       iImgCharWidth = 24;
       iImgCharHeight = 36;    
    }
-   float fScreenCharWidth = (1.0 - 2.0*osd_getMarginX()) / (float)pRuntimeInfo->mspState.headerTelemetryMSP.uCols;
-   float fScreenCharHeight = (1.0 - 2.0*osd_getMarginY()) / (float)pRuntimeInfo->mspState.headerTelemetryMSP.uRows;
+   float fScreenCharWidth = (1.0 - 2.0*osd_getMarginX()) / (float)iCols;
+   float fScreenCharHeight = (1.0 - 2.0*osd_getMarginY()) / (float)iRows;
 
    if ( (pP->iMSPOSDSize > 30) && (pP->iMSPOSDSize < 150) )
    {
@@ -2654,10 +2811,10 @@ void _osd_render_msp(Model* pModel)
       fStartPosY += pP->iMSPOSDDeltaY * fScreenCharHeight;
    }
 
-   for( int y=0; y<pRuntimeInfo->mspState.headerTelemetryMSP.uRows; y++ )
-   for( int x=0; x<pRuntimeInfo->mspState.headerTelemetryMSP.uCols; x++ )
+   for( int y=0; y<iRows; y++ )
+   for( int x=0; x<iCols; x++ )
    {
-      u16 uChar = pRuntimeInfo->mspState.uScreenChars[x + y*pRuntimeInfo->mspState.headerTelemetryMSP.uCols];
+      u16 uChar = pCharBuffer[x + y*iCols];
       if ( 0 == (uChar & 0xFF) )
          continue;
       u8 uPage = uChar >> 8;
@@ -2668,6 +2825,27 @@ void _osd_render_msp(Model* pModel)
       g_pRenderEngine->bltSprite(fStartPosX + x * fScreenCharWidth, fStartPosY + y * fScreenCharHeight,
          iImgSrcX, iImgSrcY, iImgCharWidth, iImgCharHeight, uImgId);
    }
+}
+
+void _osd_render_msp(Model* pModel)
+{
+   if ( NULL == pModel )
+      return;
+
+   t_structure_vehicle_info* pRuntimeInfo = get_vehicle_runtime_info_for_vehicle_id(pModel->uVehicleId);
+   if ( NULL == pRuntimeInfo )
+      return;
+
+   if ( (pRuntimeInfo->mspState.headerTelemetryMSP.uMSPOSDRows == 0) ||
+        (pRuntimeInfo->mspState.headerTelemetryMSP.uMSPOSDCols == 0) ||
+        ((pRuntimeInfo->mspState.headerTelemetryMSP.uMSPFlags & MSP_FLAGS_FC_TYPE_MASK) == 0) )
+      return;
+
+   osd_render_msposd_buffer(pRuntimeInfo->mspState.headerTelemetryMSP.uMSPFlags & MSP_FLAGS_FC_TYPE_MASK,
+      pModel->osd_params.uFlags & OSD_BIT_FLAGS_MASK_MSPOSD_FONT,
+      pRuntimeInfo->mspState.headerTelemetryMSP.uMSPOSDCols,
+      pRuntimeInfo->mspState.headerTelemetryMSP.uMSPOSDRows,
+      pRuntimeInfo->mspState.uScreenChars);
 }
 
 
@@ -2703,28 +2881,41 @@ void osd_show_monitor()
 
 void osd_render_all()
 {
+   bool bAlphaEnabled = g_pRenderEngine->isAlphaBlendingEnabled();
+   g_pRenderEngine->disableAlphaBlending();
+
    if ( s_bOSDDisableRendering )
    {
       Model* pModel = osd_get_current_data_source_vehicle_model();
       if ( (NULL == pModel) || (0 == g_uActiveControllerModelVID) )
+      {
+         g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
          return;
+      }
       osd_render_instruments();
       osd_widgets_render(pModel->uVehicleId, osd_get_current_layout_index());
       osd_plugins_render();
+      g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
       return;
    }
 
    Model* pModel = osd_get_current_data_source_vehicle_model();
    if ( (NULL == pModel) || (0 == g_uActiveControllerModelVID) )
+   {
+      g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
       return;
-
+   }
    if ( ! (pModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_ENABLED) )
    if ( ! (pModel->osd_params.osd_flags3[osd_get_current_layout_index()] & OSD_FLAG3_LAYOUT_ENABLED_PLUGINS_ONLY) )
+   {
+      g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
       return;
-
+   }
    if ( ! pairing_isStarted() )
+   {
+      g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
       return;
-
+   }
    Preferences* p = get_Preferences();
    
    s_RenderCount++;
@@ -2735,11 +2926,15 @@ void osd_render_all()
 
 
    if ( pModel->is_spectator && (!(pModel->telemetry_params.flags & TELEMETRY_FLAGS_SPECTATOR_ENABLE)) )
+   {
+      g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
       return;
-
+   }
    if ( !pairing_isStarted() )
+   {
+      g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
       return;
-
+   }
    float fAlfaOrg = g_pRenderEngine->getGlobalAlfa();
    
    osd_setMarginX(0.0);
@@ -2790,7 +2985,7 @@ void osd_render_all()
       if ( pModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MSP )
       if ( pModel->osd_params.osd_flags3[osd_get_current_layout_index()] & OSD_FLAG3_RENDER_MSP_OSD )
       if ( pModel->osd_params.osd_layout_preset[osd_get_current_layout_index()] != OSD_PRESET_NONE )
-      if ( ! g_bDebugStats )
+      if ( 0 == g_pControllerSettings->iEnableDebugStats )
          _osd_render_msp(pModel);
       osd_render_elements();
    }
@@ -2800,7 +2995,7 @@ void osd_render_all()
    set_Color_OSDOutline( p->iColorOSDOutline[0], p->iColorOSDOutline[1], p->iColorOSDOutline[2], ((float)p->iColorOSDOutline[3])/100.0);
    osd_set_colors();
 
-   if ( ! g_bDebugStats )
+   if ( 0 == g_pControllerSettings->iEnableDebugStats )
    {
       if ( pModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_ENABLED )
          osd_render_instruments();
@@ -2810,7 +3005,7 @@ void osd_render_all()
    }
    g_pRenderEngine->drawBackgroundBoundingBoxes(false);
 
-   if ( ! g_bDebugStats )
+   if ( 0 == g_pControllerSettings->iEnableDebugStats )
    {
       if ( pModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_ENABLED )
          osd_render_stats();
@@ -2818,8 +3013,12 @@ void osd_render_all()
       osd_render_warnings();
    }
 
-   if ( g_bDebugStats )
+   if ( g_pControllerSettings->iEnableDebugStats )
       osd_render_debug_stats();
+
+   ControllerSettings* pCS = get_ControllerSettings();
+   if ( pCS->iDbgPingGraphs )
+      osd_reder_debug_ping_stats();
 
    if ( pModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_ENABLED )
    if ( (NULL != p) && (p->iShowProcessesMonitor) )
@@ -2837,6 +3036,7 @@ void osd_render_all()
 
    g_pRenderEngine->drawBackgroundBoundingBoxes(false);
    g_pRenderEngine->setGlobalAlfa(fAlfaOrg);
+   g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
 }
 
 void osd_start_flash_osd_elements()

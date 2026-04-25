@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -36,7 +36,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_files.h"
 #include "../base/hardware_radio.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 
 #include <pthread.h>
@@ -177,7 +177,9 @@ bool process_calibration_file_segment(u32 command_param, u8* pBuffer, int length
       strcpy(szFileName, FOLDER_RUBY_TEMP);
       strcat(szFileName, "c_");
       strcat(szFileName, pCalibFileData->szFileName);
-      strcat(szFileName, ".bin");
+      if ( NULL == strstr(szFileName, ".bin") )
+         strcat(szFileName, ".bin");
+
       FILE* fp = fopen(szFileName, "wb");
       if ( NULL == fp )
       {

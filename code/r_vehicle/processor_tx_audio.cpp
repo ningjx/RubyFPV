@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -32,7 +32,7 @@
 
 #include "../base/base.h"
 #include "../base/config.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "processor_tx_audio.h"
 
 #include "../radio/radiopackets2.h"
@@ -419,6 +419,13 @@ void ProcessorTxAudio::_sendAudioPacket(u8* pBuffer, int iLength, u32 uAudioPack
    memcpy(packet+sizeof(t_packet_header)+sizeof(u32), pBuffer, iLength);
 
    send_packet_to_radio_interfaces(packet, PH.total_length, -1);
+}
+
+int ProcessorTxAudio::getPendingAudioPackets()
+{
+   if ( (NULL == g_pCurrentModel) || (! g_pCurrentModel->isAudioCapableAndEnabled()) )
+      return 0;
+   return m_pBuffers->getUnsendPacketsCount();
 }
 
 void ProcessorTxAudio::sendAudioPackets()

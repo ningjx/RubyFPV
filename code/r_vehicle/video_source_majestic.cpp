@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,11 +35,12 @@
 #include "../base/shared_mem.h"
 #include "../base/hardware_camera.h"
 #include "../base/hardware_cam_maj.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/parser_h264.h"
 #include "../base/utils.h"
 #include "../common/string_utils.h"
+#include "../radio/radio_rx.h"
 #include "../radio/radiopackets2.h"
 
 #include <errno.h>
@@ -48,8 +49,10 @@
 #include <sys/socket.h> 
 #include <getopt.h>
 #include <poll.h>
+#include <sched.h>
 
 #include "video_source_majestic.h"
+#include "video_sources.h"
 #include "video_tx_buffers.h"
 #include "events.h"
 #include "timers.h"
@@ -57,6 +60,7 @@
 #include "launchers_vehicle.h"
 #include "packets_utils.h"
 #include "adaptive_video.h"
+#include "ruby_rt_vehicle.h"
 
 #define MAX_AUDIO_MAJ_BUFFER 4096
 
@@ -82,12 +86,10 @@ u32 s_uDebugTimeLastUDPVideoInputCheck = 0;
 u32 s_uDebugUDPInputBytes = 0;
 u32 s_uDebugUDPInputReads = 0;
 
-bool s_bRequestedVideoMajesticCaptureUpdate = false;
-u32 s_uRequestedVideoMajesticCaptureUpdateReason = 0;
-
 u32 s_uLastNALType = 0;
 bool s_bLastReadIsSingleNAL = false;
 bool s_bLastReadIsEndNAL = false;
+bool s_bLastReadIsStartNAL = false;
 u32 s_uTimeLastMajesticRecvData = 0;
 u32 s_uTimeLastCheckMajesticProcess = 0;
 int s_iCountMajestigProcessNotRunningChecks = 0;
@@ -95,96 +97,81 @@ int s_iCountMajestigProcessNotRunningChecks = 0;
 u32 s_uLastVideoSourceReadTimestamps[5];
 u32 s_uLastAlarmUDPOveflowTimestamp = 0;
 
-bool s_bIsRestartingMajestic = true;
+bool s_bIsRestartingMajestic = false;
 u32 s_uTimeMajesticStarted = 0;
 pthread_t s_pThreadRestartMajestic;
 
-void video_source_majestic_start_and_configure()
+void _video_source_majestic_move_ruby_to_other_cores()
 {
-   if ( 0 == hardware_camera_maj_get_current_pid() )
+   int iPIDMajestic = hw_process_exists("majestic");
+   int iPIDMajestic2 = hardware_camera_maj_get_current_pid();
+
+   if ( (iPIDMajestic <= 0) || (iPIDMajestic2 <= 0) )
    {
-      hardware_set_oipc_gpu_boost(g_pCurrentModel->processesPriorities.iFreqGPU);
-      hardware_sleep_ms(50);
-      bool bEnableLog = true;
-      if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS) )
-         bEnableLog = false;
-      hardware_camera_maj_start_capture_program(bEnableLog);
+      log_line("[VideoSourceMaj] Can't balance CPU cores for majestic. Majestic is not running (PIDs: %d, %d)", iPIDMajestic, iPIDMajestic2);
+      return;
    }
 
-   if ( 0 == hardware_camera_maj_get_current_pid() )
-      log_softerror_and_alarm("[VideoSourceMaj] Start: Can't find the PID of majestic");
+   int iCPUCore = hw_process_get_current_core(iPIDMajestic);
+
+   log_line("[VideoSourceMaj] Current CPU core for majestic is: %d", iCPUCore);
+
+   if ( 0 == iCPUCore )
+      iCPUCore = 1;
    else
+      iCPUCore = 0;
+   hw_set_current_thread_affinity("rt_vehicle-maj", iCPUCore, iCPUCore);
+   iCPUCore = 1 - iCPUCore;
+   radio_rx_set_cpu_affinity(iCPUCore);
+   log_line("[VideoSourceMaj] Done adjusting CPU cores balance for majestic-rt_vehicle.");
+}
+
+void _video_source_majestic_check_cores_affinities_balance()
+{
+   int iPIDMajestic = hw_process_exists("majestic");
+   int iPIDMajestic2 = hardware_camera_maj_get_current_pid();
+
+   if ( (iPIDMajestic <= 0) || (iPIDMajestic2 <= 0) )
    {
-      hardware_camera_maj_add_log("Majestic is started.", false);
-      if ( g_pCurrentModel->processesPriorities.iNiceVideo < 0 )
-      {
-         hardware_sleep_ms(50);
-         log_line("[VideoSourceMaj] Adjust majestic nice priority to %d", g_pCurrentModel->processesPriorities.iNiceVideo);
-         char szComm[256];
-         sprintf(szComm,"renice -n %d -p %d", g_pCurrentModel->processesPriorities.iNiceVideo, hardware_camera_maj_get_current_pid());
-         hw_execute_bash_command(szComm, NULL);
-      }
-      hardware_sleep_ms(500);
-      if ( g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_BALANCE_INT_CORES )
-         hardware_balance_interupts();
-      hardware_camera_maj_set_daylight_off((g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].profiles[g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCurrentProfile].uFlags & CAMERA_FLAG_OPENIPC_DAYLIGHT_OFF)?1:0);
+      log_line("[VideoSourceMaj] Can't check CPU cores balance for majestic. Majestic is not running (PIDs: %d, %d)", iPIDMajestic, iPIDMajestic2);
+      return;
    }
 
-   video_source_majestic_clear_input_buffers();
-
-   adaptive_video_on_capture_restarted();
-   s_bLogStartOfInputVideoData = true;
-   s_uTimeMajesticStarted = g_TimeNow;
-   s_bIsRestartingMajestic = false;
-}
-
-void video_source_majestic_init_all_params()
-{
-   for( int i=0; i<(int)(sizeof(s_uLastVideoSourceReadTimestamps)/sizeof(s_uLastVideoSourceReadTimestamps[0])); i++ )
-      s_uLastVideoSourceReadTimestamps[i] = 0;
-
-   log_line("[VideoSourceMaj] Init: Majestic file size: %d bytes", get_filesize("/usr/bin/majestic") );
-   int iPID = hardware_camera_maj_init();
-   log_line("[VideoSourceMaj] Init: Majestic initial PID: %d", iPID);
-
-   hardware_camera_maj_add_log("Initialize...", false);
-
-   // Stop default majestic
-   //hardware_camera_maj_stop_capture_program();
-
-   hardware_set_oipc_gpu_boost(g_pCurrentModel->processesPriorities.iFreqGPU);
-
-   hardware_camera_maj_apply_all_settings(g_pCurrentModel, &(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].profiles[g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCurrentProfile]),
-          g_pCurrentModel->video_params.user_selected_video_link_profile,
-          &(g_pCurrentModel->video_params), false);
+   int iCPUCoreMaj = hw_process_get_current_core(iPIDMajestic);
+   int iCPUCoreRuby = hw_process_get_current_core(getpid());
    
-   hardware_sleep_ms(100);
-
-   // Start majestic and configure process
-   video_source_majestic_start_and_configure();
+   log_line("[VideoSourceMaj] Current CPU core for majestic is: %d, for ruby_rt_vehicle is: %d, %s", iCPUCoreMaj, iCPUCoreRuby, (iCPUCoreMaj == iCPUCoreRuby)?"the same":"are different");
+   if ( iCPUCoreMaj == iCPUCoreRuby )
+       _video_source_majestic_move_ruby_to_other_cores();
 }
 
-void video_source_majestic_cleanup()
+void video_source_majestic_stop_program()
 {
    if ( s_bIsRestartingMajestic )
       pthread_cancel(s_pThreadRestartMajestic);
    s_bIsRestartingMajestic = false;
-}
 
+   hardware_camera_maj_stop_threads();
 
-void video_source_majestic_close()
-{
    if ( -1 != s_fInputVideoStreamUDPSocket )
    {
-      log_line("[VideoSourceMaj] Closed input UDP socket.");
+      log_line("[VideoSourceMaj] Stop program: Closed input UDP socket.");
       close(s_fInputVideoStreamUDPSocket);
    }
    else
-      log_line("[VideoSourceMaj] No input UDP socket to close.");
+      log_line("[VideoSourceMaj] Stop Program: No input UDP socket to close.");
    s_fInputVideoStreamUDPSocket = -1;
+
+   if ( hardware_camera_maj_get_current_pid() > 0 )
+   {
+      hardware_camera_maj_add_log("Thread: Will stop existing majestic process...", false);
+      hardware_camera_maj_stop_capture_program();
+   }
+   s_uTimeMajesticStarted = 0;
+   log_line("[VideoSourceMaj] Stopped program.");
 }
 
-int video_source_majestic_open(int iUDPPort)
+int _video_source_majestic_open(int iUDPPort)
 {
    if ( -1 != s_fInputVideoStreamUDPSocket )
       return s_fInputVideoStreamUDPSocket;
@@ -245,43 +232,171 @@ int video_source_majestic_open(int iUDPPort)
    return s_fInputVideoStreamUDPSocket;
 }
 
+// Returns initial set video bitrate
+u32 video_source_majestic_start_program(u32 uOverwriteInitialBitrate, int iOverwriteInitialKFMs, int iOverwriteInitialQPDelta, int* pInitialKFSet)
+{
+   log_line("[VideoSourceMaj] Start program: Majestic file size: %d bytes", get_filesize("/usr/bin/majestic") );
+
+   if ( 0 != hardware_camera_maj_validate_config() )
+   {
+      log_softerror_and_alarm("[VideoSourceMaj] Start program: Invalid majestic config. Don't start it.");
+      return 0;
+   }
+
+   hardware_set_oipc_gpu_boost(g_pCurrentModel->processesPriorities.iFreqGPU);
+
+   //bool bEnableLog = true;
+   //if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS) )
+   //   bEnableLog = false;
+
+   log_line("[VideoSourceMaj] Start and set params for majestic.");
+   log_line("[VideoSourceMaj] Overwrite initial bitrate: %.3f", (float)uOverwriteInitialBitrate/1000.0/1000.0);
+   log_line("[VideoSourceMaj] Overwrite initial keyframe: %d ms", iOverwriteInitialKFMs);
+   log_line("[VideoSourceMaj] Overwrite initial QPDelta: %d", iOverwriteInitialQPDelta);
+   hardware_camera_maj_add_log("Initialize...", false);
+
+   hardware_camera_maj_set_temp_values(uOverwriteInitialBitrate, iOverwriteInitialKFMs, iOverwriteInitialQPDelta);
+   video_source_majestic_apply_all_parameters();
+
+   // Majestic starts with the RT priority of the calling process. So set it first and then revert it
+
+   if ( g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_PRIORITIES_ADJUSTMENTS )
+   {
+      log_line("Adjust current proc and thread priorities to match video capture raw priority %d", g_pCurrentModel->processesPriorities.iThreadPriorityVideoCapture);
+      if ( (g_pCurrentModel->processesPriorities.iThreadPriorityVideoCapture > 1) && (g_pCurrentModel->processesPriorities.iThreadPriorityVideoCapture <= 100) )
+      {
+         hw_set_priority_current_proc(g_pCurrentModel->processesPriorities.iThreadPriorityVideoCapture);
+         hw_set_current_thread_raw_priority("maj start", g_pCurrentModel->processesPriorities.iThreadPriorityVideoCapture);
+      }
+      else
+      {
+         hw_set_priority_current_proc(-1);
+         hw_set_current_thread_raw_priority("maj start", -1);
+      }
+      sched_yield();
+   }
+
+   hardware_camera_maj_start_capture_program(false);
+   sched_yield();
+
+   if ( (g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES_VIDEO_CAPTURE) &&
+        (g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES) &&
+        (hw_procs_get_cpu_count() > 1) )
+      hw_set_process_affinity("majestic", -1, g_pCurrentModel->processesPriorities.iCoreVideoCapture, g_pCurrentModel->processesPriorities.iCoreVideoCapture);
+
+   if ( g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_PRIORITIES_ADJUSTMENTS )
+   {
+      log_line("Adjust current proc and thread priorities to match back router raw priority %d", g_pCurrentModel->processesPriorities.iThreadPriorityRouter);
+      hw_set_priority_current_proc(g_pCurrentModel->processesPriorities.iThreadPriorityRouter);
+      hw_set_current_thread_raw_priority("maj start finish revert", g_pCurrentModel->processesPriorities.iThreadPriorityRouter);
+   }
+   sched_yield();
+
+   if ( (! (g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES_VIDEO_CAPTURE)) &&
+        (! (g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES)) &&
+        (hw_procs_get_cpu_count() > 1) &&
+        (g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES_BALANCE_OIPC) )
+      _video_source_majestic_move_ruby_to_other_cores();
+
+   u32 uInitialVideoBitrate = hardware_camera_maj_get_current_bitrate();
+   if ( NULL != pInitialKFSet )
+      *pInitialKFSet = hardware_camera_maj_get_current_keyframe();
+
+   int iPID = hardware_camera_maj_get_current_pid();
+   if ( 0 == iPID )
+   {
+      log_softerror_and_alarm("[VideoSourceMaj] Start program: Can't find the PID of majestic");
+      s_uTimeMajesticStarted = 0;
+      s_bIsRestartingMajestic = false;
+      return 0;
+   }
+   log_line("[VideoSourceMaj] Started majestic capture program, PID: %d", iPID);
+   hardware_camera_maj_add_log("Majestic is started.", false);
+
+   if ( g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_PRIORITIES_ADJUSTMENTS )
+   {
+      if ( g_pCurrentModel->processesPriorities.iThreadPriorityVideoCapture > 100 )
+      {
+         hardware_sleep_ms(50);
+         log_line("[VideoSourceMaj] Adjust majestic nice priority to %d", g_pCurrentModel->processesPriorities.iThreadPriorityVideoCapture - 120);
+         char szComm[256];
+         sprintf(szComm,"renice -n %d -p %d", g_pCurrentModel->processesPriorities.iThreadPriorityVideoCapture - 120, iPID);
+         hw_execute_bash_command(szComm, NULL);
+      }
+      else if ( g_pCurrentModel->processesPriorities.iThreadPriorityVideoCapture > 1 )
+      {
+      }
+   }
+
+   hardware_sleep_ms(200);
+   if ( g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_BALANCE_INTERRUPTS_CORES )
+      hardware_balance_interupts();
+
+   hardware_camera_maj_init_threads(g_pCurrentModel);
+
+   _video_source_majestic_open(MAJESTIC_UDP_PORT);
+   video_source_majestic_clear_input_buffers();
+
+   s_bLogStartOfInputVideoData = true;
+   s_uTimeMajesticStarted = g_TimeNow;
+   s_bIsRestartingMajestic = false;
+
+   log_line("[VideoSourceMaj] Start program: Completed. Initial video bitrate set to majestic: %.3f", (float)uInitialVideoBitrate/1000.0/1000.0);
+   return uInitialVideoBitrate;
+}
+
+void video_source_majestic_apply_all_parameters()
+{
+   for( int i=0; i<(int)(sizeof(s_uLastVideoSourceReadTimestamps)/sizeof(s_uLastVideoSourceReadTimestamps[0])); i++ )
+      s_uLastVideoSourceReadTimestamps[i] = 0;
+
+   signal_start_long_op();
+   hardware_camera_maj_apply_all_settings(g_pCurrentModel, &(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].profiles[g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCurrentProfile]),
+          g_pCurrentModel->video_params.iCurrentVideoProfile, &(g_pCurrentModel->video_params));
+
+   video_source_majestic_clear_input_buffers();
+   video_source_majestic_clear_audio_buffers();
+   signal_end_long_op();
+}
+
 u32 video_source_majestic_get_program_start_time()
 {
    return s_uTimeMajesticStarted;
 }
 
-bool video_source_majestic_is_restarting()
-{
-   return s_bIsRestartingMajestic;
-}
-
-
 void _restart_majestic_procedure()
 {
+   log_line("[VideoSourceMaj] Restart procedure started.");
+
+   signal_start_long_op();
+
+   hardware_camera_maj_stop_threads();
+
+   if ( -1 != s_fInputVideoStreamUDPSocket )
+   {
+      log_line("[VideoSourceMaj] Restart procedure: Closed input UDP socket.");
+      close(s_fInputVideoStreamUDPSocket);
+   }
+   else
+      log_line("[VideoSourceMaj] Restart procedure: No input UDP socket to close.");
+   s_fInputVideoStreamUDPSocket = -1;
+
    if ( hardware_camera_maj_get_current_pid() > 0 )
    {
       hardware_camera_maj_add_log("Thread: Will stop existing majestic process...", false);
       hardware_camera_maj_stop_capture_program();
    }
 
-   s_bRequestedVideoMajesticCaptureUpdate = false;
-   s_uRequestedVideoMajesticCaptureUpdateReason = 0;
+   video_sources_start_capture();
 
-   video_source_majestic_start_and_configure();
-   
-   if ( hardware_camera_maj_get_current_pid() > 0 )
-   {
-      hardware_camera_maj_add_log("Thread: Started new majestic process.", false);
-
-      log_line("[VideoSourceMaj] Thread started majestic process.");
-      video_source_majestic_open(MAJESTIC_UDP_PORT);
-      vehicle_check_update_processes_affinities(false, false);
-   }
+   signal_end_long_op();
+   log_line("[VideoSourceMaj] Restart procedure completed.");
 }
 
 void* _thread_restart_majestic(void *argument)
 {
    log_line("[VideoSourceMaj] Thread: Started thread to stop/re-start majestic...");
+   hw_log_current_thread_attributes("maj restart");
 
    _restart_majestic_procedure();
 
@@ -289,14 +404,6 @@ void* _thread_restart_majestic(void *argument)
 
    log_line("[VideoSourceMaj] Thread: Ended thread to stop/re-start majestic.");
    return NULL;
-}
-
-void video_source_majestic_request_update_program(u32 uChangeReason)
-{
-   log_line("[VideoSourceMaj] Majestic was flagged for restart (reason: %d, %s)", uChangeReason & 0xFF, str_get_model_change_type(uChangeReason & 0xFF));
-   log_line("[VideoSourceMaj] Is now in developer mode? %s", g_bDeveloperMode?"yes":"no");
-   s_bRequestedVideoMajesticCaptureUpdate = true;
-   s_uRequestedVideoMajesticCaptureUpdateReason = uChangeReason;
 }
 
 uint32_t extract_udp_rxq_overflow(struct msghdr *msg)
@@ -345,7 +452,7 @@ int _video_source_majestic_try_read_input_udp_data(bool bAsync)
       FD_SET(s_fInputVideoStreamUDPSocket, &fdSet);
       struct timeval timeWait;
       timeWait.tv_sec = 0;
-      timeWait.tv_usec = 200;
+      timeWait.tv_usec = 100;
       int res = select(s_fInputVideoStreamUDPSocket+1, &fdSet, NULL, NULL, &timeWait);
       if ( res < 0 )
       {
@@ -396,16 +503,18 @@ int _video_source_majestic_try_read_input_udp_data(bool bAsync)
 
       static uint32_t rxq_overflow = 0;
       uint32_t cur_rxq_overflow = extract_udp_rxq_overflow(&msghdr);
+      static int s_iRxUDPOverflowCounter = 0;
       if (cur_rxq_overflow != rxq_overflow)
       {
           u32 uDroppedCount = cur_rxq_overflow - rxq_overflow;
-          if ( s_bRequestedVideoMajesticCaptureUpdate )
-             log_line("[VideoSourceMaj] UDP dropped %u packets while reconfiguring majestic.", uDroppedCount);
+          if ( s_bIsRestartingMajestic )
+             log_line("[VideoSourceMaj] UDP dropped %u packets while restarting majestic.", uDroppedCount);
           else
           {
-             log_softerror_and_alarm("[VideoSourceMaj] UDP rxq overflow: %u packets dropped (from %u to %u)", uDroppedCount, rxq_overflow, cur_rxq_overflow);
+             log_softerror_and_alarm("[VideoSourceMaj] UDP rxq overflow: %u packets dropped (from %u to %u), overflow counter: %d", uDroppedCount, rxq_overflow, cur_rxq_overflow, s_iRxUDPOverflowCounter);
              log_softerror_and_alarm("[VideoSourceMaj] Last 4 majestic UDP reads: %u ms ago, %u ms ago, %u ms ago, %u ms ago",
                 s_uLastVideoSourceReadTimestamps[1] - g_TimeNow, s_uLastVideoSourceReadTimestamps[2] - g_TimeNow, s_uLastVideoSourceReadTimestamps[3] - g_TimeNow, s_uLastVideoSourceReadTimestamps[4] - g_TimeNow );
+             s_iRxUDPOverflowCounter++;
              if ( cur_rxq_overflow > rxq_overflow + 1 )
              if ( g_TimeNow > s_uLastAlarmUDPOveflowTimestamp + 10000 )
              if ( g_TimeNow > g_TimeStart + 10000 )
@@ -428,9 +537,29 @@ int _video_source_majestic_try_read_input_udp_data(bool bAsync)
                 
                 send_alarm_to_controller(ALARM_ID_DEVELOPER_ALARM, ALARM_FLAG_DEVELOPER_ALARM_UDP_SKIPPED | ((uDroppedCount & 0xFF) << 8), uFlags2, 5);
              }
+
+             if ( s_iRxUDPOverflowCounter > 10 )
+             {
+                log_softerror_and_alarm("[VideoSourceMaj] Too many UDP overflows: Reopen UDP port...");
+                if ( -1 != s_fInputVideoStreamUDPSocket )
+                {
+                   close(s_fInputVideoStreamUDPSocket);
+                   log_line("[VideoSourceMaj] Closed input UDP socket.");
+                }
+                else
+                   log_line("[VideoSourceMaj] No input UDP socket to close.");
+                s_fInputVideoStreamUDPSocket = -1;
+                _video_source_majestic_open(MAJESTIC_UDP_PORT);
+                video_source_majestic_clear_input_buffers();
+                s_iRxUDPOverflowCounter = 0;
+                nRecvBytes = 0;
+                log_softerror_and_alarm("[VideoSourceMaj] Too many UDP overflows: Reopened UDP port.");
+             }
           }
           rxq_overflow = cur_rxq_overflow;
       }
+      else
+         s_iRxUDPOverflowCounter = 0;
    }
    else
    {
@@ -483,6 +612,7 @@ int _video_source_majestic_parse_rtp_data(u8* pInputRawData, int iInputBytes)
 {
    s_bLastReadIsSingleNAL = false;
    s_bLastReadIsEndNAL = false;
+   s_bLastReadIsStartNAL = false;
 
    if ( iInputBytes <= 12 )
    {
@@ -549,6 +679,8 @@ int _video_source_majestic_parse_rtp_data(u8* pInputRawData, int iInputBytes)
 
       s_bLastReadIsSingleNAL = true;
       s_bLastReadIsEndNAL = true;
+      s_bLastReadIsStartNAL = true;
+
       // H264 frame type: lower 5 bits (&0x1F) of uNALOutputHeader[4]: 5 - Iframe, 1 - Pframe
       s_uLastNALType = pInputRawData[0] & 0x1F;
 
@@ -564,6 +696,8 @@ int _video_source_majestic_parse_rtp_data(u8* pInputRawData, int iInputBytes)
 
    s_bLastReadIsSingleNAL = false;
    s_bLastReadIsEndNAL = false;
+   s_bLastReadIsStartNAL = false;
+
    
    u8 uFUStartBit = 0;
    u8 uFUEndBit = 0;
@@ -614,6 +748,8 @@ int _video_source_majestic_parse_rtp_data(u8* pInputRawData, int iInputBytes)
       iInputBytes--;
    }
 
+   if ( uFUStartBit )
+      s_bLastReadIsStartNAL = true;
    if ( uFUEndBit )
       s_bLastReadIsEndNAL = true;
 
@@ -670,7 +806,7 @@ void _parse_stream(unsigned char* pBuffer, int iLength)
 */
 
 // Returns the buffer and number of bytes read
-u8* video_source_majestic_read(int* piReadSize, bool bAsync)
+u8* video_source_majestic_read(int* piReadSize, bool bAsync, u32* puOutTimeDataAvailable)
 {
    if ( NULL == piReadSize )
       return NULL;
@@ -684,6 +820,12 @@ u8* video_source_majestic_read(int* piReadSize, bool bAsync)
    if ( iRecvBytes <= 0 )
       return NULL;
 
+   if ( NULL != puOutTimeDataAvailable )
+   {
+      g_TimeNow = get_current_timestamp_ms();
+      *puOutTimeDataAvailable = g_TimeNow;
+   }
+
    if ( s_bLogStartOfInputVideoData )
    {
       log_line("[VideoSourceMaj] Start receiving data (H264/H265 stream) from camera");
@@ -694,14 +836,7 @@ u8* video_source_majestic_read(int* piReadSize, bool bAsync)
    s_uDebugUDPInputBytes += iRecvBytes;
    s_uDebugUDPInputReads++;
 
-   if ( s_bRequestedVideoMajesticCaptureUpdate )
-   if ( s_uRequestedVideoMajesticCaptureUpdateReason != MODEL_CHANGED_CAMERA_PARAMS)
-      return NULL;
-
    int iOutputBytes = _video_source_majestic_parse_rtp_data(s_uInputVideoUDPBuffer, iRecvBytes);
-
-   // To remove
-   //_parse_stream(s_uOutputUDPNALFrameSegment, iOutputBytes);
 
    *piReadSize = iOutputBytes;
    if ( iOutputBytes <= 0 )
@@ -709,39 +844,6 @@ u8* video_source_majestic_read(int* piReadSize, bool bAsync)
    return s_uOutputUDPNALFrameSegment;
 }
 
-
-// Returns the buffer and number of bytes read
-u8* video_source_majestic_raw_read(int* piReadSize, bool bAsync)
-{
-   if ( NULL == piReadSize )
-      return NULL;
-
-   *piReadSize = 0;
-
-   if ( s_bIsRestartingMajestic )
-      return NULL;
-
-   int iRecvBytes = _video_source_majestic_try_read_input_udp_data(bAsync);
-   if ( iRecvBytes <= 0 )
-      return NULL;
-
-   if ( s_bLogStartOfInputVideoData )
-   {
-      log_line("[VideoSourceMaj] Start receiving data (H264/H265 stream) from camera");
-      s_bLogStartOfInputVideoData = false;
-   }
-   s_iCountMajestigProcessNotRunningChecks = 0;
-   s_uTimeLastMajesticRecvData = g_TimeNow;
-   s_uDebugUDPInputBytes += iRecvBytes;
-   s_uDebugUDPInputReads++;
-
-   if ( s_bRequestedVideoMajesticCaptureUpdate )
-   if ( s_uRequestedVideoMajesticCaptureUpdateReason != MODEL_CHANGED_CAMERA_PARAMS)
-      return NULL;
-
-   *piReadSize = iRecvBytes;
-   return s_uInputVideoUDPBuffer;
-}
 
 int video_source_majestic_get_audio_data(u8* pOutputBuffer, int iMaxToRead)
 {
@@ -778,7 +880,7 @@ void video_source_majestic_clear_input_buffers()
    for( int i=0; i<1000; i++ )
    {
       int iReadSize = 0;
-      u8* pVideoData = video_source_majestic_read(&iReadSize, true);
+      u8* pVideoData = video_source_majestic_read(&iReadSize, true, NULL);
       if ( NULL == pVideoData )
             break;
       iCount++;
@@ -792,6 +894,11 @@ bool video_source_majestic_last_read_is_single_nal()
    return s_bLastReadIsSingleNAL;
 }
 
+bool video_source_majestic_last_read_is_start_nal()
+{
+   return s_bLastReadIsStartNAL;
+}
+
 bool video_source_majestic_last_read_is_end_nal()
 {
    return s_bLastReadIsEndNAL;
@@ -802,65 +909,8 @@ u32 video_source_majestic_get_last_nal_type()
    return s_uLastNALType;
 }
 
-void _video_source_majestic_update_params()
-{
-   //u32 uParam = (s_uRequestedVideoMajesticCaptureUpdateReason>>16);
-   u32 uReason = s_uRequestedVideoMajesticCaptureUpdateReason & 0xFF;
 
-   s_bRequestedVideoMajesticCaptureUpdate = false;
-   s_uRequestedVideoMajesticCaptureUpdateReason = 0;
-
-
-   if ( uReason == MODEL_CHANGED_CAMERA_PARAMS )
-   {
-      int iCurrentProfile = g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCurrentProfile;
-      log_line("[VideoSourceMaj] Process signal to apply majestic camera only settings.");
-      camera_profile_parameters_t* pCameraParams = &(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].profiles[iCurrentProfile]);
-      hardware_camera_maj_add_log("Will apply new camera settings...", true);
-      hardware_camera_maj_apply_image_settings(pCameraParams, true);
-      return;
-   }
-
-   if ( uReason == MODEL_CHANGED_DEBUG_MODE )
-   {
-      log_line("[VideoSourceMaj] Process notif dev mode update. Developer mode is now %s",
-         g_bDeveloperMode?"on":"off");
-      video_source_majestic_clear_input_buffers();
-      return;
-   }
-
-   if ( uReason == MODEL_CHANGED_CAMERA_CALIBRATION_FILE )
-   {
-      log_line("[VideoSourceMaj] Processing set camera calibration file notification. File: [%s]", g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].szCameraBinProfileName);
-      hardware_camera_maj_set_calibration_file(g_pCurrentModel->getActiveCameraType(), g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCameraBinProfile, g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].szCameraBinProfileName);
-      video_source_majestic_clear_input_buffers();
-      return;
-   }
-
-   log_line("[VideoSourceMaj] Process signal to apply all majestic settings.");
-   hardware_camera_maj_add_log("Will apply all new settings...", true);
-
-   camera_profile_parameters_t* pCameraParams = &(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].profiles[g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCurrentProfile]);
-   video_parameters_t* pVideoParams = &(g_pCurrentModel->video_params);
-
-   if ( uReason == MODEL_CHANGED_USER_SELECTED_VIDEO_PROFILE )
-      hardware_camera_maj_clear_temp_values();
-   hardware_camera_maj_apply_all_settings(g_pCurrentModel, pCameraParams, g_pCurrentModel->video_params.user_selected_video_link_profile, pVideoParams, false);
-
-   video_source_majestic_clear_input_buffers();
-
-   if ( (uReason == MODEL_CHANGED_VIDEO_RESOLUTION) ||
-        (uReason == MODEL_CHANGED_VIDEO_CODEC) )
-      log_line("[VideoSourceMaj] Due to signaled changed video resolution or codec.");
-   if ( uReason == MODEL_CHANGED_USER_SELECTED_VIDEO_PROFILE )
-      log_line("[VideoSourceMaj] Due to signaled changed user selected video profile.");
-
-   //hardware_camera_maj_add_log("Applied settings. Signal majestic...", true);
-   //hw_execute_bash_command_raw("killall -1 majestic", NULL);
-   //hardware_camera_maj_add_log("Signaled majestic to reload settings.", true);
-}
-
-bool video_source_majestic_periodic_checks()
+bool video_source_majestic_periodic_health_checks()
 {
    if ( g_TimeNow >= s_uDebugTimeLastUDPVideoInputCheck+10000 )
    {
@@ -875,8 +925,21 @@ bool video_source_majestic_periodic_checks()
       s_uDebugUDPInputReads = 0;
    }
 
-   if ( s_bIsRestartingMajestic )
+   if ( s_bIsRestartingMajestic || g_bVideoPaused )
       return false;
+
+
+   // Check if cores affinities are balanced
+   static u32 s_uTimeLastCheckAffinitiesBalance = 0;
+   if ( (! (g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES_VIDEO_CAPTURE)) &&
+        (! (g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES)) &&
+        (hw_procs_get_cpu_count() > 1) &&
+        (g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES_BALANCE_OIPC) )
+   if ( g_TimeNow > s_uTimeLastCheckAffinitiesBalance + 10000 )
+   {
+      s_uTimeLastCheckAffinitiesBalance = g_TimeNow;
+      _video_source_majestic_check_cores_affinities_balance();
+   }
 
    // Check majestic process to be generating video data
    if ( s_iCountMajestigProcessNotRunningChecks >= 0 )
@@ -887,13 +950,14 @@ bool video_source_majestic_periodic_checks()
    {
       log_softerror_and_alarm("[VideoSourceMaj] majestic is not generating any video stream. Restart it.");
       
-      video_source_majestic_close();
+      signal_start_long_op();
+      video_source_majestic_stop_program();
       s_bIsRestartingMajestic = true;
       s_iCountMajestigProcessNotRunningChecks++;
-
+      signal_end_long_op();
       if ( hw_process_exists("sysupgrade") )
       {
-         log_softerror_and_alarm("Sysupgrade is in progress. Don't do anything else. Just quit.");
+         log_softerror_and_alarm("[VideoSourceMaj] Sysupgrade is in progress. Don't do anything else. Just quit.");
          return true;
       }
       send_alarm_to_controller(ALARM_ID_VIDEO_CAPTURE_MALFUNCTION,0,0, 5);
@@ -902,22 +966,38 @@ bool video_source_majestic_periodic_checks()
       if ( s_iCountMajestigProcessNotRunningChecks >= 2 )
       {
          // Do a full restart of vehicle
-         log_line("Majestic can't start. Do a full restart of vehicle...");
-         char szComm[256];
-         sprintf(szComm, "touch %s", CONFIG_FILE_FULLPATH_RESTART);
-         hw_execute_bash_command_raw(szComm, NULL);
+         log_line("[VideoSourceMaj] Majestic can't start. Do a full restart of vehicle...");
+
+         sem_t* pSem = sem_open(SEMAPHORE_RESTART_VEHICLE_PROCS, O_CREAT, S_IWUSR | S_IRUSR, 0);
+         if ( (NULL == pSem) || (SEM_FAILED == pSem) )
+            log_softerror_and_alarm("[VideoSourceMaj] Failed to open semaphore to signal restart: %s", SEMAPHORE_RESTART_VEHICLE_PROCS);
+         else
+         {
+            sem_post(pSem);
+            sem_close(pSem);
+            log_line("[VideoSourceMaj] Signaled semaphore to restart all procs."); 
+         }
+         
          s_iCountMajestigProcessNotRunningChecks = -2;
          return true;
       }
 
-      if ( 0 != pthread_create(&s_pThreadRestartMajestic, NULL, &_thread_restart_majestic, NULL) )
+      pthread_attr_t attr;
+
+      int iCoreAffinity = -1;
+      if ( g_pCurrentModel->processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES )
+         iCoreAffinity = g_pCurrentModel->processesPriorities.iCoreOthers;
+
+      hw_init_worker_thread_attrs(&attr, iCoreAffinity, -1, SCHED_OTHER, 0, "maj restart");
+
+      if ( 0 != pthread_create(&s_pThreadRestartMajestic, &attr, &_thread_restart_majestic, NULL) )
       {  
          log_softerror_and_alarm("[VideoSourceMaj] Failed to create thread to stop/restart majestic. Do it manually.");
          _restart_majestic_procedure();
-         video_source_majestic_open(MAJESTIC_UDP_PORT);
+         _video_source_majestic_open(MAJESTIC_UDP_PORT);
          s_bIsRestartingMajestic = false;
-         vehicle_check_update_processes_affinities(false, false);
       }
+      pthread_attr_destroy(&attr);
       return false;
    }
 
@@ -930,14 +1010,14 @@ bool video_source_majestic_periodic_checks()
       s_uTimeLastOverflowCheck = g_TimeNow;
       if ( g_pVideoTxBuffers->getResetOverflowFlag() )
       {
-         log_softerror_and_alarm("[VideoSourceMaj] Detected inconsistency in packets sizes: dev mode: %s",
-            g_bDeveloperMode?"yes":"no");
+         log_softerror_and_alarm("[VideoSourceMaj] Detected inconsistency in packets sizes: developer mode: %s",
+            (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off");
          log_softerror_and_alarm("[VideoSourceMaj] Max raw usable video in tx buffers now: % bytes",
             g_pVideoTxBuffers->getCurrentMaxUsableRawVideoDataSize());
          log_softerror_and_alarm("[VideoSourceMaj] Current majestic NAL size now: % bytes",
             hardware_camera_maj_get_current_nal_size());
 
-         hardware_camera_maj_update_nal_size(g_pCurrentModel, false);        
+         hardware_camera_maj_update_nal_size(g_pCurrentModel);        
          video_source_majestic_clear_input_buffers();
       }
    }
@@ -949,9 +1029,6 @@ bool video_source_majestic_periodic_checks()
       s_uLastRTPSeqNumberInUDPFramesSkipCounter[98] = 0;
       s_uLastRTPSeqNumberInUDPFramesSkipCounter[100] = 0;
    }
-
-   if ( s_bRequestedVideoMajesticCaptureUpdate )
-      _video_source_majestic_update_params();
 
    return false;
 }

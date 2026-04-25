@@ -2,7 +2,7 @@
 #include "config.h"
 #include "hardware_radio_txpower.h"
 #include "hardware_radio.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 
 void hardware_radio_set_txpower_raw_rtl8812au(int iCardIndex, int iTxPower)
 {
@@ -23,6 +23,7 @@ void hardware_radio_set_txpower_raw_rtl8812au(int iCardIndex, int iTxPower)
            (pRadioHWInfo->iRadioType == RADIO_TYPE_RALINK) )
       {
          sprintf(szComm, "iw dev %s set txpower fixed %d", pRadioHWInfo->szName, -100*iTxPower);
+         //hw_execute_process_wait(szComm);
          hw_execute_bash_command(szComm, NULL);
       }
    }
@@ -36,7 +37,6 @@ void hardware_radio_set_txpower_raw_rtl8812eu(int iCardIndex, int iTxPower)
    if ( (iTxPower < 1) || (iTxPower > MAX_TX_POWER) )
       iTxPower = DEFAULT_RADIO_TX_POWER;
 
-   log_line("Set tx power now using iw dev...");
    char szComm[256];
    for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
    {
@@ -57,11 +57,10 @@ void hardware_radio_set_txpower_raw_rtl8812eu(int iCardIndex, int iTxPower)
 
 void hardware_radio_set_txpower_raw_rtl8733bu(int iCardIndex, int iTxPower)
 {
-  log_line("Setting radio interface %d RTL8733BU raw tx power to: %d", iCardIndex+1, iTxPower);
+   log_line("Setting radio interface %d RTL8733BU raw tx power to: %d", iCardIndex+1, iTxPower);
    if ( (iTxPower < 1) || (iTxPower > MAX_TX_POWER) )
       iTxPower = DEFAULT_RADIO_TX_POWER;
 
-   log_line("Set tx power now using iw dev...");
    char szComm[256];
    for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
    {

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -33,7 +33,7 @@
 #include "base.h"
 #include "config.h"
 #include "hardware_files.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include <pthread.h>
 #include <ctype.h>
 
@@ -87,6 +87,34 @@ long hardware_file_get_file_size(const char* szFullFileName)
       return lSize;
    }
    return -3;
+}
+
+void hardware_file_replace_extension(const char* szFile, const char* szNewExtension)
+{
+   if ( (NULL == szFile) || (NULL == szNewExtension) || (0 == szFile[0]) || (0 == szNewExtension[0]) )
+      return;
+   // Code modifies input filename buffer! Enough room is assumed.
+
+   int iLen = strlen(szFile)-1;
+   while ( (iLen > 0) && (szFile[iLen] != '.') )
+      iLen--;
+
+   if ( iLen <= 0 )
+      return;
+
+   char* pFileName = (char*)szFile;
+   pFileName[iLen] = '.';
+   pFileName[iLen+1] = 0;
+   strcat(pFileName, szNewExtension);
+}
+
+void hardware_files_check_config_folder()
+{
+   char szComm[256];
+   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "chmod 777 %s* 2>/dev/null", FOLDER_CONFIG);
+   hw_execute_bash_command(szComm, NULL);
+   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "chmod 777 %s* 2>/dev/null", FOLDER_CONFIG_MODELS);
+   hw_execute_bash_command(szComm, NULL); 
 }
 
 void hardware_files_init()
@@ -144,19 +172,20 @@ int hardware_get_free_space_kb()
 void* _thread_get_free_space_async(void *argument)
 {
    sched_yield();
+   hw_log_current_thread_attributes("get free space");
    s_iGetFreeSpaceAsyncResultValueKb = -1;
-   hardware_sleep_ms(500);
+   hardware_sleep_ms(100);
    int iFreeSpaceKb = hardware_get_free_space_kb();
    log_line("Done getting free space async");
    s_iGetFreeSpaceAsyncResultValueKb = iFreeSpaceKb;
    return NULL;
 }
 
-int hardware_get_free_space_kb_async()
+int hardware_get_free_space_kb_async(int iCPUCore)
 {
    s_iGetFreeSpaceAsyncResultValueKb = -1;
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, iCPUCore, -1, SCHED_OTHER, 0, "get free space async");
    if ( 0 != pthread_create(&s_pThreadGetFreeSpaceAsync, &attr, &_thread_get_free_space_async, NULL) )
    {
       pthread_attr_destroy(&attr);

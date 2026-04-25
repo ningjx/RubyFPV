@@ -1,7 +1,6 @@
 #include "shared_vars.h"
 
 bool g_bQuit = false;
-bool g_bDebug = false;
 bool g_bRouterReady = false;
 Model* g_pCurrentModel = NULL;
 
@@ -26,12 +25,12 @@ u16 s_countTXCompactedPacketsOutTemp = 0;
 
 // Router
 
-bool g_bDeveloperMode = false;
 type_u32_couters g_CoutersMainLoop;
 
 u32 s_debugVideoBlocksInCount = 0;
 
 t_packet_queue g_QueueRadioPacketsOut;
+t_packet_queue g_QueueRelayRadioPacketsOutToRelayedVehicle;
 VideoTxPacketsBuffer* g_pVideoTxBuffers = NULL;
 ProcessorTxVideo* g_pProcessorTxVideo = NULL;
 ProcessorTxAudio* g_pProcessorTxAudio = NULL;
@@ -40,9 +39,8 @@ bool g_bRadioReinitialized = false;
 shared_mem_radio_stats g_SM_RadioStats;
 shared_mem_radio_stats_rx_hist* g_pSM_HistoryRxStats = NULL;
 shared_mem_radio_stats_rx_hist g_SM_HistoryRxStats;
-vehicle_runtime_info g_VehicleRuntimeInfo;
+
 type_uplink_rx_info_stats g_UplinkInfoRxStats[MAX_RADIO_INTERFACES];
-int g_iDefaultRouterThreadPriority = -1;
 
 bool g_bVehicleArmed = false;
 int g_iVehicleSOCTemperatureC = 0;
@@ -55,14 +53,12 @@ bool g_bHasFastUplinkFromController = false;
 bool g_bHasSlowUplinkFromController = false;
 bool g_bHadEverLinkToController = false;
 bool g_bHasSentVehicleSettingsAtLeastOnce = false;
+bool g_bOSDPluginsNeedTelemetryStreams = false;
 
 u32  g_uControllerId = 0;
 
 t_packet_header_ruby_telemetry_extended_extra_info_retransmissions g_PHTE_Retransmissions;
 t_packet_header_vehicle_tx_history g_PHVehicleTxStats;
-// To fix
-//shared_mem_video_link_stats_and_overwrites g_SM_VideoLinkStats;
-shared_mem_video_link_graphs g_SM_VideoLinkGraphs;
 shared_mem_dev_video_bitrate_history g_SM_DevVideoBitrateHistory;
 
 //shared_mem_video_frames_stats g_VideoInfoStatsCameraOutput;
@@ -75,3 +71,5 @@ int g_iDebugShowKeyFramesAfterRelaySwitch = 0;
 int g_iGetSiKConfigAsyncResult = 0;
 int g_iGetSiKConfigAsyncRadioInterfaceIndex = -1;
 u8 g_uGetSiKConfigAsyncVehicleLinkIndex = 0;
+
+bool g_bLongTaskStarted = false;

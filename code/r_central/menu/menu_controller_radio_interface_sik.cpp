@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -131,11 +131,12 @@ void MenuControllerRadioInterfaceSiK::Render()
 
 void MenuControllerRadioInterfaceSiK::showProgressInfo()
 {
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("controller update sik radio interface progress");
    m_pPopupProgress = new Popup("Updating SiK Radio Configuration. Please wait...",0.3,0.4, 0.5, 15);
    popups_add_topmost(m_pPopupProgress);
 
    g_pRenderEngine->startFrame();
+   render_background_and_paddings(false);
    popups_render();
    popups_render_topmost();
    g_pRenderEngine->endFrame();

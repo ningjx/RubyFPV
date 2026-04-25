@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -91,6 +91,7 @@ MenuRadioConfig::MenuRadioConfig(void)
 
    m_bShowOnlyControllerUnusedInterfaces = false;
    m_pItemSelectTxCard = NULL;
+   m_iTxCardSelectedIndex = -1;
    m_iIndexCurrentItem = 0;
 
    m_iIdFontRegular = g_idFontMenu;
@@ -109,10 +110,8 @@ void MenuRadioConfig::onShow()
 
    m_Height = 0.0;
    m_bComputedHeights = false;
-   log_line("Entering menu radio config...");
+   log_line("MenuRadioConfig: Entering menu radio config onShow event...");
    removeAllItems();
-
-   compute_controller_radio_tx_powers(g_pCurrentModel, &g_SM_RadioStats);
       
    m_fFooterHeight = 1.0 * g_pRenderEngine->textHeight(m_iIdFontRegular) + m_sfMenuPaddingY;
    m_szCurrentTooltip[0] = 0;
@@ -141,7 +140,7 @@ void MenuRadioConfig::onShow()
    if ( (NULL != g_pCurrentModel) && g_bFirstModelPairingDone && (!m_bShowOnlyControllerUnusedInterfaces) )
       m_iCountVehicleRadioLinks = g_pCurrentModel->radioLinksParams.links_count;
 
-   log_line("Menu Radio Config: vehicle has %d radio links.", m_iCountVehicleRadioLinks);
+   log_line("MenuRadioConfig: Vehicle has %d radio links.", m_iCountVehicleRadioLinks);
 
    computeMenuItems();
 
@@ -166,17 +165,23 @@ void MenuRadioConfig::onShow()
    if ( ! (menu_has_menu(MENU_ID_TX_RAW_POWER)) )
    {
       Menu* pTopMenu = menu_get_top_menu();
+      if ( NULL != pTopMenu )
+         log_line("MenuRadioConfig: Top menu is: (%s), menu id: %d", pTopMenu->m_szTitle, pTopMenu->m_MenuId);
 
-      // Do not close radio interface card model autodetect confirmation message
+      // Do not close radio interface card model autodetect confirmation message or set video bitrate confirmation message from vehicle radio link
       bool bDoNotClose = false;
       if ( (NULL != pTopMenu) && (pTopMenu->getId() == (MENU_ID_SIMPLE_MESSAGE + 34*1000)) )
+         bDoNotClose = true;
+      if ( (NULL != pTopMenu) && (pTopMenu->getId() == (MENU_ID_SIMPLE_MESSAGE + 12*1000)) )
+         bDoNotClose = true;
+      if ( (NULL != pTopMenu) && (pTopMenu->getId() == (MENU_ID_SIMPLE_MESSAGE + 11*1000)) )
          bDoNotClose = true;
       if ( (NULL != pTopMenu) && (pTopMenu->getId() == MENU_ID_VEHICLE_RADIO_INTERFACE) )
          bDoNotClose = true;
  
       if ( ! bDoNotClose )
       {
-         log_line("Menu radio config is not on top, close the top menu.");
+         log_line("MenuRadioConfig: Is not on top, close the top menu.");
          menu_stack_pop(0);
       }
    }
@@ -193,7 +198,7 @@ void MenuRadioConfig::onShow()
    if ( m_iIndexCurrentItem >= m_iIndexMaxItem )
       m_iIndexCurrentItem = 0;
 
-   log_line("Entered menu radio config.");
+   log_line("MenuRadioConfig: Done handling onShow event.");
 }
 
 void MenuRadioConfig::setTooltip(int iItemIndex, const char* szTooltip)
@@ -222,6 +227,7 @@ void MenuRadioConfig::computeMenuItems()
       removeMenuItem(m_pItemSelectTxCard);
 
    m_pItemSelectTxCard = NULL;
+   m_iTxCardSelectedIndex = -1;
 
    m_bHasSwapInterfacesCommand = false;
    m_bHasRotateRadioLinksOrderCommand = false;
@@ -242,7 +248,7 @@ void MenuRadioConfig::computeMenuItems()
    for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
    {
       radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-      log_line("MenuRadio: Detected controller radio interface %d type: %s", i+1, str_get_radio_type_description(pRadioHWInfo->iRadioType));
+      log_line("MenuRadioConfig: Detected controller radio interface %d type: %s", i+1, str_get_radio_type_description(pRadioHWInfo->iRadioType));
       if ( hardware_radio_index_is_sik_radio(i) )
       {
          if ( NULL != pRadioHWInfo )
@@ -254,7 +260,7 @@ void MenuRadioConfig::computeMenuItems()
    {
       for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
       {
-         log_line("MenuRadio: Detected vehicle radio interface %d type: %s", i+1, str_get_radio_type_description(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i]));
+         log_line("MenuRadioConfig: Detected vehicle radio interface %d type: %s", i+1, str_get_radio_type_description(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i]));
 
          if ( (g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) == RADIO_TYPE_SIK )
             m_uBandsSiKVehicle |= g_pCurrentModel->radioInterfacesParams.interface_supported_bands[i];
@@ -429,11 +435,12 @@ void MenuRadioConfig::Render()
 
 void MenuRadioConfig::showProgressInfo()
 {
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("controller update radio config progress");
    m_pPopupProgress = new Popup("Updating Radio Configuration. Please wait...",0.3,0.4, 0.5, 15);
    popups_add_topmost(m_pPopupProgress);
 
    g_pRenderEngine->startFrame();
+   render_background_and_paddings(false);
    popups_render();
    popups_render_topmost();
    g_pRenderEngine->endFrame();
@@ -516,48 +523,60 @@ void MenuRadioConfig::onItemValueChanged(int itemIndex)
 {
 }
 
-void MenuRadioConfig::onItemEndEdit(int itemIndex)
+void MenuRadioConfig::onSelectedPreferredTxCard(int iVehicleRadioLink)
 {
-   if ( NULL != m_pItemSelectTxCard )
-   {
-      int iSelection = m_pItemSelectTxCard->getSelectedIndex();
-      log_line("Changed auto tx card for radio link %d to: %d", m_iCurrentRadioLink+1, iSelection);
+   int iSelection = m_pItemSelectTxCard->getSelectedIndex();
+   log_line("MenuRadioConfig: Changed auto tx card selection index for vehicle radio link %d from %d to %d", iVehicleRadioLink+1, m_iTxCardSelectedIndex, iSelection);
 
-      // Remove all first
+   if ( m_iTxCardSelectedIndex == iSelection )
+   {
+      log_line("MenuRadioConfig: No change in auto tx.");
+      removeMenuItem(m_pItemSelectTxCard);
+      m_pItemSelectTxCard = NULL;
+      m_iTxCardSelectedIndex = -1;
+      return;
+   }
+
+   // Remove all preferred cards for this link first
+   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+   {
+      if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != iVehicleRadioLink )
+         continue;
+      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+      if ( NULL != pRadioHWInfo )
+         controllerRemoveCardTXPreferred(pRadioHWInfo->szMAC);
+   }
+     
+   if ( iSelection > 0 )
+   {
+      int iCount = 0;
       for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
       {
-         radio_hw_info_t* pNICInfo = hardware_get_radio_info(i);
-         if ( g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId != m_iCurrentRadioLink )
+         if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != iVehicleRadioLink )
             continue;
-         controllerRemoveCardTXPreferred(pNICInfo->szMAC);
-      }
-        
-      if ( iSelection > 0 )
-      {
-         int iCount = 0;
-         for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+         iCount++;
+         if ( iCount == iSelection )
          {
-            radio_hw_info_t* pNICInfo = hardware_get_radio_info(i);
-            if ( g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId != m_iCurrentRadioLink )
-               continue;
-            iCount++;
-            if ( iCount == iSelection )
-            {
-               controllerSetCardTXPreferred(pNICInfo->szMAC);
-               break;
-            }
+            controllerSetCardTXPreferred(pRadioHWInfo->szMAC);
+            break;
          }
       }
-      removeAllItems();
-      m_pItemSelectTxCard = NULL;
-
-      showProgressInfo();
-      pairing_stop();
-      pairing_start_normal();
-      hideProgressInfo();   
    }
+   removeMenuItem(m_pItemSelectTxCard);
+   m_pItemSelectTxCard = NULL;
+   m_iTxCardSelectedIndex = -1;
+
+   send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_UPDATED_RADIO_TX_POWERS, 0);
 }
-      
+
+void MenuRadioConfig::onItemEndEdit(int itemIndex)
+{
+   if ( NULL == m_pItemSelectTxCard )
+      return;
+
+   onSelectedPreferredTxCard(m_iCurrentRadioLink);
+}
 
 void MenuRadioConfig::onReturnFromChild(int iChildMenuId, int returnValue)
 {
@@ -571,11 +590,16 @@ void MenuRadioConfig::onClickAutoTx(int iRadioLink)
    m_pItemSelectTxCard = new MenuItemSelect("");
    m_pItemSelectTxCard->addSelection("Auto");
 
+   int iSelectedIndex = 0; // auto option
+   int iMinPriority = 10000;
+
    for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
    {
       if ( g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId != iRadioLink )
          continue;
       radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+      if ( NULL == pRadioHWInfo )
+         continue;
       t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
       if ( NULL == pCardInfo )
          continue;
@@ -591,7 +615,8 @@ void MenuRadioConfig::onClickAutoTx(int iRadioLink)
    
       strcpy(szName, "NoName");
    
-      char* szCardName = controllerGetCardUserDefinedName(pRadioHWInfo->szMAC);
+      char szCardName[64];
+      controllerGetCardUserDefinedNameOrShortType(pRadioHWInfo, szCardName);
       if ( NULL != szCardName && 0 != szCardName[0] )
          strcpy(szName, szCardName);
       else if ( NULL != pCardInfo )
@@ -599,11 +624,20 @@ void MenuRadioConfig::onClickAutoTx(int iRadioLink)
 
       sprintf(szBuff, "Int. %d, Port %s, %s", i+1, pRadioHWInfo->szUSBPort, szName);
       m_pItemSelectTxCard->addSelection(szBuff);
-   
+
+
+      int iCardPriority = controllerIsCardTXPreferred(pRadioHWInfo->szMAC);
+      if ( (iCardPriority <= 0) || (iCardPriority > iMinPriority) )
+         continue;
+      iMinPriority = iCardPriority;
+      iSelectedIndex = m_pItemSelectTxCard->getSelectionsCount()-1;
    }
+
+
    addMenuItem(m_pItemSelectTxCard);
    m_pItemSelectTxCard->setIsEditable();
    m_pItemSelectTxCard->setPopupSelectorToRight();
+   m_pItemSelectTxCard->setSelectedIndex(iSelectedIndex);
    m_pItemSelectTxCard->beginEdit();
 }
 
@@ -1147,7 +1181,6 @@ void MenuRadioConfig::drawOneRadioLinkCapabilities(float xStart, float xEnd, flo
    char szDRVideo[128];
    char szDRDataUp[128];
    char szDRDataDown[128];
-   char szAuto[128];
 
    int iCountInterfacesAssignableToThisLink = controller_count_asignable_radio_interfaces_to_vehicle_radio_link(g_pCurrentModel, iVehicleRadioLink);
    int iCountInterfacesAssignedToThisLink = 0;
@@ -1208,19 +1241,11 @@ void MenuRadioConfig::drawOneRadioLinkCapabilities(float xStart, float xEnd, flo
    }
 
    bool bUsesHT40 = false;
-   if ( g_pCurrentModel->radioLinksParams.link_radio_flags[iVehicleRadioLink] & RADIO_FLAG_HT40_VEHICLE )
+   if ( g_pCurrentModel->radioLinksParams.link_radio_flags_tx[iVehicleRadioLink] & RADIO_FLAG_HT40 )
       bUsesHT40 = true;
-   str_getDataRateDescription(g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iVehicleRadioLink], bUsesHT40, szDRVideo);
-   str_getDataRateDescription(g_pCurrentModel->getRadioLinkDownlinkDataRate(iVehicleRadioLink), bUsesHT40, szDRDataDown);
-   str_getDataRateDescription(g_pCurrentModel->getRadioLinkUplinkDataRate(iVehicleRadioLink), 0, szDRDataUp);
-
-   szAuto[0] = 0;
-   if ( (NULL != g_pCurrentModel) && ( ! g_pCurrentModel->radioLinkIsSiKRadio(iVehicleRadioLink) ) )
-   {
-      int adaptive = ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK)?1:0;
-      if ( adaptive )
-         strcpy(szAuto, " (Auto)");
-   } 
+   str_getDataRateDescription(g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[iVehicleRadioLink], bUsesHT40, szDRVideo);
+   str_getDataRateDescription(g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iVehicleRadioLink], bUsesHT40, szDRDataDown);
+   str_getDataRateDescription(g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[iVehicleRadioLink], 0, szDRDataUp);
 
    bool bShowLinkRed = false;
 
@@ -1272,7 +1297,7 @@ void MenuRadioConfig::drawOneRadioLinkCapabilities(float xStart, float xEnd, flo
          if ( bDataOnlyRadioLink )
             snprintf(szTmp, sizeof(szTmp)/sizeof(szTmp[0]), "Data Rates: Data: %s, Uplink: %s", szDRDataDown, szDRDataUp);
          else
-            snprintf(szTmp, sizeof(szTmp)/sizeof(szTmp[0]), "Data Rates: Video: %s%s, Data: %s, Uplink: %s", szDRVideo, szAuto, szDRDataDown, szDRDataUp);
+            snprintf(szTmp, sizeof(szTmp)/sizeof(szTmp[0]), "Data Rates: Video: %s, Data: %s, Uplink: %s", szDRVideo, szDRDataDown, szDRDataUp);
          strcat(szDescription, szTmp);
       }
    }
@@ -1310,10 +1335,12 @@ void MenuRadioConfig::drawOneRadioLinkCapabilities(float xStart, float xEnd, flo
 float MenuRadioConfig::drawOneRadioLink(float xStart, float xEnd, float yStart, int iVehicleRadioLink)
 {
    float height_text = g_pRenderEngine->textHeight(m_iIdFontRegular);
+   float height_text_small = g_pRenderEngine->textHeight(m_iIdFontSmall);
    float height_text_large = g_pRenderEngine->textHeight(m_iIdFontLarge);
    float hIcon = height_text*2.4;
    float fPaddingInnerY = 0.02;
    float fPaddingInnerX = fPaddingInnerY/g_pRenderEngine->getAspectRatio();
+   ControllerSettings* pCS = get_ControllerSettings();
    
    bool bBBox = false;
    bool bShowLinkRed = false;
@@ -1736,10 +1763,12 @@ float MenuRadioConfig::drawOneRadioLink(float xStart, float xEnd, float yStart, 
             continue;
 
          int iCardPriority = controllerIsCardTXPreferred(pNICInfo2->szMAC);
-         if ( iCardPriority <= 0 || iCardPriority > iMinPriority )
+         if ( (iCardPriority <= 0) || (iCardPriority > iMinPriority) )
             continue;
          iMinPriority = iCardPriority;
-         sprintf(szBuff, "Preferred Tx Card: Interface %d, Port %s", i+1, pNICInfo2->szUSBPort);
+         char szCardName[64];
+         controllerGetCardUserDefinedNameOrShortType(pNICInfo2, szCardName);
+         sprintf(szBuff, "Preferred Tx Card: Interface %d, %s Port %s", i+1, szCardName, pNICInfo2->szUSBPort);
          if ( ! controllerIsCardInternal(pNICInfo2->szMAC) )
             strcat(szBuff, " (Ext)");
       }
@@ -1896,15 +1925,30 @@ float MenuRadioConfig::drawOneRadioLink(float xStart, float xEnd, float yStart, 
          g_pRenderEngine->drawTextLeft(xLineVeh - height_text*0.2, yLineMarginVeh - height_text*1.2, g_idFontMenuSmall, szTxPower);
       }
       int iCardMw = tx_powers_convert_raw_to_mw(hardware_getBoardType(), pCardInfo->cardModel, pCardInfo->iRawPowerLevel);
-      if ( iCardMw < 1000 )
+      if ( ! pCS->iFixedTxPower )
+         sprintf(szTxPower, "Auto");
+      else if ( iCardMw < 1000 )
          sprintf(szTxPower, "%d mW", iCardMw);
       else
          sprintf(szTxPower, "%.1f W", (float)iCardMw/1000.0);
+      float xLine1 = xLineCtrl + height_text*0.2;
+      float yLine1 = yLineCtrl - height_text*1.2;
       if ( iArrowCount <= iCountInterfacesAssignedToThisLink/2 )
          g_pRenderEngine->drawText(xLineCtrl + height_text*0.2, yLineCtrl - height_text*1.2, g_idFontMenuSmall, szTxPower);
       else
+      {
          g_pRenderEngine->drawText(xLineCtrl + height_text*0.2, yLineMarginCtrl - height_text*1.2, g_idFontMenuSmall, szTxPower);
-
+         yLine1 = yLineMarginCtrl - height_text*1.2;
+      }
+      if ( ! pCS->iFixedTxPower )
+      {
+         int iCardPowerMwNow = tx_power_compute_uplink_power_for_model_link(g_pCurrentModel, iVehicleRadioLink, i, pCardInfo->cardModel);
+         if ( iCardPowerMwNow < 1000 )
+            sprintf(szTxPower, "%d mW", iCardPowerMwNow);
+         else
+            sprintf(szTxPower, "%.1f W", (float)iCardPowerMwNow/1000.0);
+         g_pRenderEngine->drawText(xLine1, yLine1 + height_text_small, m_iIdFontSmall, szTxPower);
+      }
       if ( bCanUplink )
       {
          float dx = xLineVeh - xLineCtrl;

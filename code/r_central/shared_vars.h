@@ -10,6 +10,7 @@
 #include "../base/models_list.h"
 #include "../base/commands.h"
 #include "../base/core_plugins_settings.h"
+#include "../base/ctrl_settings.h"
 #include "../renderer/render_engine.h"
 #include "../base/plugins_settings.h"
 #include "../public/telemetry_info.h"
@@ -30,20 +31,20 @@ extern vehicle_and_telemetry_info_t g_VehicleTelemetryInfo;
 extern u32 g_uControllerId;
 extern int g_iBootCount;
 extern bool g_bDebugState;
-extern bool g_bDebugStats;
 extern bool g_bQuit;
 
 extern RenderEngine* g_pRenderEngine;
 extern RenderEngineUI* g_pRenderEngineOSDPlugins;
 
+extern ControllerSettings* g_pControllerSettings;
 
-
-extern u32 g_uVideoRecordStartTime;
-extern bool g_bVideoRecordingStarted;
-extern bool g_bVideoProcessing;
-extern bool g_bVideoPlaying;
+extern u32 g_uVideoRecordingStartTime;
+extern bool g_bIsVideoRecording;
+extern bool g_bIsVideoProcessing;
+extern bool g_bIsVideoPlaying;
 extern u32 g_uVideoPlayingTimeMs;
 extern u32 g_uVideoPlayingLengthSec;
+extern bool g_bIsTestingAdaptiveVideo;
 
 extern int g_iControllerCPUSpeedMhz;
 extern int g_iControllerCPULoad;

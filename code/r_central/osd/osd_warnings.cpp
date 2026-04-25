@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -114,30 +114,36 @@ void osd_warnings_render()
       warnings_add(0, "Video overload alarm cleared.", g_idIconCamera);
    }
 
-   static u32 s_uLastTimeCheckAlarmFEC = 0;
-   static u32 s_uTimeTriggeredAlarmFECOverload = 0;
+   static u32 s_uTimeTriggeredAlarmECOverload = 0;
+   static u32 s_uTimeTriggeredAlarmTxOverload = 0;
 
-   if ( g_VehiclesRuntimeInfo[g_iCurrentActiveVehicleRuntimeInfoIndex].bGotRubyTelemetryInfo )
-   if ( s_uLastTimeCheckAlarmFEC < g_TimeNow - 200 )
+   if ( pVDS->uCurrentECTimeMsPerSec >= 100 )
    {
-      s_uLastTimeCheckAlarmFEC = g_TimeNow;
-
-      if ( (pVDS->uCurrentFECTimeMicros/1000) >= 300 )
+      if ( 0 == s_uTimeTriggeredAlarmECOverload )
+         s_uTimeTriggeredAlarmECOverload = g_TimeNow;
+      else if ( g_TimeNow > s_uTimeTriggeredAlarmECOverload + 500 )
       {
-         if ( 0 == s_uTimeTriggeredAlarmFECOverload )
-            s_uTimeTriggeredAlarmFECOverload = g_TimeNow;
-         else if ( g_TimeNow > s_uTimeTriggeredAlarmFECOverload + 500 )
-         {
-            //log_line("FEC time too big: %d ms/s", g_SM_VideoDecodeStats.uCurrentFECTimeMicros/1000);
-            if ( pActiveModel->osd_params.show_overload_alarm )
-               warnings_add_vehicle_overloaded(g_VehiclesRuntimeInfo[g_iCurrentActiveVehicleRuntimeInfoIndex].uVehicleId);
-            s_uTimeTriggeredAlarmFECOverload = 0;
-         }
+         if ( pActiveModel->osd_params.show_overload_alarm )
+            warnings_add_vehicle_overloaded(g_VehiclesRuntimeInfo[g_iCurrentActiveVehicleRuntimeInfoIndex].uVehicleId, true, false, pVDS->uCurrentECTimeMsPerSec, pVDS->uCurrentTxTimeMsPerSec);
+         s_uTimeTriggeredAlarmECOverload = 0;
       }
-      else
-         s_uTimeTriggeredAlarmFECOverload = 0;
    }
-   /////////////////
+   else
+      s_uTimeTriggeredAlarmECOverload = 0;
+
+   if ( pVDS->uCurrentTxTimeMsPerSec >= DEFAULT_TX_TIME_OVERLOAD )
+   {
+      if ( 0 == s_uTimeTriggeredAlarmTxOverload )
+         s_uTimeTriggeredAlarmTxOverload = g_TimeNow;
+      else if ( g_TimeNow > s_uTimeTriggeredAlarmTxOverload + 500 )
+      {
+         if ( pActiveModel->osd_params.show_overload_alarm )
+            warnings_add_vehicle_overloaded(g_VehiclesRuntimeInfo[g_iCurrentActiveVehicleRuntimeInfoIndex].uVehicleId, false, true, pVDS->uCurrentECTimeMsPerSec, pVDS->uCurrentTxTimeMsPerSec);
+         s_uTimeTriggeredAlarmTxOverload = 0;
+      }
+   }
+   else
+      s_uTimeTriggeredAlarmTxOverload = 0;
 
    float fAlfaOrg = g_pRenderEngine->getGlobalAlfa();
 
@@ -157,17 +163,6 @@ void osd_warnings_render()
    {
       xAlarm += osd_getVerticalBarWidth();
       xAlarmIcon += osd_getVerticalBarWidth();
-   }
-
-   if ( g_bVideoProcessing || s_bDebugOSDShowAll )
-   if ( ( g_TimeNow / 500 ) % 2 )
-   {
-      osd_set_colors();
-      g_pRenderEngine->drawIcon(xAlarmIcon, yAlarmIcon, 1.2*height_text/g_pRenderEngine->getAspectRatio(), 1.2*height_text, g_idIconCamera);
-      g_pRenderEngine->drawText(xAlarm, yAlarm, g_idFontOSDWarnings, "Processing video file...");
-
-      yAlarm -= dyAlarm;
-      yAlarmIcon -= dyAlarm;
    }
 
    for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )

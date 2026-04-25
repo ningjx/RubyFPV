@@ -3,7 +3,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/shared_mem.h"
 #include "../renderer/drm_core.h"
 #include <ctype.h>
@@ -16,7 +16,7 @@
 
 extern shared_mem_process_stats* g_pSMProcessStats;
 
-int mpp_init(bool bUseH265Decoder, int iMPPBuffersSize);
+int mpp_init(bool bUseH265Decoder, int iMPPBuffersSize, u32 uCPUAffinityMask, int iRawPriority);
 int mpp_uninit();
 void mpp_enable_vsync(bool bEnableVSync);
 

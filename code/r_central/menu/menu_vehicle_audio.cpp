@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -119,7 +119,6 @@ void MenuVehicleAudio::addItems()
       m_pItemsSelect[0]->setSelectedIndex(1);
 
    m_pItemsSlider[0] = new MenuItemSlider(L("Volume"), L("Audio recording volume."), 0,100,5, fSliderWidth);
-   m_pItemsSlider[0]->setStep(1);
    m_pItemsSlider[0]->setEnabled(g_pCurrentModel->audio_params.enabled);
    m_IndexVolume = addMenuItem(m_pItemsSlider[0]);
    m_pItemsSlider[0]->setCurrentValue(g_pCurrentModel->audio_params.volume);
@@ -161,7 +160,6 @@ void MenuVehicleAudio::addItems()
    if ( (NULL != pCS) && pCS->iDeveloperMode )
    {
       m_pItemsSlider[4] = new MenuItemSlider(L("Buffering size"), L("How much to buffer audio. Longer buffering increase the consistency of audio stream but it adds delay."), 0,(MAX_BUFFERED_AUDIO_PACKETS*2)/3,5, fSliderWidth);
-      m_pItemsSlider[4]->setStep(1);
       m_pItemsSlider[4]->setEnabled(g_pCurrentModel->audio_params.enabled);
       m_IndexDevBufferingSize = addMenuItem(m_pItemsSlider[4]);
       m_pItemsSlider[4]->setCurrentValue((g_pCurrentModel->audio_params.uFlags >> 8) & 0xFF);
@@ -174,13 +172,11 @@ void MenuVehicleAudio::addItems()
       m_pItemsSlider[1]->setCurrentValue(g_pCurrentModel->audio_params.uPacketLength);
 
       m_pItemsSlider[2] = new MenuItemSlider("Data packets", "How many data packets for each correction data", 1,15,5, fSliderWidth);
-      m_pItemsSlider[2]->setStep(1);
       m_pItemsSlider[2]->setEnabled(g_pCurrentModel->audio_params.enabled);
       m_IndexDevDataPackets = addMenuItem(m_pItemsSlider[2]);
       m_pItemsSlider[2]->setCurrentValue((g_pCurrentModel->audio_params.uECScheme >> 4) & 0x0F);
 
       m_pItemsSlider[3] = new MenuItemSlider("EC packets", "How many ec packets", 1,15,5, fSliderWidth);
-      m_pItemsSlider[3]->setStep(1);
       m_pItemsSlider[3]->setEnabled(g_pCurrentModel->audio_params.enabled);
       m_IndexDevECPackets = addMenuItem(m_pItemsSlider[3]);
       m_pItemsSlider[3]->setCurrentValue(g_pCurrentModel->audio_params.uECScheme & 0x0F);

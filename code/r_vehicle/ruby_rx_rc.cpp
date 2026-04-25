@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -11,9 +11,9 @@
         * Redistributions in binary form (partially or complete) must reproduce
         the above copyright notice, this list of conditions and the following disclaimer
         in the documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permitted.
@@ -32,8 +32,9 @@
 
 #include "../base/base.h"
 #include "../base/hardware.h"
+#include "../base/hardware_procs.h"
 #ifdef HW_PLATFORM_RASPBERRY
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #endif
 #include "../base/shared_mem.h"
 #include "../radio/radiolink.h"
@@ -129,16 +130,25 @@ void on_failsafe_cleared()
    s_pPHDownstreamInfoRC->is_failsafe = 0;
 }
 
+void handle_sigint_rc(int sig) 
+{ 
+   log_line("--------------------------");
+   log_line("Caught signal to stop: %d", sig);
+   log_line("--------------------------");
+   g_bQuit = true;
+}
+
 int r_start_rx_rc(int argc, char *argv[])
 {
    log_init("RX_RC");
    log_arguments(argc, argv);
 
    if ( strcmp(argv[argc-1], "-debug") == 0 )
-      g_bDebug = true;
-   if ( g_bDebug )
       log_enable_stdout();
 
+   signal(SIGINT, handle_sigint_rc);
+   signal(SIGTERM, handle_sigint_rc);
+   signal(SIGQUIT, handle_sigint_rc);
    
    s_fIPC_FromRouter = ruby_open_ipc_channel_read_endpoint(IPC_CHANNEL_TYPE_ROUTER_TO_RC);
    if ( s_fIPC_FromRouter < 0 )
@@ -157,19 +167,20 @@ int r_start_rx_rc(int argc, char *argv[])
       return -1;
    } 
    
-   s_pSemaphoreStop = sem_open(SEMAPHORE_STOP_RX_RC, O_CREAT, S_IWUSR | S_IRUSR, 0);
-   if ( NULL == s_pSemaphoreStop )
-      log_error_and_alarm("Failed to open semaphore: %s", SEMAPHORE_STOP_RX_RC);
+   s_pSemaphoreStop = sem_open(SEMAPHORE_STOP_VEHICLE_RC_RX, O_CREAT, S_IWUSR | S_IRUSR, 0);
+   if ( (NULL == s_pSemaphoreStop) || (SEM_FAILED == s_pSemaphoreStop) )
+      log_error_and_alarm("Failed to open semaphore: %s", SEMAPHORE_STOP_VEHICLE_RC_RX);
    else
-      log_line("Opened semaphore for signaling stop.");
+      log_line("Opened semaphore for watching for stop signal.");
 
    if ( sModelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS )
       log_only_errors();
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   hw_set_priority_current_proc(sModelVehicle.processesPriorities.iNiceRC);   
-   #endif
-   
+   if ( sModelVehicle.processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_PRIORITIES_ADJUSTMENTS )
+      hw_set_priority_current_proc(sModelVehicle.processesPriorities.iThreadPriorityRC);
+   if ( sModelVehicle.processesPriorities.uProcessesFlags & PROCESSES_FLAGS_ENABLE_AFFINITY_CORES )
+      hw_set_current_thread_affinity("rc_rx", sModelVehicle.processesPriorities.iCoreRC, sModelVehicle.processesPriorities.iCoreRC);
+  
    s_pPHDownstreamInfoRC = shared_mem_rc_downstream_info_open_write();
    if ( NULL == s_pPHDownstreamInfoRC )
       log_softerror_and_alarm("Failed to open RC Download info shared memory for write.");
@@ -183,6 +194,14 @@ int r_start_rx_rc(int argc, char *argv[])
       log_softerror_and_alarm("Failed to open shared mem for RC Rx process watchdog for writing: %s", SHARED_MEM_WATCHDOG_RC_RX);
    else
       log_line("Opened shared mem for RC Rx process watchdog for writing.");
+
+   log_line("RC Enabled: %s", (sModelVehicle.rc_params.uRCFlags & RC_FLAGS_ENABLED)?"Yes":"No");
+   log_line("RC Channels: %d", sModelVehicle.rc_params.channelsCount);
+   log_line("RC Output Enabled: %s", (sModelVehicle.rc_params.uRCFlags & RC_FLAGS_OUTPUT_ENABLED)?"Yes":"No");
+   log_line("RC Failsafe time: %d ms", sModelVehicle.rc_params.rc_failsafe_timeout_ms);
+   log_line("RC Input HID Id: %u", sModelVehicle.rc_params.hid_id);
+   log_line("RC Input type: %u", sModelVehicle.rc_params.inputType);
+   log_line("RC Input translation type: %d", sModelVehicle.rc_params.iRCTranslationType);
 
    log_line("Started. Running now.");
    log_line("-----------------------------");
@@ -216,17 +235,14 @@ int r_start_rx_rc(int argc, char *argv[])
 
    while (!g_bQuit) 
    {
+      g_uLoopCounter++;
       hardware_sleep_ms(iSleepIntervalMS);
       if ( iSleepIntervalMS < 50 )
          iSleepIntervalMS += 10;
 
-      int val = 0;
-      if ( NULL != s_pSemaphoreStop )
-      if ( 0 == sem_getvalue(s_pSemaphoreStop, &val) )
-      if ( 0 < val )
-      if ( EAGAIN != sem_trywait(s_pSemaphoreStop) )
+      if ( is_semaphore_signaled_clear(s_pSemaphoreStop, SEMAPHORE_STOP_VEHICLE_RC_RX) )
       {
-         log_line("Semaphore to stop is set.");
+         log_line("Semaphore to stop is set. Quit now.");
          g_bQuit = true;
          break;
       }
@@ -295,24 +311,31 @@ int r_start_rx_rc(int argc, char *argv[])
          maxMsgToRead--;
          t_packet_header* pPH = (t_packet_header*)&s_BufferRCFromRouter[0];
          if ( ! radio_packet_check_crc(s_BufferRCFromRouter, pPH->total_length) )
+         {
+            log_softerror_and_alarm("Read IPC from router, wrong CRC packet type: %s", str_get_packet_type(pPH->packet_type));
             continue;
- 
+         }
          if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_RUBY )
          if ( pPH->packet_type == PACKET_TYPE_RUBY_PAIRING_REQUEST )
          {
+            u32 uResendCount = 0;
+            if ( pPH->total_length >= sizeof(t_packet_header) + sizeof(u32) )
+               memcpy(&uResendCount, &(s_BufferRCFromRouter[sizeof(t_packet_header)]), sizeof(u32));
+
             if ( pPH->total_length >= sizeof(t_packet_header) + 2*sizeof(u32) )
-            {
-               u32 uDeveloperMode = 0;
-               memcpy(&uDeveloperMode, &(s_BufferRCFromRouter[sizeof(t_packet_header) + sizeof(u32)]), sizeof(u32));
-               g_bDeveloperMode = (bool)uDeveloperMode;
-            }
+               memcpy(&sModelVehicle.uDeveloperFlags, &(s_BufferRCFromRouter[sizeof(t_packet_header) + sizeof(u32)]), sizeof(u32));
+
+            if ( pPH->total_length >= sizeof(t_packet_header) + 3*sizeof(u32) )
+               memcpy(&sModelVehicle.uControllerBoardType, &(s_BufferRCFromRouter[sizeof(t_packet_header) + 2*sizeof(u32)]), sizeof(u32));
+
+            log_line("Pairing request: Currently stored controller ID: %u / %u", g_uControllerId, sModelVehicle.uControllerId);
+            log_line("Received pairing request from router (received resend count: %u). From CID %u to VID %u (%s). Developer mode: %s. Updating local model.",
+               uResendCount, pPH->vehicle_id_src, pPH->vehicle_id_dest, (pPH->vehicle_id_dest == sModelVehicle.uVehicleId)?"self":"not self", (sModelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off");
+
             g_uControllerId = pPH->vehicle_id_src;
-            log_line("Received pairing request from router. CID: %u, VID: %u. Developer mode: %s. Updating local model.",
-               pPH->vehicle_id_src, pPH->vehicle_id_dest, g_bDeveloperMode?"yes":"no");
             sModelVehicle.uControllerId = pPH->vehicle_id_src;
-            if ( sModelVehicle.relay_params.isRelayEnabledOnRadioLinkId >= 0 )
-            if ( sModelVehicle.relay_params.uRelayedVehicleId != 0 )
-               sModelVehicle.relay_params.uCurrentRelayMode = RELAY_MODE_MAIN | RELAY_MODE_IS_RELAY_NODE;
+            g_bReceivedPairingRequest = true;
+            log_line("State is paired now.");
          }
 
          if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_LOCAL_CONTROL )
@@ -320,13 +343,16 @@ int r_start_rx_rc(int argc, char *argv[])
          {
             u8 changeType = (pPH->vehicle_id_src >> 8 ) & 0xFF;
 
-            if ( (changeType == MODEL_CHANGED_DEBUG_MODE) )
+            if ( (changeType == MODEL_CHANGED_DEVELOPER_FLAGS) )
             {
-               u8 uExtraParam = (pPH->vehicle_id_src >> 16 ) & 0xFF;
-               log_line("Received notification that developer mode changed from %s to %s",
-                 g_bDeveloperMode?"yes":"no",
-                 uExtraParam?"yes":"no");
-               g_bDeveloperMode = (bool)uExtraParam;
+               log_line("Received request from router to reload model.");
+               char szFile2[MAX_FILE_PATH_SIZE];
+               strcpy(szFile2, FOLDER_CONFIG);
+               strcat(szFile2, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
+               sModelVehicle.loadFromFile(szFile2, true);
+
+               log_line("Received notification that developer flags changed. New dev flags: %s",
+                 str_get_developer_flags(sModelVehicle.uDeveloperFlags));
             }
             else if ( changeType == MODEL_CHANGED_GENERIC ||
                  changeType == MODEL_CHANGED_SWAPED_RADIO_INTERFACES )
@@ -349,7 +375,7 @@ int r_start_rx_rc(int argc, char *argv[])
             g_pProcessStats->lastIPCIncomingTime = g_TimeNow;
 
          #ifdef FEATURE_ENABLE_RC
-         if ( pPH->packet_type == PACKET_TYPE_RC_FULL_FRAME )
+         if ( g_bReceivedPairingRequest && (pPH->packet_type == PACKET_TYPE_RC_FULL_FRAME) )
             process_data_rc_full_frame(s_BufferRCFromRouter, pPH->total_length);
          #endif
       }
@@ -357,19 +383,20 @@ int r_start_rx_rc(int argc, char *argv[])
       #ifdef FEATURE_ENABLE_RC
       bool bIsFailSafeNow = false;
 
-      if ( sModelVehicle.rc_params.rc_enabled )
-      if ( !(s_LastReceivedRCFrame.flags & RC_FULL_FRAME_FLAGS_HAS_INPUT) )
-      {
-         //log_line("RC No input");
+      if ( ! g_bReceivedPairingRequest )
          bIsFailSafeNow = true;
-      }
+      if ( sModelVehicle.rc_params.uRCFlags & RC_FLAGS_ENABLED )
+      if ( !(s_LastReceivedRCFrame.flags & RC_FULL_FRAME_FLAGS_HAS_INPUT) )
+         bIsFailSafeNow = true;
+
       if ( NULL != s_pPHDownstreamInfoRC )
-      if ( sModelVehicle.rc_params.rc_enabled && (0 != g_TimeLastFrameReceived) &&
+      if ( (sModelVehicle.rc_params.uRCFlags & RC_FLAGS_ENABLED) && (0 != g_TimeLastFrameReceived) &&
            (g_TimeLastFrameReceived + sModelVehicle.rc_params.rc_failsafe_timeout_ms <= g_TimeNow ) )
       {
          //log_line("RC timeout failsafe %d ms", sModelVehicle.rc_params.rc_failsafe_timeout_ms);
          bIsFailSafeNow = true;
       }
+
       if ( bIsFailSafeNow )
       {
          if ( 0 == s_pPHDownstreamInfoRC->is_failsafe )
@@ -379,7 +406,7 @@ int r_start_rx_rc(int argc, char *argv[])
 
       if ( ! bIsFailSafeNow )
       if ( NULL != s_pPHDownstreamInfoRC )
-      if ( sModelVehicle.rc_params.rc_enabled && (0 != g_TimeLastFrameReceived) &&
+      if ( (sModelVehicle.rc_params.uRCFlags & RC_FLAGS_ENABLED) && (0 != g_TimeLastFrameReceived) &&
            (g_TimeLastFrameReceived + sModelVehicle.rc_params.rc_failsafe_timeout_ms > g_TimeNow) )
       {
          if ( 1 == s_pPHDownstreamInfoRC->is_failsafe )
@@ -398,6 +425,7 @@ int r_start_rx_rc(int argc, char *argv[])
             g_pProcessStats->uAverageLoopTimeMs = g_pProcessStats->uTotalLoopTime / g_pProcessStats->uLoopCounter;
       }
    }
+
    log_line("Stopping...");
    
    shared_mem_rc_downstream_info_close(s_pPHDownstreamInfoRC);
@@ -408,6 +436,7 @@ int r_start_rx_rc(int argc, char *argv[])
  
    if ( NULL != s_pSemaphoreStop )
       sem_close(s_pSemaphoreStop);
+   sem_unlink(SEMAPHORE_STOP_VEHICLE_RC_RX);
 
    log_line("Stopped.Exit");
    log_line("-----------------------");

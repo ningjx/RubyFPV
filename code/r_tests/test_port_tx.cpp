@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
       return -1;
    }
 
-   radio_set_out_datarate(12);
+   radio_set_out_datarate(12, 0, get_current_timestamp_ms());
    printf("Datarate: %d;\n", 12);
 
    t_packet_header PH;

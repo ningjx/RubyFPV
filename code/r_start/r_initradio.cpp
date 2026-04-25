@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,7 +35,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_radio.h"
 #include "../base/hardware_radio_txpower.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
 #include "../base/ctrl_interfaces.h"

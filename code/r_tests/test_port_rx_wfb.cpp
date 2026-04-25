@@ -35,7 +35,6 @@ u32 g_uTotalRecvPacketsOnStreams[256];
 u32 uSummaryLastUpdateTime = 0;
 int g_iOnlyStreamId = -1;
 
-u32 g_TimeNow = 0;
 shared_mem_radio_stats g_SM_RadioStats;
 
 uint8_t rx_secretkey[crypto_box_SECRETKEYBYTES];
@@ -55,7 +54,7 @@ void process_packet(int iInterfaceIndex)
    fflush(stdout);
          
    int nLength = 0;
-   u8* pBuffer = radio_process_wlan_data_in(iInterfaceIndex, &nLength, g_TimeNow); 
+   u8* pBuffer = radio_process_wlan_data_in(iInterfaceIndex, &nLength, NULL, g_TimeNow); 
    if ( NULL == pBuffer )
    {
       printf("NULL receive buffer. Ignoring...\n");

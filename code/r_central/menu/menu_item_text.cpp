@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -110,7 +110,12 @@ void MenuItemText::Render(float xPos, float yPos, bool bSelected, float fWidthSe
    m_RenderLastX = xPos;
    
    if ( m_bEnabled )
-      g_pRenderEngine->setColors(get_Color_MenuText());
+   {
+      if ( m_bCustomTextColor )
+         g_pRenderEngine->setColors(&m_TextColor[0]);
+      else
+         g_pRenderEngine->setColors(get_Color_MenuText());
+   }
    else
       g_pRenderEngine->setColors(get_Color_MenuItemDisabledText());
 
@@ -118,4 +123,26 @@ void MenuItemText::Render(float xPos, float yPos, bool bSelected, float fWidthSe
       g_pRenderEngine->drawMessageLines(xPos + m_fMarginX, yPos, m_pszTitle, MENU_TEXTLINE_SPACING, m_pMenu->getUsableWidth()-m_fMarginX, g_idFontMenuSmall);
    else
       g_pRenderEngine->drawMessageLines(xPos + m_fMarginX, yPos, m_pszTitle, MENU_TEXTLINE_SPACING, m_pMenu->getUsableWidth()-m_fMarginX, g_idFontMenu);
+
+   if ( m_bHighlightFirstWord )
+   {
+      char szTmp[1024];
+      strncpy(szTmp, m_pszTitle, 1023);
+      szTmp[1023] = 0;
+      char *p = szTmp;
+      while ( *p )
+      {
+         if ( *p == ' ' )
+         {
+            *p = 0;
+            break;
+         }
+         p++;
+      }
+      g_pRenderEngine->setColors(get_Color_IconError());
+      if ( m_bUseSmallText )
+         g_pRenderEngine->drawText(xPos + m_fMarginX, yPos, g_idFontMenuSmall, szTmp);
+      else
+         g_pRenderEngine->drawText(xPos + m_fMarginX, yPos, g_idFontMenu, szTmp);
+   }     
 }

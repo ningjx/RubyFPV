@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -46,9 +46,9 @@ double COLOR_POPUP_INV_BG[4] = { 180,180,180, 0.8 };
 double COLOR_POPUP_INV_BORDER[4] = { 100,100,100,0.7 };
 double COLOR_POPUP_INV_TEXT[4] = { 30,30,30,0.8 };
 
-double COLOR_MENU_BG[4] = { 20,20,20, 0.96 };
-double COLOR_MENU_BG_TITLE[4] = {90,20,30,0.96};
-double COLOR_MENU_BG_TOOLTIP[4] = {90,20,30,0.96};
+double COLOR_MENU_BG[4] = { 20,20,20, 0.8 };
+double COLOR_MENU_BG_TITLE[4] = {90,20,30,0.9};
+double COLOR_MENU_BG_TOOLTIP[4] = {90,20,30,0.9};
 double COLOR_MENU_BORDER[4] = { 120,50,70, 0.9 };
 double COLOR_MENU_TEXT[4] = { 233,230,225,0.96 };
 

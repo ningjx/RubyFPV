@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -207,11 +207,6 @@ void MenuControllerPlugins::onReturnFromChild(int iChildMenuId, int returnValue)
    
    if ( (1 == iChildMenuId/1000) && (1 == returnValue) )
    {
-      if ( get_sw_version_build(g_pCurrentModel) < 278 )
-      {
-         addMessage("Plugins and OSD functionality has changed. You need to update your vehicle sowftware.");
-         return;
-      }
       importFromUSB();
       return;
    }

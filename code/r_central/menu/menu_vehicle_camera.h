@@ -21,12 +21,15 @@ class MenuVehicleCamera: public Menu
    private:
       void resetIndexes();
       void addItems();
-      void updateUIValues(int iCameraProfileIndex);
+      void updateUIValues();
       bool canSendLiveUpdates(int iItemIndex);
       void sendCameraParams(int itemIndex, bool bQuick);
-      void populateCalibrationFiles();
+      bool binCalibrationFileIsStandardFile(const char* szBinCalibrationFile);
+      bool binCalibrationFileIsUserFile(const char* szBinCalibrationFile);
+      void populateUserCalibrationFiles();
       void updateCalibrationFileSelection();
       void importCalibrationFiles();
+      void onCalibrationFileSelectionChanged();
       void uploadCalibrationFile(int iType, const char* szCalibrationFile);
 
       MenuItemSlider* m_pItemsSlider[25];
@@ -58,5 +61,8 @@ class MenuVehicleCamera: public Menu
       bool m_bShowCompact;
       bool m_bDidAnyLiveUpdates;
 
-      int m_iSelectionIndexCalibration;
+      int m_iCountStandardCalibrationFiles;
+      int m_iCountUserCalibrationFiles;
+      int m_iSelectionIndexUnknownCalibrationFile;
+      int m_iSelectionIndexImportCalibrationFiles;
 };

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -33,7 +33,7 @@
 #include "../../base/base.h"
 #include "../../base/config.h"
 #include "../../base/hardware.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 #include "../local_stats.h"
 #include "../ruby_central.h"
 
@@ -109,6 +109,7 @@ int MenuConfirmationSDCardUpdate::onBack()
 void* _thread_sdcard_update(void *argument)
 {
    bool* pFinished = (bool*) argument;
+   hw_log_current_thread_attributes("sdcard update");
    for( int i=0; i<10; i++ )
       hardware_sleep_ms(50);
 
@@ -151,7 +152,7 @@ void MenuConfirmationSDCardUpdate::onSelectItem()
       m_bDoingUpdate = true;
       m_bUpdateFinished = false;
       pthread_attr_t attr;
-      hw_init_worker_thread_attrs(&attr);
+      hw_init_worker_thread_attrs(&attr, CORE_AFFINITY_OTHERS, -1, SCHED_OTHER, 0, "update from sd card");
       if ( 0 != pthread_create(&m_pThreadUpdate, &attr, &_thread_sdcard_update, (void*)&m_bUpdateFinished) )
       {
          log_softerror_and_alarm("MenuSDCardUpdate: Failed to create update thread.");

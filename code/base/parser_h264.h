@@ -10,9 +10,11 @@ class ParserH264
       void init();
       void setPrefix(const char* szPrefix);
 
+      // Returns current NAL type
+      u32 parseData(u8* pData, int iDataLength, u32 uTimeNow);
       // Returns number of bytes parsed from input until start of NAL detected
       int parseDataUntilStartOfNextNALOrLimit(u8* pData, int iDataLength, int iMaxToParse, u32 uTimeNow);
-      bool lastParseDetectedNALStart();
+      int lastParseDetectedNALStart();
       bool IsInsideIFrame();
       u32 getCurrentNALType();
       u32 getPreviousNALType();
@@ -20,12 +22,14 @@ class ParserH264
       int getDetectedSlices();
       int getCurrentFrameSlices();
       int getDetectedFPS();
+      int getDetectedKeyframeIntervalMs();
       int getDetectedProfile();
       int getDetectedProfileConstrains();
       int getDetectedLevel();
       void resetDetectedProfileAndLevel();
       
    protected:
+      void _trydetectH264Info();
       void _parseDetectedStartOfNALUnit(u32 uTimeNow);
 
       char m_szPrefix[64];
@@ -47,7 +51,8 @@ class ParserH264
       int m_iFramesSinceLastFPSCompute;
       int m_iDetectedFPS;
 
-      bool m_bLastParseDetectedNALStart;
+      int m_iLastParseDetectedNALStartPosition;
+      bool m_bDetectedFirstKeyframe;
       int m_iReadH264ProfileAfterBytes;
       int m_iReadH264ProfileConstrainsAfterBytes;
       int m_iReadH264LevelAfterBytes;
@@ -55,3 +60,6 @@ class ParserH264
       int m_iDetectedH264ProfileConstrains;
       int m_iDetectedH264Level;
 };
+
+
+bool parser_h264_is_signaling_nal(u8 uNALId);

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -37,30 +37,31 @@
 #include "menu_item_text.h"
 #include "menu_tx_raw_power.h"
 #include "menu_confirmation.h"
+#include "../../common/models_connect_frequencies.h"
 #include "../launchers_controller.h"
 #include "../link_watch.h"
+#include "../osd/osd_common.h"
 #include "../../radio/radiolink.h"
 #include "../../base/tx_powers.h"
 
 const char* s_szMenuRadio_SingleCard2 = "Note: You can not change the usage and capabilities of the radio link as there is a single radio link on your vehicle.";
 
 MenuVehicleRadioLink::MenuVehicleRadioLink(int iRadioLink)
-:Menu(MENU_ID_VEHICLE_RADIO_LINK, "Vehicle Radio Link Parameters", NULL)
+:Menu(MENU_ID_VEHICLE_RADIO_LINK, L("Vehicle Radio Link Parameters"), NULL)
 {
    m_Width = 0.46;
    m_xPos = menu_get_XStartPos(m_Width);
    m_yPos = 0.1;
-   m_iRadioLink = iRadioLink;
-   m_bMustSelectDatarate = false;
-   m_bSwitchedDataRatesType = false;
+   m_iVehicleRadioLink = iRadioLink;
+   m_iVehicleRadioInterface = -1;
+   m_bWaitingConfirmationFromUser = false;
+   m_bWaitingVideoChangeConfirmationFromVehicle = false;
 
    m_IndexFrequency = -1;
    m_IndexUsage = -1;
    m_IndexCapabilities = -1;
    m_IndexDataRatesType = -1;
    m_IndexDataRateVideo = -1;
-   m_IndexDataRateTypeDownlink = -1;
-   m_IndexDataRateTypeUplink = -1;
    m_IndexDataRateDataDownlink = -1;
    m_IndexDataRateDataUplink = -1;
    m_IndexHT = -1;
@@ -69,23 +70,24 @@ MenuVehicleRadioLink::MenuVehicleRadioLink(int iRadioLink)
    m_IndexSTBC = -1;
    m_IndexReset = -1; 
 
-   if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
-      log_line("Opening menu for relay radio link %d ...", m_iRadioLink+1);
+   if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
+      log_line("Opening menu for relay radio link %d ...", m_iVehicleRadioLink+1);
    else
-      log_line("Opening menu for radio link %d ...", m_iRadioLink+1);
-    
+      log_line("Opening menu for radio link %d ...", m_iVehicleRadioLink+1);
+
    char szBuff[256];
 
-   sprintf(szBuff, "Vehicle Radio Link %d Parameters", m_iRadioLink+1);
+   sprintf(szBuff, L("Vehicle Radio Link %d Parameters"), m_iVehicleRadioLink+1);
    setTitle(szBuff);
 
-   int iRadioInterfaceId = g_pCurrentModel->getRadioInterfaceIndexForRadioLink(m_iRadioLink);
+   m_iVehicleRadioInterface = g_pCurrentModel->getRadioInterfaceIndexForRadioLink(m_iVehicleRadioLink);
 
-   if ( -1 == iRadioInterfaceId )
+   if ( -1 == m_iVehicleRadioInterface )
    {
-      log_softerror_and_alarm("Invalid radio link. No radio interfaces assigned to radio link %d.", m_iRadioLink+1);
+      log_softerror_and_alarm("Invalid radio link. No vehicle radio interfaces assigned to vehicle radio link %d.", m_iVehicleRadioLink+1);
       return;
    }
+
 
    m_uControllerSupportedBands = 0;
    for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
@@ -96,11 +98,11 @@ MenuVehicleRadioLink::MenuVehicleRadioLink(int iRadioLink)
       m_uControllerSupportedBands |= pRadioHWInfo->supportedBands;
    }
       
-   m_SupportedChannelsCount = getSupportedChannels( m_uControllerSupportedBands & g_pCurrentModel->radioInterfacesParams.interface_supported_bands[iRadioInterfaceId], 1, &(m_SupportedChannels[0]), MAX_MENU_CHANNELS);
+   m_SupportedChannelsCount = getSupportedChannels( m_uControllerSupportedBands & g_pCurrentModel->radioInterfacesParams.interface_supported_bands[m_iVehicleRadioInterface], 1, &(m_SupportedChannels[0]), MAX_MENU_CHANNELS);
 
-   log_line("Opened menu to configure radio link %d, used by radio interface %d on the model side.", m_iRadioLink+1, iRadioInterfaceId+1);
+   log_line("Opening menu to configure vehicle radio link %d, used by vehicle radio interface %d on the model side, supports %d frequencies.", m_iVehicleRadioLink+1, m_iVehicleRadioInterface+1, m_SupportedChannelsCount);
    addMenuItems();
-   log_line("Created radio link menu for radio link %d", m_iRadioLink+1);
+   log_line("Created radio link menu for vehicle radio link %d", m_iVehicleRadioLink+1);
 }
 
 MenuVehicleRadioLink::~MenuVehicleRadioLink()
@@ -112,8 +114,11 @@ void MenuVehicleRadioLink::onShow()
    valuesToUI();
    Menu::onShow();
    invalidate();
-   log_line("Showed radio link menu for radio link %d", m_iRadioLink+1);
+   log_line("Showed radio link menu for radio link %d", m_iVehicleRadioLink+1);
    addMenuItems();
+
+   if ( !(g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS) )
+      addMessageWithTitleAndIcon(0, L("Radio Not Calibrated"), L("You have not run the radio link wizard to compute the actual capabilities of your radio hardware. It's recommended you run the Radio Wizard firt before manually changing radio settings."), g_idIconRadio);
 }
 
 void MenuVehicleRadioLink::addMenuItems()
@@ -129,44 +134,52 @@ void MenuVehicleRadioLink::addMenuItems()
    m_IndexCapabilities = -1;
    m_IndexDataRatesType = -1;
    m_IndexDataRateVideo = -1;
-   m_IndexDataRateTypeDownlink = -1;
-   m_IndexDataRateTypeUplink = -1;
    m_IndexDataRateDataDownlink = -1;
    m_IndexDataRateDataUplink = -1;
+   m_IndexMaxLoad = -1;
    m_IndexHT = -1;
    m_IndexLDPC = -1;
    m_IndexSGI = -1;
    m_IndexSTBC = -1;
    m_IndexReset = -1; 
 
-   int iRadioInterfaceId = g_pCurrentModel->getRadioInterfaceIndexForRadioLink(m_iRadioLink);
-   char szBuff[256];   
-   sprintf(szBuff, "Vehicle radio interface used for this radio link: %s", str_get_radio_card_model_string(g_pCurrentModel->radioInterfacesParams.interface_card_model[iRadioInterfaceId]));
+   log_line("MenuVehicleRadioLink: Add items: radio data rates for link %d: vid: %d, data-down: %d, data-up: %d",
+      m_iVehicleRadioLink+1, g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[m_iVehicleRadioLink],
+      g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink],
+      g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink]);
+
+   m_SupportedChannelsCount = getSupportedChannels( m_uControllerSupportedBands & g_pCurrentModel->radioInterfacesParams.interface_supported_bands[m_iVehicleRadioInterface], 1, &(m_SupportedChannels[0]), MAX_MENU_CHANNELS);
+   log_line("MenuVehicleRadioLink: Add items: Vehicle radio link %d, used by vehicle radio interface %d on the model side, supports %d frequencies.", m_iVehicleRadioLink+1, m_iVehicleRadioInterface+1, m_SupportedChannelsCount);
+
+   char szBuff[256];
+   if ( ! is_vehicle_radio_link_used(g_pCurrentModel, &g_SM_RadioStats, m_iVehicleRadioLink) )
+      strcpy(szBuff, "This vehicle radio link is not used.");
+   else
+      sprintf(szBuff, "Vehicle radio interface used for this radio link: %s", str_get_radio_card_model_string(g_pCurrentModel->radioInterfacesParams.interface_card_model[m_iVehicleRadioInterface]));
    addMenuItem(new MenuItemText(szBuff, false, 0.0));
    addMenuItemFrequencies();
    addMenuItemsCapabilities();
    
-   addSection("Radio Data Rates");
    addMenuItemsDataRates();
 
-   addSection("Radio Link Flags");
+   addSection(L("Radio Link Flags"));
 
-   m_pItemsSelect[11] = new MenuItemSelect("Channel Bandwidth", "Sets the radio channel bandwidth when using MCS data rates.");
-   m_pItemsSelect[11]->addSelection("20 Mhz");
-   m_pItemsSelect[11]->addSelection("40 Mhz Downlink");
-   m_pItemsSelect[11]->addSelection("40 Mhz Uplink");
-   m_pItemsSelect[11]->addSelection("40 Mhz Both Directions");
-   m_pItemsSelect[11]->setIsEditable();
-   m_IndexHT = addMenuItem(m_pItemsSelect[11]);
-   if ( m_bSwitchedDataRatesType )
-      m_pItemsSelect[11]->setEnabled(false);
+   if ( ! is_vehicle_radio_link_used(g_pCurrentModel, &g_SM_RadioStats, m_iVehicleRadioLink) )
+      addMenuItem(new MenuItemText("This vehicle radio link is not used."));
+   else
+   {
+      m_pItemsSelect[11] = new MenuItemSelect(L("Channel Bandwidth"), "Sets the radio channel bandwidth when using MCS data rates.");
+      m_pItemsSelect[11]->addSelection("20 Mhz");
+      m_pItemsSelect[11]->addSelection("40 Mhz Downlink");
+      m_pItemsSelect[11]->addSelection("40 Mhz Uplink");
+      m_pItemsSelect[11]->addSelection("40 Mhz Both Directions");
+      m_pItemsSelect[11]->setIsEditable();
+      m_IndexHT = addMenuItem(m_pItemsSelect[11]);
+   }
 
-   if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[m_iRadioLink] < 0 )
+   if ( g_pCurrentModel->radioLinksParams.link_radio_flags_tx[m_iVehicleRadioLink] & RADIO_FLAGS_USE_MCS_DATARATES )
       addMenuItemsMCS();
-   else if ( m_bSwitchedDataRatesType )
-      addMenuItemsMCS();
-
-   m_IndexReset = addMenuItem(new MenuItem("Reset To Default", "Resets this radio link parameters to default values."));
+   m_IndexReset = addMenuItem(new MenuItem(L("Reset To Default"), "Resets this radio link parameters to default values."));
 
    valuesToUI();
    m_SelectedIndex = iTmp;
@@ -179,7 +192,7 @@ void MenuVehicleRadioLink::addMenuItemFrequencies()
    char szBuff[128];
    m_pItemsSelect[0] = new MenuItemSelect("Frequency");
 
-   if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
+   if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
    {
       sprintf(szBuff,"Relay %s", str_format_frequency(g_pCurrentModel->relay_params.uRelayFrequencyKhz));
       m_pItemsSelect[0]->addSelection(szBuff);
@@ -208,11 +221,10 @@ void MenuVehicleRadioLink::addMenuItemFrequencies()
       iCountChCurrentColumn++;
    }
 
-   int iRadioInterfaceId = g_pCurrentModel->getRadioInterfaceIndexForRadioLink(m_iRadioLink);
-   m_SupportedChannelsCount = getSupportedChannels( m_uControllerSupportedBands & g_pCurrentModel->radioInterfacesParams.interface_supported_bands[iRadioInterfaceId], 0, &(m_SupportedChannels[0]), MAX_MENU_CHANNELS);
+   m_SupportedChannelsCount = getSupportedChannels(m_uControllerSupportedBands & g_pCurrentModel->radioInterfacesParams.interface_supported_bands[m_iVehicleRadioInterface], 0, &(m_SupportedChannels[0]), MAX_MENU_CHANNELS);
    if ( 0 == m_SupportedChannelsCount )
    {
-      sprintf(szBuff,"%s", str_format_frequency(g_pCurrentModel->radioLinksParams.link_frequency_khz[m_iRadioLink]));
+      sprintf(szBuff,"%s", str_format_frequency(g_pCurrentModel->radioLinksParams.link_frequency_khz[m_iVehicleRadioLink]));
       m_pItemsSelect[0]->addSelection(szBuff);
       m_pItemsSelect[0]->setSelectedIndex(0);
       m_pItemsSelect[0]->setEnabled(false);
@@ -221,7 +233,7 @@ void MenuVehicleRadioLink::addMenuItemFrequencies()
    m_pItemsSelect[0]->setIsEditable();
    m_IndexFrequency = addMenuItem(m_pItemsSelect[0]);
 
-   if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
+   if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
       m_pItemsSelect[0]->setEnabled(false);
    else
       m_pItemsSelect[0]->setEnabled(true);
@@ -229,7 +241,7 @@ void MenuVehicleRadioLink::addMenuItemFrequencies()
    int selectedIndex = 0;
    for( int ch=0; ch<m_SupportedChannelsCount; ch++ )
    {
-      if ( g_pCurrentModel->radioLinksParams.link_frequency_khz[m_iRadioLink] == m_SupportedChannels[ch] )
+      if ( g_pCurrentModel->radioLinksParams.link_frequency_khz[m_iVehicleRadioLink] == m_SupportedChannels[ch] )
          break;
       selectedIndex++;
    }
@@ -239,7 +251,31 @@ void MenuVehicleRadioLink::addMenuItemFrequencies()
 
 void MenuVehicleRadioLink::addMenuItemsCapabilities()
 {
-   u32 linkCapabilitiesFlags = g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iRadioLink];
+   m_IndexMaxLoad = -1;
+   //if ( g_pControllerSettings->iDeveloperMode )
+   {
+      m_pItemsSelect[7] = new MenuItemSelect(L("Max Link Load"), L("Selects maximum data load on this radio link. Higher values increases the video bitrate capacity but decreases the radio link quality/resilience."));
+      m_pItemsSelect[7]->addSelection("10%");
+      m_pItemsSelect[7]->addSelection("20%");
+      m_pItemsSelect[7]->addSelection("30%");
+      m_pItemsSelect[7]->addSelection("40%");
+      m_pItemsSelect[7]->addSelection("50%");
+      m_pItemsSelect[7]->addSelection("60%");
+      m_pItemsSelect[7]->addSelection("70%");
+      m_pItemsSelect[7]->addSelection("80%");
+      m_pItemsSelect[7]->addSelection("90%");
+      m_pItemsSelect[7]->setIsEditable();
+      m_IndexMaxLoad = addMenuItem(m_pItemsSelect[7]);
+      //m_pMenuItems[m_IndexMaxLoad]->setTextColor(get_Color_Dev());
+   }
+
+   if ( 1 == g_pCurrentModel->radioInterfacesParams.interfaces_count )
+   {
+      //addMenuItem( new MenuItemText(s_szMenuRadio_SingleCard2, true));
+      return;
+   }
+
+   u32 linkCapabilitiesFlags = g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iVehicleRadioLink];
 
    m_pItemsSelect[1] = new MenuItemSelect("Link Usage", "Selects what type of data gets sent/received on this radio link, or disable it.");
    m_pItemsSelect[1]->addSelection("Disabled");
@@ -258,7 +294,7 @@ void MenuVehicleRadioLink::addMenuItemsCapabilities()
 
    // Link usage
 
-   if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
+   if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
       m_pItemsSelect[1]->setEnabled(false);
    else
       m_pItemsSelect[1]->setEnabled(true);
@@ -305,385 +341,277 @@ void MenuVehicleRadioLink::addMenuItemsCapabilities()
       m_pItemsSelect[2]->setSelection(0);
       m_pItemsSelect[2]->setEnabled(false);
    }
-
-   if ( 1 == g_pCurrentModel->radioInterfacesParams.interfaces_count )
-      addMenuItem( new MenuItemText(s_szMenuRadio_SingleCard2, true));
-
 }
 
 void MenuVehicleRadioLink::addMenuItemsDataRates()
 {
    char szBuff[128];
-   m_pItemsSelect[8] = new MenuItemSelect("Radio Modulations", "Use legacy modulation schemes or or the new Modulation Coding Schemes.");
+   char szText[128];
+   addSection(L("Radio Modulations"));
+
+   if ( ! is_vehicle_radio_link_used(g_pCurrentModel, &g_SM_RadioStats, m_iVehicleRadioLink) )
+   {
+      addMenuItem(new MenuItemText("This vehicle radio link is not used."));
+      return;
+   }
+
+   m_pItemsSelect[8] = new MenuItemSelect(L("Radio Modulations"), "Use legacy modulation schemes or or the new Modulation Coding Schemes.");
    m_pItemsSelect[8]->addSelection("Legacy Modulations");
-   m_pItemsSelect[8]->addSelection("Modulation Coding Schemes");
+   m_pItemsSelect[8]->addSelection("MCS (Modulation Coding Schemes)");
    m_pItemsSelect[8]->setIsEditable();
    m_IndexDataRatesType = addMenuItem(m_pItemsSelect[8]);
 
    bool bAddMCSRates = false;
 
-   if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[m_iRadioLink] > 0 )
-   {
-      if ( m_bSwitchedDataRatesType )
-      {
-         m_pItemsSelect[8]->setSelectedIndex(1);
-         bAddMCSRates = true;
-      }
-      else
-         m_pItemsSelect[8]->setSelectedIndex(0);
-   }
-   else
-   {
-      if ( m_bSwitchedDataRatesType )
-         m_pItemsSelect[8]->setSelectedIndex(0);
-      else
-      {
-         m_pItemsSelect[8]->setSelectedIndex(1);
-         bAddMCSRates = true;
-      }   
-   }
+   if ( g_pCurrentModel->radioLinksParams.link_radio_flags_tx[m_iVehicleRadioLink] & RADIO_FLAGS_USE_MCS_DATARATES )
+      bAddMCSRates = true;
 
-   m_pItemsSelect[3] = new MenuItemSelect("Radio Data Rate", "Sets the physical radio data rate to use on this radio link for video data. If adaptive radio links is enabled, this will get lowered automatically by Ruby as needed.");
-   if ( m_bMustSelectDatarate )
-      m_pItemsSelect[3]->addSelection("Select a data rate");
+   if ( bAddMCSRates )
+      m_pItemsSelect[8]->setSelectedIndex(1);
+
+   m_pItemsSelect[3] = new MenuItemSelect(L("Radio Data Rate"), "Sets the physical radio data rate to use on this radio link for video data. If adaptive radio links is enabled, this will get lowered automatically by Ruby as needed.");
+   m_pItemsSelect[3]->addSelection(L("Auto"));
+   int iSelectedIndex = 0;
    
    if ( bAddMCSRates )
    {
       for( int i=0; i<=MAX_MCS_INDEX; i++ )
       {
          str_getDataRateDescription(-1-i, 0, szBuff);
-         m_pItemsSelect[3]->addSelection(szBuff);
+         snprintf(szText, sizeof(szText)/sizeof(szText[0]), "%s", szBuff);
+         if ( g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS )
+         {
+            for( int k=0; k<g_pCurrentModel->radioInterfacesParams.interfaces_count; k++ )
+            {
+               if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[k] != m_iVehicleRadioLink )
+                  continue;
+
+               if ( i < MODEL_MAX_STORED_RADIO_INTERFACE_QUALITIES_VALUES )
+               {
+                  snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), " Q: %.1f%%", (float)g_pCurrentModel->radioInterfacesRuntimeCapab.iQualitiesMCS[k][i]/1000.0);
+                  strcat(szText, szBuff);
+               }
+               break;
+            }
+         }
+         m_pItemsSelect[3]->addSelection(szText);
+         if ( g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[m_iVehicleRadioLink] == (-1-i) )
+             iSelectedIndex = i+1;
       }
    }
    else
    {
-      for( int i=0; i<getDataRatesCount(); i++ )
+      for( int i=0; i<getLegacyDataRatesCount(); i++ )
       {
-         str_getDataRateDescription(getDataRatesBPS()[i], 0, szBuff);
-         m_pItemsSelect[3]->addSelection(szBuff);
+         str_getDataRateDescription(getLegacyDataRatesBPS()[i], 0, szBuff);
+         snprintf(szText, sizeof(szText)/sizeof(szText[0]), "%s", szBuff);
+         if ( g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS )
+         {
+            for( int k=0; k<g_pCurrentModel->radioInterfacesParams.interfaces_count; k++ )
+            {
+               if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[k] != m_iVehicleRadioLink )
+                  continue;
+
+               if ( i < MODEL_MAX_STORED_RADIO_INTERFACE_QUALITIES_VALUES )
+               {
+                  snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), " Q: %.1f%%", (float)g_pCurrentModel->radioInterfacesRuntimeCapab.iQualitiesLegacy[k][i]/1000.0);
+                  strcat(szText, szBuff);
+               }
+               break;
+            }
+         }
+         m_pItemsSelect[3]->addSelection(szText);
+         if ( g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[m_iVehicleRadioLink] == getLegacyDataRatesBPS()[i] )
+            iSelectedIndex = i+1;
       }
    }
    m_pItemsSelect[3]->setIsEditable();
    m_IndexDataRateVideo = addMenuItem(m_pItemsSelect[3]);
+   m_pItemsSelect[3]->setSelectedIndex(iSelectedIndex);
 
-   // Set video data rates
+   m_pItemsSelect[5] = new MenuItemSelect(L("Telemetry Radio Data Rate (for downlink)"), "Sets the physical radio downlink data rate for data packets (excluding video packets).");
+   m_pItemsSelect[5]->addSelection(L("Auto"));
+   m_pItemsSelect[5]->addSelection(L("Lowest"));
 
-   int selectedIndex = -1;
+   iSelectedIndex = 0;
+   if ( g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink] == 0 )
+      iSelectedIndex = 0;
+   if ( g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink] == -100 )
+      iSelectedIndex = 1;
 
-   if ( m_bMustSelectDatarate )
-      m_pItemsSelect[3]->setSelectedIndex(0);
+   if ( bAddMCSRates )
+   {
+      for( int i=0; i<=MAX_MCS_INDEX; i++ )
+      {
+         str_getDataRateDescription(-1-i, 0, szBuff);
+         m_pItemsSelect[5]->addSelection(szBuff);
+         if ( g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink] == (-1-i) )
+             iSelectedIndex = i+2;
+      }
+   }
    else
    {
-      if ( bAddMCSRates )
+      for( int i=0; i<getLegacyDataRatesCount(); i++ )
       {
-         for( int i=0; i<=MAX_MCS_INDEX; i++ )
-            if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[m_iRadioLink] == (-1-i) )
-               selectedIndex = i;    
+         str_getDataRateDescription(getLegacyDataRatesBPS()[i], 0, szBuff);
+         m_pItemsSelect[5]->addSelection(szBuff);
+         if ( g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink] == getLegacyDataRatesBPS()[i] )
+            iSelectedIndex = i+2;
       }
-      else
-      {
-         for( int i=0; i<getDataRatesCount(); i++ )
-            if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[m_iRadioLink] == getDataRatesBPS()[i] )
-               selectedIndex = i;
-      }
-      if ( selectedIndex == -1 )
-         selectedIndex = 2;
-      m_pItemsSelect[3]->setSelectedIndex(selectedIndex);
    }
+   m_pItemsSelect[5]->setIsEditable();
+   m_IndexDataRateDataDownlink = addMenuItem(m_pItemsSelect[5]);
+   m_pItemsSelect[5]->setSelectedIndex(iSelectedIndex);
 
-   m_pItemsSelect[15] = new MenuItemSelect("Telemetry Datarates", "Sets the physical radio downlink and uplink data rates for telemetry and data packets (excluding video packets).");  
-   m_pItemsSelect[15]->addSelection("Auto");
-   m_pItemsSelect[15]->addSelection("Manual");
-   m_pItemsSelect[15]->setIsEditable();
-   m_IndexAutoTelemetryRates = addMenuItem(m_pItemsSelect[15]);
+   m_pItemsSelect[6] = new MenuItemSelect("Telemetry Radio Data Rate (for uplink)", "Sets the physical radio uplink data rate for data packets.");  
+   m_pItemsSelect[6]->addSelection(L("Auto"));
+   m_pItemsSelect[6]->addSelection(L("Lowest"));
+   m_pItemsSelect[6]->setIsEditable();
 
-   m_IndexDataRateTypeDownlink = -1;
-   m_IndexDataRateDataDownlink = -1;
-   m_IndexDataRateTypeUplink = -1;
-   m_IndexDataRateDataUplink = -1;
-   m_pItemsSelect[4] = NULL;
-   m_pItemsSelect[5] = NULL;
-   m_pItemsSelect[6] = NULL;
-   m_pItemsSelect[7] = NULL;
-   if ( (g_pCurrentModel->radioLinksParams.uDownlinkDataDataRateType[m_iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO) &&
-        (g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[m_iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO) )
-      m_pItemsSelect[15]->setSelectedIndex(0);
+   iSelectedIndex = 0;
+   if ( g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink] == 0 )
+      iSelectedIndex = 0;
+   if ( g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink] == -100 )
+      iSelectedIndex = 1;
+   
+   if ( bAddMCSRates )
+   {
+      for( int i=0; i<=MAX_MCS_INDEX; i++ )
+      {
+         str_getDataRateDescription(-1-i, 0, szBuff);
+         m_pItemsSelect[6]->addSelection(szBuff);
+         if ( g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink] == (-1-i) )
+             iSelectedIndex= i+2;
+      }
+   }
    else
    {
-      m_pItemsSelect[15]->setSelectedIndex(1);
-
-      m_pItemsSelect[4] = new MenuItemSelect("Telemetry Radio Data Rate (for downlink)", "Sets the physical radio downlink data rate for data packets (excluding video packets).");  
-      m_pItemsSelect[4]->addSelection("Same as Video Data Rate");
-      m_pItemsSelect[4]->addSelection("Fixed");
-      m_pItemsSelect[4]->addSelection("Lowest");
-      m_pItemsSelect[4]->setIsEditable();
-      m_IndexDataRateTypeDownlink = addMenuItem(m_pItemsSelect[4]);
-
-      m_pItemsSelect[5] = new MenuItemSelect("   Fixed Radio Data Rate (for downlink)", "Sets the physical radio downlink data rate for data packets (excluding video packets).");
-      if ( bAddMCSRates )
+      for( int i=0; i<getLegacyDataRatesCount(); i++ )
       {
-         for( int i=0; i<=MAX_MCS_INDEX; i++ )
-         {
-            str_getDataRateDescription(-1-i, 0, szBuff);
-            m_pItemsSelect[5]->addSelection(szBuff);
-         }
+         str_getDataRateDescription(getLegacyDataRatesBPS()[i], 0, szBuff);
+         m_pItemsSelect[6]->addSelection(szBuff);
+         if ( g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink] == getLegacyDataRatesBPS()[i] )
+            iSelectedIndex = i+2;
       }
-      else
-      {
-         for( int i=0; i<getDataRatesCount(); i++ )
-         {
-            str_getDataRateDescription(getDataRatesBPS()[i], 0, szBuff);
-            m_pItemsSelect[5]->addSelection(szBuff);
-         }
-      }
-      m_pItemsSelect[5]->setIsEditable();
-      m_IndexDataRateDataDownlink = addMenuItem(m_pItemsSelect[5]);
-
-      m_pItemsSelect[6] = new MenuItemSelect("Telemetry Radio Data Rate (for uplink)", "Sets the physical radio uplink data rate for data packets.");  
-      m_pItemsSelect[6]->addSelection("Same as Video Data Rate");
-      m_pItemsSelect[6]->addSelection("Fixed");
-      m_pItemsSelect[6]->addSelection("Lowest");
-      m_pItemsSelect[6]->setIsEditable();
-      m_IndexDataRateTypeUplink = addMenuItem(m_pItemsSelect[6]);
-
-      m_pItemsSelect[7] = new MenuItemSelect("   Fixed Radio Data Rate (for uplink)", "Sets the physical radio uplink data rate for data packets.");
-      if ( bAddMCSRates )
-      {
-         for( int i=0; i<=MAX_MCS_INDEX; i++ )
-         {
-            str_getDataRateDescription(-1-i, 0, szBuff);
-            m_pItemsSelect[7]->addSelection(szBuff);
-         }
-      }
-      else
-      {
-         for( int i=0; i<getDataRatesCount(); i++ )
-         {
-            str_getDataRateDescription(getDataRatesBPS()[i], 0, szBuff);
-            m_pItemsSelect[7]->addSelection(szBuff);
-         }
-      }
-      m_pItemsSelect[7]->setIsEditable();
-      m_IndexDataRateDataUplink = addMenuItem(m_pItemsSelect[7]);
-
-      // Set values for Data/telemetry data rates
-
-      selectedIndex = -1;
-      if ( bAddMCSRates )
-      {
-         for( int i=0; i<=MAX_MCS_INDEX; i++ )
-            if ( g_pCurrentModel->radioLinksParams.link_datarate_data_bps[m_iRadioLink] == (-1-i) )
-               selectedIndex = i;
-      }
-      else
-      {
-         for( int i=0; i<getDataRatesCount(); i++ )
-            if ( g_pCurrentModel->radioLinksParams.link_datarate_data_bps[m_iRadioLink] == getDataRatesBPS()[i] )
-               selectedIndex = i;
-      }
-
-      if ( (-1 == selectedIndex) || m_bMustSelectDatarate )
-         selectedIndex = 0;
-      m_pItemsSelect[5]->setSelection(selectedIndex);
-
-
-      selectedIndex = -1;
-      if ( bAddMCSRates )
-      {
-         for( int i=0; i<=MAX_MCS_INDEX; i++ )
-            if ( g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iRadioLink] == (-1-i) )
-               selectedIndex = i;
-      }
-      else
-      {
-         for( int i=0; i<getDataRatesCount(); i++ )
-            if ( g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iRadioLink] == getDataRatesBPS()[i] )
-               selectedIndex = i;
-      }
-      if ( (-1 == selectedIndex) || m_bMustSelectDatarate )
-         selectedIndex = 0;
-      m_pItemsSelect[7]->setSelection(selectedIndex);
-     
-      if ( m_bMustSelectDatarate || (g_pCurrentModel->radioLinksParams.uDownlinkDataDataRateType[m_iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO) )
-      {
-         m_pItemsSelect[4]->setSelectedIndex(2);
-         m_pItemsSelect[5]->setSelectedIndex(0);
-         m_pItemsSelect[5]->setEnabled(false);
-      }
-      else
-      {
-         if ( g_pCurrentModel->radioLinksParams.uDownlinkDataDataRateType[m_iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO )
-         {
-            m_pItemsSelect[4]->setSelectedIndex(0);
-            m_pItemsSelect[5]->setEnabled(false);
-            m_pItemsSelect[5]->setSelectedIndex(m_pItemsSelect[3]->getSelectedIndex());
-         }
-         else if ( g_pCurrentModel->radioLinksParams.uDownlinkDataDataRateType[m_iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_FIXED )
-         {
-            m_pItemsSelect[4]->setSelectedIndex(1);
-            m_pItemsSelect[5]->setEnabled(true);
-         }
-         else
-         {
-            m_pItemsSelect[4]->setSelectedIndex(2);
-            m_pItemsSelect[5]->setEnabled(false);
-            m_pItemsSelect[5]->setSelectedIndex(0);
-         }
-      }
-      if ( m_bMustSelectDatarate || (g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[m_iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO) )
-      {
-         m_pItemsSelect[6]->setSelectedIndex(2);
-         m_pItemsSelect[7]->setSelectedIndex(0);
-         m_pItemsSelect[7]->setEnabled(false);
-      }
-      else
-      {
-         if ( g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[m_iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO )
-         {
-            m_pItemsSelect[6]->setSelectedIndex(0);
-            m_pItemsSelect[7]->setEnabled(false);
-            m_pItemsSelect[7]->setSelectedIndex(m_pItemsSelect[3]->getSelectedIndex());
-         }
-         else if ( g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[m_iRadioLink] == FLAG_RADIO_LINK_DATARATE_DATA_TYPE_FIXED )
-         {
-            m_pItemsSelect[6]->setSelectedIndex(1);
-            m_pItemsSelect[7]->setEnabled(true);
-         }
-         else
-         {
-            m_pItemsSelect[6]->setSelectedIndex(2);
-            m_pItemsSelect[7]->setEnabled(false);
-            m_pItemsSelect[7]->setSelectedIndex(0);
-         }
-      }      
    }
+   m_pItemsSelect[6]->setIsEditable();
+   m_IndexDataRateDataUplink = addMenuItem(m_pItemsSelect[6]);
+   m_pItemsSelect[6]->setSelectedIndex(iSelectedIndex);
 }
 
 void MenuVehicleRadioLink::addMenuItemsMCS()
 {
-   u32 linkRadioFlags = g_pCurrentModel->radioLinksParams.link_radio_flags[m_iRadioLink];
+   if ( ! is_vehicle_radio_link_used(g_pCurrentModel, &g_SM_RadioStats, m_iVehicleRadioLink) )
+   {
+      addMenuItem(new MenuItemText("This vehicle radio link is not used."));
+      return;
+   }
 
-   m_pItemsSelect[12] = new MenuItemSelect("Enable LDPC", "Enables LDPC (Low Density Parity Check) when using MCS data rates.");
-   m_pItemsSelect[12]->addSelection("No");
-   m_pItemsSelect[12]->addSelection("Downlink");
-   m_pItemsSelect[12]->addSelection("Uplink");
-   m_pItemsSelect[12]->addSelection("Both Directions");
-   m_pItemsSelect[12]->setIsEditable();
-   m_IndexLDPC = addMenuItem(m_pItemsSelect[12]);
+   u32 uLinkRadioTxFlags = g_pCurrentModel->radioLinksParams.link_radio_flags_tx[m_iVehicleRadioLink];
+   u32 uLinkRadioRxFlags = g_pCurrentModel->radioLinksParams.link_radio_flags_rx[m_iVehicleRadioLink];
 
-   m_pItemsSelect[13] = new MenuItemSelect("Enable SGI", "Enables SGI (Short Guard Interval) when using MCS data rates.");
-   m_pItemsSelect[13]->addSelection("No");
-   m_pItemsSelect[13]->addSelection("Downlink");
-   m_pItemsSelect[13]->addSelection("Uplink");
-   m_pItemsSelect[13]->addSelection("Both Directions");
-   m_pItemsSelect[13]->setIsEditable();
-   m_IndexSGI = addMenuItem(m_pItemsSelect[13]);
-
-   m_pItemsSelect[14] = new MenuItemSelect("Enable STBC", "Enables STBC when using MCS data rates.");
-   m_pItemsSelect[14]->addSelection("No");
-   m_pItemsSelect[14]->addSelection("Downlink");
-   m_pItemsSelect[14]->addSelection("Uplink");
-   m_pItemsSelect[14]->addSelection("Both Directions");
+   m_pItemsSelect[14] = new MenuItemSelect(L("Enable STBC"), "Enables STBC when using MCS data rates.");
+   m_pItemsSelect[14]->addSelection(L("No"));
+   m_pItemsSelect[14]->addSelection(L("Downlink"));
+   m_pItemsSelect[14]->addSelection(L("Uplink"));
+   m_pItemsSelect[14]->addSelection(L("Both Directions"));
    m_pItemsSelect[14]->setIsEditable();
    m_IndexSTBC = addMenuItem(m_pItemsSelect[14]);
 
-   if ( (linkRadioFlags & RADIO_FLAG_LDPC_VEHICLE) && (linkRadioFlags & RADIO_FLAG_LDPC_CONTROLLER) )
+   m_pItemsSelect[12] = new MenuItemSelect(L("Enable LDPC"), "Enables LDPC (Low Density Parity Check) when using MCS data rates.");
+   m_pItemsSelect[12]->addSelection(L("No"));
+   m_pItemsSelect[12]->addSelection(L("Downlink"));
+   m_pItemsSelect[12]->addSelection(L("Uplink"));
+   m_pItemsSelect[12]->addSelection(L("Both Directions"));
+   m_pItemsSelect[12]->setIsEditable();
+   m_IndexLDPC = addMenuItem(m_pItemsSelect[12]);
+
+   m_pItemsSelect[13] = new MenuItemSelect(L("Enable SGI"), "Enables SGI (Short Guard Interval) when using MCS data rates.");
+   m_pItemsSelect[13]->addSelection(L("No"));
+   m_pItemsSelect[13]->addSelection(L("Downlink"));
+   m_pItemsSelect[13]->addSelection(L("Uplink"));
+   m_pItemsSelect[13]->addSelection(L("Both Directions"));
+   m_pItemsSelect[13]->setIsEditable();
+   m_IndexSGI = addMenuItem(m_pItemsSelect[13]);
+
+   if ( (uLinkRadioTxFlags & RADIO_FLAG_LDPC) && (uLinkRadioRxFlags & RADIO_FLAG_LDPC) )
       m_pItemsSelect[12]->setSelectedIndex(3);
-   else if ( linkRadioFlags & RADIO_FLAG_LDPC_VEHICLE )
+   else if ( uLinkRadioTxFlags & RADIO_FLAG_LDPC )
       m_pItemsSelect[12]->setSelectedIndex(1);
-   else if ( linkRadioFlags & RADIO_FLAG_LDPC_CONTROLLER )
+   else if ( uLinkRadioRxFlags & RADIO_FLAG_LDPC )
       m_pItemsSelect[12]->setSelectedIndex(2);
    else
       m_pItemsSelect[12]->setSelectedIndex(0);
 
-   if ( (linkRadioFlags & RADIO_FLAG_SGI_VEHICLE) && (linkRadioFlags & RADIO_FLAG_SGI_CONTROLLER) )
+   if ( (uLinkRadioTxFlags & RADIO_FLAG_SGI) && (uLinkRadioRxFlags & RADIO_FLAG_SGI) )
       m_pItemsSelect[13]->setSelectedIndex(3);
-   else if ( linkRadioFlags & RADIO_FLAG_SGI_VEHICLE )
+   else if ( uLinkRadioTxFlags & RADIO_FLAG_SGI )
       m_pItemsSelect[13]->setSelectedIndex(1);
-   else if ( linkRadioFlags & RADIO_FLAG_SGI_CONTROLLER )
+   else if ( uLinkRadioRxFlags & RADIO_FLAG_SGI )
       m_pItemsSelect[13]->setSelectedIndex(2);
    else
       m_pItemsSelect[13]->setSelectedIndex(0);
 
-   if ( (linkRadioFlags & RADIO_FLAG_STBC_VEHICLE) && (linkRadioFlags & RADIO_FLAG_STBC_CONTROLLER) )
+   if ( (uLinkRadioTxFlags & RADIO_FLAG_STBC) && (uLinkRadioRxFlags & RADIO_FLAG_STBC) )
       m_pItemsSelect[14]->setSelectedIndex(3);
-   else if ( linkRadioFlags & RADIO_FLAG_STBC_VEHICLE )
+   else if ( uLinkRadioTxFlags & RADIO_FLAG_STBC )
       m_pItemsSelect[14]->setSelectedIndex(1);
-   else if ( linkRadioFlags & RADIO_FLAG_STBC_CONTROLLER )
+   else if ( uLinkRadioRxFlags & RADIO_FLAG_STBC )
       m_pItemsSelect[14]->setSelectedIndex(2);
    else
       m_pItemsSelect[14]->setSelectedIndex(0);
-
-   if ( m_bMustSelectDatarate )
-   {
-      m_pItemsSelect[12]->setEnabled(false);
-      m_pItemsSelect[13]->setEnabled(false);
-      m_pItemsSelect[14]->setEnabled(false);
-   }
 }
 
 void MenuVehicleRadioLink::valuesToUI()
 {
-   u32 linkCapabilitiesFlags = g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iRadioLink];
-   u32 linkRadioFlags = g_pCurrentModel->radioLinksParams.link_radio_flags[m_iRadioLink];
+   u32 linkCapabilitiesFlags = g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iVehicleRadioLink];
+   u32 uLinkRadioFlagsTx = g_pCurrentModel->radioLinksParams.link_radio_flags_tx[m_iVehicleRadioLink];
+   u32 uLinkRadioFlagsRx = g_pCurrentModel->radioLinksParams.link_radio_flags_rx[m_iVehicleRadioLink];
    
-   if ( (g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY) ||
+   if ( (g_pCurrentModel->radioLinksParams.link_capabilities_flags[m_iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY) ||
         (linkCapabilitiesFlags & RADIO_HW_CAPABILITY_FLAG_DISABLED) )
    {
       for( int i=3; i<20; i++ )
+      {
          if ( NULL != m_pItemsSelect[i] )
             m_pItemsSelect[i]->setEnabled(false);
+      }
       m_pItemsSelect[0]->setEnabled(false);
    }
    else
    {
       for( int i=3; i<20; i++ )
-         if ( NULL != m_pItemsSelect[i]) 
-            m_pItemsSelect[i]->setEnabled(true);
-      m_pItemsSelect[0]->setEnabled(true);
-
-      if ( m_bMustSelectDatarate )
-      if ( 0 == m_pItemsSelect[3]->getSelectedIndex() )
       {
-          if ( NULL != m_pItemsSelect[4] )
-             m_pItemsSelect[4]->setEnabled(false);
-          if ( NULL != m_pItemsSelect[5] )
-             m_pItemsSelect[5]->setEnabled(false);
-          if ( NULL != m_pItemsSelect[6] )
-             m_pItemsSelect[6]->setEnabled(false);
-          if ( NULL != m_pItemsSelect[7] )
-             m_pItemsSelect[7]->setEnabled(false);
-          if ( NULL != m_pItemsSelect[12] )
-             m_pItemsSelect[12]->setEnabled(false);
-          if ( NULL != m_pItemsSelect[13] )
-             m_pItemsSelect[13]->setEnabled(false);
-          if ( NULL != m_pItemsSelect[14] )
-             m_pItemsSelect[14]->setEnabled(false);
+         if ( NULL != m_pItemsSelect[i] ) 
+            m_pItemsSelect[i]->setEnabled(true);
       }
+      m_pItemsSelect[0]->setEnabled(true);
    }
 
-   if ( (linkRadioFlags & RADIO_FLAG_HT40_VEHICLE) && (linkRadioFlags & RADIO_FLAG_HT40_CONTROLLER) )
-      m_pItemsSelect[11]->setSelectedIndex(3);
-   else if ( linkRadioFlags & RADIO_FLAG_HT40_VEHICLE )
-      m_pItemsSelect[11]->setSelectedIndex(1);
-   else if ( linkRadioFlags & RADIO_FLAG_HT40_CONTROLLER )
-      m_pItemsSelect[11]->setSelectedIndex(2);
-   else
-      m_pItemsSelect[11]->setSelectedIndex(0);
+   if ( -1 != m_IndexMaxLoad )
+      m_pItemsSelect[7]->setSelectedIndex(g_pCurrentModel->radioLinksParams.uMaxLinkLoadPercent[m_iVehicleRadioLink]/10-1);
 
-   if ( m_bMustSelectDatarate )
+   if ( -1 != m_IndexHT )
    {
-      //m_pItemsSelect[11]->setSelectedIndex(0);
-      m_pItemsSelect[11]->setEnabled(false);
-  }
+      if ( (uLinkRadioFlagsTx & RADIO_FLAG_HT40) && (uLinkRadioFlagsRx & RADIO_FLAG_HT40) )
+         m_pItemsSelect[11]->setSelectedIndex(3);
+      else if ( uLinkRadioFlagsTx & RADIO_FLAG_HT40 )
+         m_pItemsSelect[11]->setSelectedIndex(1);
+      else if ( uLinkRadioFlagsRx & RADIO_FLAG_HT40 )
+         m_pItemsSelect[11]->setSelectedIndex(2);
+      else
+         m_pItemsSelect[11]->setSelectedIndex(0);
+   }
    //char szBands[128];
-   //str_get_supported_bands_string(g_pCurrentModel->radioInterfacesParams.interface_supported_bands[iRadioInterfaceId], szBands);
+   //str_get_supported_bands_string(g_pCurrentModel->radioInterfacesParams.interface_supported_bands[m_iVehicleRadioInterface], szBands);
 
    char szCapab[256];
    char szFlags[256];
+   char szFlagsRx[256];
    str_get_radio_capabilities_description(linkCapabilitiesFlags, szCapab);
-   str_get_radio_frame_flags_description(linkRadioFlags, szFlags);
-   log_line("MenuVehicleRadioLink: Update UI: Current radio link %d capabilities: %s, flags: %s.", m_iRadioLink+1, szCapab, szFlags);
+   str_get_radio_frame_flags_description(uLinkRadioFlagsTx, szFlags);
+   str_get_radio_frame_flags_description(uLinkRadioFlagsRx, szFlagsRx);
+   log_line("MenuVehicleRadioLink: Update UI: Current radio link %d capabilities: %s, flags tx: %s, flags rx: %s", m_iVehicleRadioLink+1, szCapab, szFlags, szFlagsRx);
 }
 
 void MenuVehicleRadioLink::Render()
@@ -699,8 +627,35 @@ void MenuVehicleRadioLink::Render()
    RenderEnd(yTop);
 }
 
+int MenuVehicleRadioLink::convertMCSRateToLegacyRate(int iMCSRate, bool bIsHT40)
+{
+   int iRealDataRate = getRealDataRateFromMCSRate(iMCSRate, false);
+   for( int i=0; i<getLegacyDataRatesCount(); i++ )
+   {
+      int iLegacyRate = getLegacyDataRatesBPS()[i];
+      if ( (iLegacyRate*11)/10 >= iRealDataRate  )
+         return iLegacyRate;
+   }
+   int iMaxLegacyRate = getLegacyDataRatesBPS()[getLegacyDataRatesCount()-1];
+   return iMaxLegacyRate;
+}
+
+int MenuVehicleRadioLink::convertLegacyRateToMCSRate(int iLegacyRate, bool bIsHT40)
+{
+   for( int i=0; i<=MAX_MCS_INDEX; i++ )
+   {
+      int iRealDataRate = getRealDataRateFromMCSRate(i, false);
+      if ( (iRealDataRate*11)/10 >= iLegacyRate )
+         return i;
+   }
+   return 8;
+}
+
 void MenuVehicleRadioLink::sendRadioLinkCapabilities(int iRadioLink)
 {
+   if ( (-1 == m_IndexUsage) || (-1 == m_IndexCapabilities) )
+      return;
+
    int usage = m_pItemsSelect[1]->getSelectedIndex();
    int capab = m_pItemsSelect[2]->getSelectedIndex();
 
@@ -741,214 +696,313 @@ void MenuVehicleRadioLink::sendRadioLinkCapabilities(int iRadioLink)
 
 void MenuVehicleRadioLink::sendRadioLinkConfig(int iRadioLink)
 {
-   if ( (get_sw_version_major(g_pCurrentModel) < 9) ||
-        ((get_sw_version_major(g_pCurrentModel) == 9) && (get_sw_version_minor(g_pCurrentModel) <= 20)) )
-   {
-      addMessageWithTitle(0, "Can't update radio links", "You need to update your vehicle to version 9.2 or newer");
-      addMenuItems();
-   }
-
    type_radio_links_parameters newRadioLinkParams;
    memcpy((u8*)&newRadioLinkParams, (u8*)&(g_pCurrentModel->radioLinksParams), sizeof(type_radio_links_parameters));
    
-   int usage = m_pItemsSelect[1]->getSelectedIndex();
-   int capab = m_pItemsSelect[2]->getSelectedIndex();
-
    u32 link_capabilities = g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink];
-
-   link_capabilities = link_capabilities & (~RADIO_HW_CAPABILITY_FLAG_DISABLED);
-   link_capabilities = link_capabilities & (~(RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA));
-   
-   if ( 0 == usage ) link_capabilities = link_capabilities | RADIO_HW_CAPABILITY_FLAG_DISABLED;
-   if ( 1 == usage ) link_capabilities = link_capabilities | (RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO|RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA);
-   if ( 2 == usage ) link_capabilities = link_capabilities | (RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO);
-   if ( 3 == usage ) link_capabilities = link_capabilities | (RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA);
-
-   if ( 0 == capab ) link_capabilities = link_capabilities | (RADIO_HW_CAPABILITY_FLAG_CAN_RX | RADIO_HW_CAPABILITY_FLAG_CAN_TX);
-   if ( 1 == capab ) link_capabilities = (link_capabilities & (~RADIO_HW_CAPABILITY_FLAG_CAN_RX)) | RADIO_HW_CAPABILITY_FLAG_CAN_TX;
-   if ( 2 == capab ) link_capabilities = (link_capabilities & (~RADIO_HW_CAPABILITY_FLAG_CAN_TX)) | RADIO_HW_CAPABILITY_FLAG_CAN_RX;
-     
    newRadioLinkParams.link_capabilities_flags[iRadioLink] = link_capabilities;
 
-   int indexRate = m_pItemsSelect[3]->getSelectedIndex();
-   if ( m_bMustSelectDatarate )
-      indexRate--;
-   if ( indexRate < 0 )
-      indexRate = 0;
-
-   bool bIsMCSRates = false;
-   if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[m_iRadioLink] > 0 )
-   {
-      if ( m_bSwitchedDataRatesType )
-         bIsMCSRates = true; 
-   }
-   else
-   {
-      if ( ! m_bSwitchedDataRatesType )
-         bIsMCSRates = true;   
-   }
-
-   if ( bIsMCSRates )
-      newRadioLinkParams.link_datarate_video_bps[iRadioLink] = -1-indexRate;
-   else if ( indexRate < getDataRatesCount() )
-      newRadioLinkParams.link_datarate_video_bps[iRadioLink] = getDataRatesBPS()[indexRate];
-
-   if ( 0 == m_pItemsSelect[15]->getSelectedIndex() )
-   {
-      newRadioLinkParams.uDownlinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO;
-      newRadioLinkParams.uUplinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO;
-   }
-   else
-   {
-      newRadioLinkParams.uDownlinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_LOWEST;
-      newRadioLinkParams.uUplinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_LOWEST;
-      if ( (-1 != m_IndexDataRateTypeDownlink) && (NULL != m_pItemsSelect[4]) )
-      {
-         if ( 0 == m_pItemsSelect[4]->getSelectedIndex() )
-            newRadioLinkParams.uDownlinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO;
-         if ( 1 == m_pItemsSelect[4]->getSelectedIndex() )
-            newRadioLinkParams.uDownlinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_FIXED;
-         if ( 2 == m_pItemsSelect[4]->getSelectedIndex() )
-            newRadioLinkParams.uDownlinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_LOWEST;
-      }
-      if ( (-1 != m_IndexDataRateTypeUplink) && (NULL != m_pItemsSelect[6]) )
-      {
-         if ( 0 == m_pItemsSelect[6]->getSelectedIndex() )
-            newRadioLinkParams.uUplinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO;
-         if ( 1 == m_pItemsSelect[6]->getSelectedIndex() )
-            newRadioLinkParams.uUplinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_FIXED;
-         if ( 2 == m_pItemsSelect[6]->getSelectedIndex() )
-            newRadioLinkParams.uUplinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_LOWEST;
-      }
-      if ( (-1 != m_IndexDataRateTypeDownlink) && (-1 != m_IndexDataRateDataDownlink) && (NULL != m_pItemsSelect[5]) )
-      if ( 1 == m_pItemsSelect[4]->getSelectedIndex() )
-      if ( m_pItemsSelect[5]->isEnabled() )
-      {
-         indexRate = m_pItemsSelect[5]->getSelectedIndex();
-         if ( bIsMCSRates )
-            newRadioLinkParams.link_datarate_data_bps[iRadioLink] = -1-indexRate;
-         else
-            newRadioLinkParams.link_datarate_data_bps[iRadioLink] = getDataRatesBPS()[indexRate];
-      }
-      if ( (-1 != m_IndexDataRateTypeUplink) && (-1 != m_IndexDataRateDataUplink) && (NULL != m_pItemsSelect[7]) )
-      if ( 1 == m_pItemsSelect[6]->getSelectedIndex() )
-      if ( m_pItemsSelect[7]->isEnabled() )
-      {
-         indexRate = m_pItemsSelect[7]->getSelectedIndex();
-         if ( bIsMCSRates )
-            newRadioLinkParams.uplink_datarate_data_bps[iRadioLink] = -1-indexRate;
-         else
-            newRadioLinkParams.uplink_datarate_data_bps[iRadioLink] = getDataRatesBPS()[indexRate];
-      }
-   }
-
-   u32 radioFlags = g_pCurrentModel->radioLinksParams.link_radio_flags[iRadioLink];
+   u32 uRadioFlagsTx = g_pCurrentModel->radioLinksParams.link_radio_flags_tx[iRadioLink];
+   u32 uRadioFlagsRx = g_pCurrentModel->radioLinksParams.link_radio_flags_rx[iRadioLink];
+   bool bOldIsUsingMCSTx = false;
+   bool bNewIsUsingMCSTx = false;
+   bool bOldIsUsingMCSRx = false;
+   bool bNewIsUsingMCSRx = false;
+   if ( g_pCurrentModel->radioLinksParams.link_radio_flags_tx[m_iVehicleRadioLink] & RADIO_FLAGS_USE_MCS_DATARATES )
+      bOldIsUsingMCSTx = true;
+   if ( g_pCurrentModel->radioLinksParams.link_radio_flags_rx[m_iVehicleRadioLink] & RADIO_FLAGS_USE_MCS_DATARATES )
+      bOldIsUsingMCSRx = true;
 
    // Clear and set datarate type
-   radioFlags &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES);
-   if ( newRadioLinkParams.link_datarate_video_bps[iRadioLink] < 0 )
-      radioFlags |= RADIO_FLAGS_USE_MCS_DATARATES;
-   else
-      radioFlags |= RADIO_FLAGS_USE_LEGACY_DATARATES;
-
-   // Clear and set channel bandwidth
-   radioFlags &= ~(RADIO_FLAG_HT40_VEHICLE | RADIO_FLAG_HT40_CONTROLLER);
-   if ( 1 == m_pItemsSelect[11]->getSelectedIndex() )
-      radioFlags |= RADIO_FLAG_HT40_VEHICLE;
-   else if ( 2 == m_pItemsSelect[11]->getSelectedIndex() )
-      radioFlags |= RADIO_FLAG_HT40_CONTROLLER;
-   else if ( 3 == m_pItemsSelect[11]->getSelectedIndex() )
-      radioFlags |= RADIO_FLAG_HT40_VEHICLE | RADIO_FLAG_HT40_CONTROLLER;
-
-   if ( bIsMCSRates )
+   if ( -1 != m_IndexDataRatesType )
    {
-      radioFlags &= ~RADIO_FLAGS_MCS_MASK;
-        
+      uRadioFlagsTx &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES);
+      uRadioFlagsRx &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES);
+      uRadioFlagsTx |= RADIO_FLAGS_FRAME_TYPE_DATA;
+      uRadioFlagsRx |= RADIO_FLAGS_FRAME_TYPE_DATA;
+      if ( 1 == m_pItemsSelect[8]->getSelectedIndex() )
+      {
+         uRadioFlagsTx |= RADIO_FLAGS_USE_MCS_DATARATES;
+         uRadioFlagsRx |= RADIO_FLAGS_USE_MCS_DATARATES;
+         bNewIsUsingMCSTx = true;
+         bNewIsUsingMCSRx = true;
+      }
+      else
+      {
+         uRadioFlagsTx |= RADIO_FLAGS_USE_LEGACY_DATARATES;
+         uRadioFlagsRx |= RADIO_FLAGS_USE_LEGACY_DATARATES;
+      }
+   }
+   log_line("MenuVehicleRadioLink: Use MCS modulations? old: %d/%d, new: %d/%d", bOldIsUsingMCSTx, bOldIsUsingMCSRx, bNewIsUsingMCSTx, bNewIsUsingMCSRx);
+
+   if ( bOldIsUsingMCSTx )
+      uRadioFlagsTx &= ~RADIO_FLAGS_MCS;
+   if ( bOldIsUsingMCSRx )
+      uRadioFlagsRx &= ~RADIO_FLAGS_MCS;
+
+   if ( -1 != m_IndexHT )
+   {
+      // Clear and set channel bandwidth
+      uRadioFlagsTx &= ~RADIO_FLAG_HT40;
+      uRadioFlagsRx &= ~RADIO_FLAG_HT40;
+      if ( 1 == m_pItemsSelect[11]->getSelectedIndex() )
+         uRadioFlagsTx |= RADIO_FLAG_HT40;
+      else if ( 2 == m_pItemsSelect[11]->getSelectedIndex() )
+         uRadioFlagsRx |= RADIO_FLAG_HT40;
+      else if ( 3 == m_pItemsSelect[11]->getSelectedIndex() )
+      {
+         uRadioFlagsTx |= RADIO_FLAG_HT40;
+         uRadioFlagsRx |= RADIO_FLAG_HT40;
+      }
+   }
+   if ( bNewIsUsingMCSTx )
+   if ( (-1 != m_IndexSTBC) && (-1 != m_IndexLDPC) && (-1 != m_IndexSGI) )
+   if ( (NULL != m_pItemsSelect[12]) && (NULL != m_pItemsSelect[13]) && (NULL != m_pItemsSelect[14]) )
+   {
       if ( 1 == m_pItemsSelect[12]->getSelectedIndex() )
-         radioFlags |= RADIO_FLAG_LDPC_VEHICLE;
+         uRadioFlagsTx |= RADIO_FLAG_LDPC;
       else if ( 2 == m_pItemsSelect[12]->getSelectedIndex() )
-         radioFlags |= RADIO_FLAG_LDPC_CONTROLLER;
+         uRadioFlagsRx |= RADIO_FLAG_LDPC;
       else if ( 3 == m_pItemsSelect[12]->getSelectedIndex() )
-         radioFlags |= RADIO_FLAG_LDPC_VEHICLE | RADIO_FLAG_LDPC_CONTROLLER;
+      {
+         uRadioFlagsTx |= RADIO_FLAG_LDPC;
+         uRadioFlagsRx |= RADIO_FLAG_LDPC;
+      }
      
       if ( 1 == m_pItemsSelect[13]->getSelectedIndex() )
-         radioFlags |= RADIO_FLAG_SGI_VEHICLE;
+         uRadioFlagsTx |= RADIO_FLAG_SGI;
       else if ( 2 == m_pItemsSelect[13]->getSelectedIndex() )
-         radioFlags |= RADIO_FLAG_SGI_CONTROLLER;
+         uRadioFlagsRx |= RADIO_FLAG_SGI;
       else if ( 3 == m_pItemsSelect[13]->getSelectedIndex() )
-         radioFlags |= RADIO_FLAG_SGI_VEHICLE | RADIO_FLAG_SGI_CONTROLLER;
+      {
+         uRadioFlagsTx |= RADIO_FLAG_SGI;
+         uRadioFlagsRx |= RADIO_FLAG_SGI;       
+      }
 
       if ( NULL != m_pItemsSelect[14] )
       {
          if ( 1 == m_pItemsSelect[14]->getSelectedIndex() )
-            radioFlags |= RADIO_FLAG_STBC_VEHICLE;
+            uRadioFlagsTx |= RADIO_FLAG_STBC;
          else if ( 2 == m_pItemsSelect[14]->getSelectedIndex() )
-            radioFlags |= RADIO_FLAG_STBC_CONTROLLER;
+            uRadioFlagsRx |= RADIO_FLAG_STBC;
          else if ( 3 == m_pItemsSelect[14]->getSelectedIndex() )
-            radioFlags |= RADIO_FLAG_STBC_VEHICLE | RADIO_FLAG_STBC_CONTROLLER;
+         {
+            uRadioFlagsTx |= RADIO_FLAG_STBC;
+            uRadioFlagsRx |= RADIO_FLAG_STBC;          
+         }
       }
    }
-   newRadioLinkParams.link_radio_flags[iRadioLink] = radioFlags;
 
+   newRadioLinkParams.link_radio_flags_tx[iRadioLink] = uRadioFlagsTx;
+   newRadioLinkParams.link_radio_flags_rx[iRadioLink] = uRadioFlagsRx;
+
+   // Data rates video
+   
+   if ( (-1 != m_IndexDataRateVideo) && (-1 != m_IndexDataRateDataDownlink) && (-1 != m_IndexDataRateDataUplink) )
+   {
+      log_line("MenuVehicleRadioLink: Selected datarates indexes: %d, %d, %d", 
+         m_pItemsSelect[3]->getSelectedIndex(),
+         m_pItemsSelect[5]->getSelectedIndex(),
+         m_pItemsSelect[6]->getSelectedIndex());
+      int indexRate = m_pItemsSelect[3]->getSelectedIndex();
+      if ( 0 == indexRate )
+         newRadioLinkParams.downlink_datarate_video_bps[m_iVehicleRadioLink] = 0;
+      else if ( bNewIsUsingMCSTx && (g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[m_iVehicleRadioLink] > 0) )
+      {
+         int iMCSRate = convertLegacyRateToMCSRate(g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[m_iVehicleRadioLink], uRadioFlagsTx & RADIO_FLAG_HT40);
+         newRadioLinkParams.downlink_datarate_video_bps[iRadioLink] = -1 - iMCSRate;
+         log_line("MenuVehicleRadioLink: Converted video legacy datarate %d to MCS rate: %d (%d bps)", g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[m_iVehicleRadioLink], iMCSRate, getRealDataRateFromMCSRate(iMCSRate, uRadioFlagsTx & RADIO_FLAG_HT40) );
+      }
+      else if ( (!bNewIsUsingMCSTx) && (g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[m_iVehicleRadioLink] < 0) )
+      {
+         int iMCSRate = -g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[m_iVehicleRadioLink]-1;
+         newRadioLinkParams.downlink_datarate_video_bps[iRadioLink] = convertMCSRateToLegacyRate(iMCSRate, uRadioFlagsTx & RADIO_FLAG_HT40);
+         log_line("MenuVehicleRadioLink: Converted video MCS rate %d (%d bps) to legacy datarate: %d", iMCSRate, getRealDataRateFromMCSRate(iMCSRate, uRadioFlagsTx & RADIO_FLAG_HT40), newRadioLinkParams.downlink_datarate_video_bps[iRadioLink]);
+      }
+      else if ( bOldIsUsingMCSTx == bNewIsUsingMCSTx )
+      {
+         if ( bNewIsUsingMCSTx )
+            newRadioLinkParams.downlink_datarate_video_bps[iRadioLink] = -indexRate;
+         else
+            newRadioLinkParams.downlink_datarate_video_bps[iRadioLink] = getLegacyDataRatesBPS()[indexRate-1];
+      }
+   }
+
+   if ( 0 != newRadioLinkParams.downlink_datarate_video_bps[m_iVehicleRadioLink] )
+   if ( 0 == g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[m_iVehicleRadioLink] )
+   {
+      int iCountVariableLinks = 0;
+      int iCountHighRateLinks = 0;
+      for( int i=0; i<g_pCurrentModel->radioLinksParams.links_count; i++ )
+      {
+         if ( i == m_iVehicleRadioLink )
+            continue;
+         bool bIsHighCapacityLink = false;
+         for( int k=0; k<g_pCurrentModel->radioInterfacesParams.interfaces_count; k++ )
+         {
+            if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[k] == i )
+            if ( g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[k] & RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY )
+            if ( ! (g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[k] & RADIO_HW_CAPABILITY_FLAG_DISABLED) )
+            if ( ! (g_pCurrentModel->radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_DISABLED) )
+            {
+               iCountHighRateLinks++;
+               bIsHighCapacityLink = true;
+               break;
+            }
+         }
+
+         if ( bIsHighCapacityLink )
+         if ( ! (g_pCurrentModel->radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_DISABLED) )
+         if ( g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[i] == 0 )
+            iCountVariableLinks++;
+      }
+
+      if ( 0 == iCountVariableLinks )
+      {
+         m_bWaitingConfirmationFromUser = true;
+         if ( 0 == iCountHighRateLinks )
+            addMessageWithTitle(11, L("Settings auto updated"), L("You did set your radio link to fixed radio rates. Adaptive video will be disabled until you set it back to auto."));
+         else
+            addMessageWithTitle(11, L("Settings auto updated"), L("You did set all your radio links to fixed radio rates. Adaptive video will be disabled until you set at least one link back to auto."));
+      }
+   }
+ 
+   // Data rates telemetry
+   
+   if ( -1 != m_IndexDataRateDataDownlink )
+   {
+      int indexRate = m_pItemsSelect[5]->getSelectedIndex();
+      if ( 0 == indexRate )
+         newRadioLinkParams.downlink_datarate_data_bps[m_iVehicleRadioLink] = 0;
+      else if ( 1 == indexRate )
+         newRadioLinkParams.downlink_datarate_data_bps[m_iVehicleRadioLink] = -100;
+      else if ( bNewIsUsingMCSTx && (g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink] > 0) )
+      {
+         int iMCSRate = convertLegacyRateToMCSRate(g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink], uRadioFlagsTx & RADIO_FLAG_HT40);
+         newRadioLinkParams.downlink_datarate_data_bps[iRadioLink] = -1 - iMCSRate;
+         log_line("MenuVehicleRadioLink: Converted data-downlink legacy datarate %d to MCS rate: %d (%d bps)", g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink], iMCSRate, getRealDataRateFromMCSRate(iMCSRate, uRadioFlagsTx & RADIO_FLAG_HT40) );
+      }
+      else if ( (!bNewIsUsingMCSTx) && (g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink] < 0) )
+      {
+         int iMCSRate = -g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[m_iVehicleRadioLink]-1;
+         newRadioLinkParams.downlink_datarate_data_bps[iRadioLink] = convertMCSRateToLegacyRate(iMCSRate, uRadioFlagsTx & RADIO_FLAG_HT40);
+         log_line("MenuVehicleRadioLink: Converted data-downlink MCS rate %d (%d bps) to legacy datarate: %d", iMCSRate, getRealDataRateFromMCSRate(iMCSRate, uRadioFlagsTx & RADIO_FLAG_HT40), newRadioLinkParams.downlink_datarate_data_bps[iRadioLink]);
+      }
+      else if ( bOldIsUsingMCSTx == bNewIsUsingMCSTx )
+      {
+         if ( bNewIsUsingMCSTx )
+            newRadioLinkParams.downlink_datarate_data_bps[iRadioLink] = -indexRate+1;
+         else
+            newRadioLinkParams.downlink_datarate_data_bps[iRadioLink] = getLegacyDataRatesBPS()[indexRate-2];
+      }
+   }
+
+   if ( -1 != m_IndexDataRateDataUplink )
+   {
+      int indexRate = m_pItemsSelect[6]->getSelectedIndex();
+      if ( 0 == indexRate )
+         newRadioLinkParams.uplink_datarate_data_bps[m_iVehicleRadioLink] = 0;
+      else if ( 1 == indexRate )
+         newRadioLinkParams.uplink_datarate_data_bps[m_iVehicleRadioLink] = -100;
+      else if ( bNewIsUsingMCSRx && (g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink] > 0) )
+      {
+         int iMCSRate = convertLegacyRateToMCSRate(g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink], uRadioFlagsRx & RADIO_FLAG_HT40);
+         newRadioLinkParams.uplink_datarate_data_bps[iRadioLink] = -1 - iMCSRate;
+         log_line("MenuVehicleRadioLink: Converted data-uplink legacy datarate %d to MCS rate: %d (%d bps)", g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink], iMCSRate, getRealDataRateFromMCSRate(iMCSRate, uRadioFlagsRx & RADIO_FLAG_HT40) );
+      }
+      else if ( (!bNewIsUsingMCSRx) && (g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink] < 0) )
+      {
+         int iMCSRate = -g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[m_iVehicleRadioLink]-1;
+         newRadioLinkParams.uplink_datarate_data_bps[iRadioLink] = convertMCSRateToLegacyRate(iMCSRate, uRadioFlagsRx & RADIO_FLAG_HT40);
+         log_line("MenuVehicleRadioLink: Converted data-uplink MCS rate %d (%d bps) to legacy datarate: %d", iMCSRate, getRealDataRateFromMCSRate(iMCSRate, uRadioFlagsRx & RADIO_FLAG_HT40), newRadioLinkParams.uplink_datarate_data_bps[iRadioLink]);
+      }
+      else if ( bOldIsUsingMCSRx == bNewIsUsingMCSRx )
+      {
+         if ( bNewIsUsingMCSRx )
+            newRadioLinkParams.uplink_datarate_data_bps[iRadioLink] = -indexRate+1;
+         else
+            newRadioLinkParams.uplink_datarate_data_bps[iRadioLink] = getLegacyDataRatesBPS()[indexRate-2];
+      }
+   }
+
+   if ( -1 != m_IndexMaxLoad )
+       newRadioLinkParams.uMaxLinkLoadPercent[iRadioLink] = (1+m_pItemsSelect[7]->getSelectedIndex())*10;
    if ( 0 == memcmp((u8*)&newRadioLinkParams, (u8*)&(g_pCurrentModel->radioLinksParams), sizeof(type_radio_links_parameters)) )
    {
       log_line("MenuVehicleRadioLink: No change in radio link config. Do not send command.");
       return;
    }
 
-   //------------------------------------------------------
-   // Check video bitrate overflow on new radio datarate
-   if ( NULL != g_pCurrentModel )
+   memcpy((u8*)&m_RadioLinksParamsToApply, (u8*)&newRadioLinkParams, sizeof(type_radio_links_parameters));
+
+   if ( m_bWaitingConfirmationFromUser )
+      return;
+
+   sendRadioLinkConfigParams(&m_RadioLinksParamsToApply, true);
+}
+
+void MenuVehicleRadioLink::sendRadioLinkConfigParams(type_radio_links_parameters* pRadioLinkParams, bool bCheckVideo)
+{
+   if ( NULL == pRadioLinkParams )
+      return;
+
+   log_line("MenuVehicleRadioLink: Sending radio config for radio link %d, check video params: %s", m_iVehicleRadioLink+1, bCheckVideo?"yes":"no");
+   send_pause_adaptive_to_router(5000);
+   send_reset_adaptive_state_to_router(g_pCurrentModel->uVehicleId);
+
+   // Check for video bitrate adjustment to fit new fixed rates
+   if ( bCheckVideo )
+   if ( pRadioLinkParams->downlink_datarate_video_bps[m_iVehicleRadioLink] != 0 )
    {
-      bool bShowWarning = false;
-      u32 uMaxRadioDataRate = getRealDataRateFromRadioDataRate(newRadioLinkParams.link_datarate_video_bps[iRadioLink], (radioFlags & RADIO_FLAG_HT40_VEHICLE)?1:0);
+      u32 uMaxVideoBitrate = g_pCurrentModel->getMaxVideoBitrateSupportedForRadioLinks(pRadioLinkParams, &g_pCurrentModel->video_params, &(g_pCurrentModel->video_link_profiles[0]));
+      bool bUpdatedVideoBitrate = false;
+      u32 uVideoBitrateToSet = 0;
 
-      u32 uTotalVideoBitrateBPS = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].bitrate_fixed_bps;
-
-      int iProfileDataPackets = 0;
-      int iProfileECPackets = 0;
-      g_pCurrentModel->get_video_profile_ec_scheme(g_pCurrentModel->video_params.user_selected_video_link_profile, &iProfileDataPackets, &iProfileECPackets);
-      
-      uTotalVideoBitrateBPS = (uTotalVideoBitrateBPS / (u32)iProfileDataPackets) * ((u32)(iProfileDataPackets + iProfileECPackets) );
-      char szVideoWarning[256];
-      szVideoWarning[0] = 0;
-
-      if ( uTotalVideoBitrateBPS > (uMaxRadioDataRate /100) * DEFAULT_VIDEO_LINK_LOAD_PERCENT )
+      log_line("MenuVehicleRadioLink: Max video bitrate on new radio config: %.2f Mbps", (float) uMaxVideoBitrate/1000.0/1000.0);
+      for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
       {
-         char szBuff[128];
-         char szBuff2[128];
-         char szBuff3[128];
-         str_format_bitrate(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].bitrate_fixed_bps, szBuff);
-         str_format_bitrate(uTotalVideoBitrateBPS, szBuff2);
-         str_format_bitrate(uMaxRadioDataRate, szBuff3);
-         log_line("MenuVehicleRadio: Current video profile (%s) set video bitrate (%s) is greater than %d%% of maximum safe allowed radio datarate (%s of max radio datarate of %s). Show warning.",
-            str_get_video_profile_name(g_pCurrentModel->video_params.user_selected_video_link_profile), szBuff, DEFAULT_VIDEO_LINK_LOAD_PERCENT, szBuff2, szBuff3);
-         snprintf(szVideoWarning, sizeof(szVideoWarning)/sizeof(szVideoWarning[0]), "The selected radio datarate is too small for your current video bitrate of %s. Use a bigger radio datarate or decrease video bitrate first.", szBuff);
-         bShowWarning = true;
+         if ( 0 == g_pCurrentModel->video_link_profiles[i].uTargetVideoBitrateBPS )
+            continue;
+         if ( g_pCurrentModel->video_link_profiles[i].uTargetVideoBitrateBPS > uMaxVideoBitrate )
+         {
+            log_line("MenuVehicleRadioLink: Must decrease video bitrate (%.2f Mbps) for video profile %s to max allowed on current links: %.2f Mbps",
+               (float)g_pCurrentModel->video_link_profiles[i].uTargetVideoBitrateBPS/1000.0/1000.0,
+               str_get_video_profile_name(i),
+               (float)uMaxVideoBitrate/1000.0/1000.0);
+            uVideoBitrateToSet = uMaxVideoBitrate;
+            bUpdatedVideoBitrate = true;
+         }
       }
 
-      if ( bShowWarning )
+      if ( bUpdatedVideoBitrate && (0 != uVideoBitrateToSet) )
       {
-         addMessageWithTitle(0, "Can't update radio link datarates", szVideoWarning);
-         addMenuItems();
+         
+         video_parameters_t paramsNew;
+         type_video_link_profile profiles[MAX_VIDEO_LINK_PROFILES];
+         memcpy(&paramsNew, &g_pCurrentModel->video_params, sizeof(video_parameters_t));
+         memcpy((u8*)&profiles[0], (u8*)&g_pCurrentModel->video_link_profiles[0], MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile));
+
+         for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+         {
+            if ( 0 != profiles[i].uTargetVideoBitrateBPS )
+               profiles[i].uTargetVideoBitrateBPS = uVideoBitrateToSet;
+         }
+
+         if ( handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMETERS, 0, (u8*)&paramsNew, sizeof(video_parameters_t), (u8*)&profiles, MAX_VIDEO_LINK_PROFILES * sizeof(type_video_link_profile)) )
+            m_bWaitingVideoChangeConfirmationFromVehicle = true;
          return;
       }
    }
-   // Check video bitrate overflow on new radio datarate
-   //------------------------------------------------------
-
 
    char szBuff[256];
-   str_get_radio_capabilities_description(newRadioLinkParams.link_capabilities_flags[iRadioLink], szBuff);
+   str_get_radio_capabilities_description(pRadioLinkParams->link_capabilities_flags[m_iVehicleRadioLink], szBuff);
  
    log_line("MenuVehicleRadioLink: Radio link new requested capabilities: %s", szBuff);
 
-   log_line("MenuVehicleRadioLink: Sending new radio data rates for link %d: vid: %d, d-down: %d/%d, d-up: %d/%d",
-      iRadioLink+1, newRadioLinkParams.link_datarate_video_bps[iRadioLink],
-      newRadioLinkParams.uDownlinkDataDataRateType[iRadioLink],
-      newRadioLinkParams.link_datarate_data_bps[iRadioLink],
-      newRadioLinkParams.uUplinkDataDataRateType[iRadioLink],
-      newRadioLinkParams.uplink_datarate_data_bps[iRadioLink]);
+   log_line("MenuVehicleRadioLink: Sending new radio data rates for link %d: vid: %d, data-down: %d, data-up: %d",
+      m_iVehicleRadioLink+1, pRadioLinkParams->downlink_datarate_video_bps[m_iVehicleRadioLink],
+      pRadioLinkParams->downlink_datarate_data_bps[m_iVehicleRadioLink],
+      pRadioLinkParams->uplink_datarate_data_bps[m_iVehicleRadioLink]);
 
    t_packet_header PH;
    int iHeaderSize = 5;
@@ -964,15 +1018,15 @@ void MenuVehicleRadioLink::sendRadioLinkConfig(int iRadioLink)
 
    buffer[sizeof(t_packet_header)] = 1;
    buffer[sizeof(t_packet_header)+1] = iHeaderSize;
-   buffer[sizeof(t_packet_header)+2] = (u8)iRadioLink;
+   buffer[sizeof(t_packet_header)+2] = (u8)m_iVehicleRadioLink;
    buffer[sizeof(t_packet_header)+3] = (u8)s_iMenuRadioLinkTestNumberCount;
    buffer[sizeof(t_packet_header)+4] = PACKET_TYPE_TEST_RADIO_LINK_COMMAND_START;
-   memcpy(buffer + sizeof(t_packet_header) + iHeaderSize, &newRadioLinkParams, sizeof(type_radio_links_parameters));
+   memcpy(buffer + sizeof(t_packet_header) + iHeaderSize, pRadioLinkParams, sizeof(type_radio_links_parameters));
 
    send_packet_to_router(buffer, PH.total_length);
 
-   link_set_is_reconfiguring_radiolink(m_iRadioLink);
-   warnings_add_configuring_radio_link(m_iRadioLink, "Updating Radio Link");
+   link_set_is_reconfiguring_radiolink(m_iVehicleRadioLink);
+   warnings_add_configuring_radio_link(m_iVehicleRadioLink, L("Updating Radio Link"));
 }
 
 void MenuVehicleRadioLink::sendNewRadioLinkFrequency(int iVehicleLinkIndex, u32 uNewFreqKhz)
@@ -981,6 +1035,28 @@ void MenuVehicleRadioLink::sendNewRadioLinkFrequency(int iVehicleLinkIndex, u32 
       return;
 
    log_line("MenuVehicleRadioLink: Changing radio link %d frequency to %u khz (%s)", iVehicleLinkIndex+1, uNewFreqKhz, str_format_frequency(uNewFreqKhz));
+
+   if ( ! is_vehicle_radio_link_used(g_pCurrentModel, &g_SM_RadioStats, iVehicleLinkIndex) )
+   {
+      if ( link_is_reconfiguring_radiolink() )
+      {
+         add_menu_to_stack(new MenuConfirmation("Configuration In Progress","Another radio link configuration change is in progress. Please wait.", 0, true));
+         valuesToUI();
+         return;
+      }
+      log_line("MenuVehicleRadio: User changed unused radio link %d frequency to %s", iVehicleLinkIndex+1, str_format_frequency(uNewFreqKhz));
+
+      u32 param = uNewFreqKhz & 0xFFFFFF;
+      param = param | (((u32)iVehicleLinkIndex)<<24);
+      if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_RADIO_LINK_FREQUENCY, param, NULL, 0) )
+         valuesToUI();
+      else
+      {
+         link_set_is_reconfiguring_radiolink(iVehicleLinkIndex, false, true, true);
+         warnings_add_configuring_radio_link(iVehicleLinkIndex, "Changing frequency");
+      }
+      return;
+   }
 
    type_radio_links_parameters newRadioLinkParams;
    memcpy((u8*)&newRadioLinkParams, (u8*)&(g_pCurrentModel->radioLinksParams), sizeof(type_radio_links_parameters));
@@ -1018,9 +1094,38 @@ void MenuVehicleRadioLink::sendNewRadioLinkFrequency(int iVehicleLinkIndex, u32 
    warnings_add_configuring_radio_link(iVehicleLinkIndex, "Changing Frequency");
 }
 
+void MenuVehicleRadioLink::onVehicleCommandFinished(u32 uCommandId, u32 uCommandType, bool bSucceeded)
+{
+   Menu::onVehicleCommandFinished(uCommandId, uCommandType, bSucceeded);
+
+   if ( uCommandType == COMMAND_ID_SET_VIDEO_PARAMETERS )
+   if ( m_bWaitingVideoChangeConfirmationFromVehicle )
+   {
+      log_line("MenuVehicleRadioLink: finished updating video params. Send new radio link params.");
+      addMessageWithTitle(12, L("Updated video bitrate"), L("Your video bitrate was adjusted to fit the new fixed radio datarates."));
+   }
+}
+
 void MenuVehicleRadioLink::onReturnFromChild(int iChildMenuId, int returnValue)
 {
    Menu::onReturnFromChild(iChildMenuId, returnValue);
+
+   if ( 11 == iChildMenuId/1000 )
+   if ( m_bWaitingConfirmationFromUser )
+   {
+      m_bWaitingConfirmationFromUser = false;
+      sendRadioLinkConfigParams(&m_RadioLinksParamsToApply, true);
+      return;
+   }
+   
+   if ( 12 == iChildMenuId/1000 )
+   if ( m_bWaitingVideoChangeConfirmationFromVehicle )
+   {
+      log_line("MenuVehicleRadioLink: Finished waiting for user confirmation on updated video bitrate.");
+      m_bWaitingVideoChangeConfirmationFromVehicle = false;
+      sendRadioLinkConfigParams(&m_RadioLinksParamsToApply, false);
+      return;
+   }
 }
 
 int MenuVehicleRadioLink::onBack()
@@ -1049,9 +1154,8 @@ void MenuVehicleRadioLink::onSelectItem()
 
    char szBuff[256];
 
-   int iRadioInterfaceId = g_pCurrentModel->getRadioInterfaceIndexForRadioLink(m_iRadioLink);
-   log_line("MenuVehicleRadioLink: Current radio interface assigned to radio link %d: %d", m_iRadioLink+1, iRadioInterfaceId+1);
-   if ( -1 == iRadioInterfaceId )
+   log_line("MenuVehicleRadioLink: Current vehicle radio interface assigned to vehicle radio link %d: %d", m_iVehicleRadioLink+1, m_iVehicleRadioInterface+1);
+   if ( -1 == m_iVehicleRadioInterface )
       return;
 
    if ( (-1 != m_IndexFrequency) && (m_IndexFrequency == m_SelectedIndex) )
@@ -1059,7 +1163,7 @@ void MenuVehicleRadioLink::onSelectItem()
       int index = m_pItemsSelect[0]->getSelectedIndex();
       u32 freq = m_SupportedChannels[index];
       int band = getBand(freq);      
-      if ( freq == g_pCurrentModel->radioLinksParams.link_frequency_khz[m_iRadioLink] )
+      if ( freq == g_pCurrentModel->radioLinksParams.link_frequency_khz[m_iVehicleRadioLink] )
          return;
 
       u32 nicFreq[MAX_RADIO_INTERFACES];
@@ -1073,7 +1177,7 @@ void MenuVehicleRadioLink::onSelectItem()
       for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
          nicFlags[i] = g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[i];
 
-      nicFreq[m_iRadioLink] = freq;
+      nicFreq[m_iVehicleRadioLink] = freq;
 
       const char* szError = controller_validate_radio_settings( g_pCurrentModel, nicFreq, nicFlags, NULL, NULL, NULL);
    
@@ -1112,14 +1216,7 @@ void MenuVehicleRadioLink::onSelectItem()
          addMenuItems();
       }
 
-      if ( (get_sw_version_major(g_pCurrentModel) < 9) ||
-           ((get_sw_version_major(g_pCurrentModel) == 9) && (get_sw_version_minor(g_pCurrentModel) <= 20)) )
-      {
-         addMessageWithTitle(0, "Can't update radio links", "You need to update your vehicle to version 9.2 or newer");
-         addMenuItems();
-         return;
-      }
-      sendNewRadioLinkFrequency(m_iRadioLink, freq);
+      sendNewRadioLinkFrequency(m_iVehicleRadioLink, freq);
       return;
    }
 
@@ -1135,12 +1232,12 @@ void MenuVehicleRadioLink::onSelectItem()
       for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
          nicFlags[i] = g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[i];
 
-      nicFlags[m_iRadioLink] = nicFlags[m_iRadioLink] & (~RADIO_HW_CAPABILITY_FLAG_DISABLED);
-      nicFlags[m_iRadioLink] = nicFlags[m_iRadioLink] & (~(RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO|RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA));
-      if ( 0 == usage ) nicFlags[m_iRadioLink] = nicFlags[m_iRadioLink] | RADIO_HW_CAPABILITY_FLAG_DISABLED;
-      if ( 1 == usage ) nicFlags[m_iRadioLink] = nicFlags[m_iRadioLink] | (RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO|RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA);
-      if ( 2 == usage ) nicFlags[m_iRadioLink] = nicFlags[m_iRadioLink] | (RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO);
-      if ( 3 == usage ) nicFlags[m_iRadioLink] = nicFlags[m_iRadioLink] | (RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA);
+      nicFlags[m_iVehicleRadioLink] = nicFlags[m_iVehicleRadioLink] & (~RADIO_HW_CAPABILITY_FLAG_DISABLED);
+      nicFlags[m_iVehicleRadioLink] = nicFlags[m_iVehicleRadioLink] & (~(RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO|RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA));
+      if ( 0 == usage ) nicFlags[m_iVehicleRadioLink] = nicFlags[m_iVehicleRadioLink] | RADIO_HW_CAPABILITY_FLAG_DISABLED;
+      if ( 1 == usage ) nicFlags[m_iVehicleRadioLink] = nicFlags[m_iVehicleRadioLink] | (RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO|RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA);
+      if ( 2 == usage ) nicFlags[m_iVehicleRadioLink] = nicFlags[m_iVehicleRadioLink] | (RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO);
+      if ( 3 == usage ) nicFlags[m_iVehicleRadioLink] = nicFlags[m_iVehicleRadioLink] | (RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA);
 
       const char* szError = controller_validate_radio_settings( g_pCurrentModel, nicFreq, nicFlags, NULL, NULL, NULL);
    
@@ -1152,79 +1249,32 @@ void MenuVehicleRadioLink::onSelectItem()
          return;
       }
 
-      sendRadioLinkCapabilities(m_iRadioLink);
+      sendRadioLinkCapabilities(m_iVehicleRadioLink);
       return;
    }
 
    if ( (-1 != m_IndexCapabilities) && (m_IndexCapabilities == m_SelectedIndex) )
    {
-      sendRadioLinkConfig(m_iRadioLink);
+      sendRadioLinkCapabilities(m_iVehicleRadioLink);
       return;
    }
 
    if ( (-1 != m_IndexDataRatesType) && (m_IndexDataRatesType == m_SelectedIndex) )
    {
-      if ( 0 == m_pItemsSelect[8]->getSelectedIndex() )
-      if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[m_iRadioLink] > 0 )
-      {
-         m_bSwitchedDataRatesType = false;
-         m_bMustSelectDatarate = false;
-         addMenuItems();
-         return;
-      }
-      if ( 1 == m_pItemsSelect[8]->getSelectedIndex() )
-      if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[m_iRadioLink] < 0 )
-      {
-         m_bSwitchedDataRatesType = false;
-         m_bMustSelectDatarate = false;
-         addMenuItems();
-         return;
-      }
-
-      m_bSwitchedDataRatesType = true;
-      m_bMustSelectDatarate = true;
-      addMenuItems();
-      return;
+      sendRadioLinkConfig(m_iVehicleRadioLink);
    }
 
    if ( (-1 != m_IndexDataRateVideo) && (m_IndexDataRateVideo == m_SelectedIndex) )
    {
-      if ( m_bMustSelectDatarate )
-      if ( 0 == m_pItemsSelect[3]->getSelectedIndex() )
-      {
-         addMessage("Please select a radio datarate.");
-         addMenuItems();
-         return;
-      }
-      sendRadioLinkConfig(m_iRadioLink);
-      return;
-   }
-   if ( (-1 != m_IndexAutoTelemetryRates) && (m_IndexAutoTelemetryRates == m_SelectedIndex) )
-   {
-      if ( m_bMustSelectDatarate )
-      if ( 0 == m_pItemsSelect[3]->getSelectedIndex() )
-      {
-         addMessage("Please select a radio datarate first.");
-         addMenuItems();
-         return;
-      }
-      sendRadioLinkConfig(m_iRadioLink);
+      sendRadioLinkConfig(m_iVehicleRadioLink);
       return;
    }
 
    if ( ((-1 != m_IndexDataRateDataDownlink) && (m_IndexDataRateDataDownlink == m_SelectedIndex)) ||
         ((-1 != m_IndexDataRateDataUplink) && (m_IndexDataRateDataUplink == m_SelectedIndex)) ||
-        ((-1 != m_IndexDataRateTypeDownlink) && (m_IndexDataRateTypeDownlink == m_SelectedIndex)) ||
-        ((-1 != m_IndexDataRateTypeUplink) && (m_IndexDataRateTypeUplink == m_SelectedIndex)) )
+        ((-1 != m_IndexMaxLoad) && (m_IndexMaxLoad == m_SelectedIndex)) )
    {
-      if ( m_bMustSelectDatarate )
-      if ( 0 == m_pItemsSelect[3]->getSelectedIndex() )
-      {
-         addMessage("Please select a radio datarate first.");
-         addMenuItems();
-         return;
-      }
-      sendRadioLinkConfig(m_iRadioLink);
+      sendRadioLinkConfig(m_iVehicleRadioLink);
       return;
    }
 
@@ -1234,30 +1284,18 @@ void MenuVehicleRadioLink::onSelectItem()
         ((-1 != m_IndexSTBC) && (m_IndexSTBC == m_SelectedIndex)) ||
         ((-1 != m_IndexHT) && (m_IndexHT == m_SelectedIndex)) )
    {
-      if ( m_bMustSelectDatarate )
-      if ( 0 == m_pItemsSelect[3]->getSelectedIndex() )
-      {
-         addMessage("Please select a radio datarate first.");
-         addMenuItems();
-         return;
-      }
-      sendRadioLinkConfig(m_iRadioLink);
+      sendRadioLinkConfig(m_iVehicleRadioLink);
       return;
    }
 
    if ( (-1 != m_IndexReset) && (m_IndexReset == m_SelectedIndex) )
    {
-      if ( ! handle_commands_send_to_vehicle(COMMAND_ID_RESET_RADIO_LINK, m_iRadioLink, NULL, 0) )
+      if ( ! handle_commands_send_to_vehicle(COMMAND_ID_RESET_RADIO_LINK, m_iVehicleRadioLink, NULL, 0) )
          addMenuItems();
    }
 }
 
 void MenuVehicleRadioLink::onChangeRadioConfigFinished(bool bSucceeded)
 {
-   if ( bSucceeded )
-   {
-      m_bSwitchedDataRatesType = false;
-      m_bMustSelectDatarate = false;
-   }
    addMenuItems();
 }

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -72,6 +72,34 @@ shared_mem_video_stream_stats* get_shared_mem_video_stream_stats_for_vehicle(sha
    return NULL;
 }
 
+void reset_video_stream_stats_for_vehicle(shared_mem_video_stream_stats_rx_processors* pSM, u32 uVehicleId)
+{
+   if ( (NULL == pSM) || (0 == uVehicleId) )
+      return;
+   shared_mem_video_stream_stats* pVSStats = get_shared_mem_video_stream_stats_for_vehicle(pSM, uVehicleId);
+   if ( NULL == pVSStats )
+      return;
+
+   memset((u8*)pVSStats, 0, sizeof(shared_mem_video_stream_stats));
+   pVSStats->uVehicleId = uVehicleId;
+   reset_video_stream_stats_detected_info(pVSStats);
+}
+
+void reset_video_stream_stats_detected_info(shared_mem_video_stream_stats* pVSStats)
+{
+   if ( NULL == pVSStats )
+      return;
+   pVSStats->uDetectedH264Profile = 0;
+   pVSStats->uDetectedH264ProfileConstrains = 0;
+   pVSStats->uDetectedH264Level = 0;
+   pVSStats->iDetectedFPS = -1;
+   pVSStats->iDetectedSlices = -1;
+   pVSStats->iDetectedKeyframeMs = -1;
+
+   memset((u8*)&(pVSStats->adaptiveHitsLow), 0, sizeof(type_adaptive_info));
+   memset((u8*)&(pVSStats->adaptiveHitsHigh), 0, sizeof(type_adaptive_info));
+}
+
 shared_mem_radio_rx_queue_info* shared_mem_radio_rx_queue_info_open_for_read()
 {
    void *retVal = open_shared_mem(SHARED_MEM_RADIO_RX_QUEUE_INFO_STATS, sizeof(shared_mem_radio_rx_queue_info), 1);
@@ -106,5 +134,25 @@ void shared_mem_router_vehicles_runtime_info_close(shared_mem_router_vehicles_ru
 {
    if ( NULL != pAddress )
       munmap(pAddress, sizeof(shared_mem_router_vehicles_runtime_info));
+   //shm_unlink(szName);
+}
+
+
+shared_mem_ctrl_ping_stats* shared_mem_ctrl_ping_stats_info_open_for_read()
+{
+   void *retVal = open_shared_mem_for_read(SHARED_MEM_CONTROLLER_PING_STATS, sizeof(shared_mem_ctrl_ping_stats));
+   return (shared_mem_ctrl_ping_stats*)retVal;
+}
+
+shared_mem_ctrl_ping_stats* shared_mem_rctrl_ping_stats_info_open_for_write()
+{
+   void *retVal = open_shared_mem_for_write(SHARED_MEM_CONTROLLER_PING_STATS, sizeof(shared_mem_ctrl_ping_stats));
+   return (shared_mem_ctrl_ping_stats*)retVal;
+}
+
+void shared_mem_ctrl_ping_stats_info_close(shared_mem_ctrl_ping_stats* pAddress)
+{
+   if ( NULL != pAddress )
+      munmap(pAddress, sizeof(shared_mem_ctrl_ping_stats));
    //shm_unlink(szName);
 }

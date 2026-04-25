@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,7 +35,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_files.h"
 #include "../base/hardware_radio.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/tx_powers.h"
 #include "../base/ctrl_settings.h"
 #include "../base/ctrl_interfaces.h"
@@ -68,7 +68,7 @@ u32 controller_utils_getControllerId()
    if ( bControllerIdOk )
       return uControllerId;
 
-   log_line("Generating a new unique controller ID...");
+   log_line("Generating a new unique controller Id...");
 
    uControllerId = rand();
    if ( BROADCAST_VEHICLE_ID == uControllerId )
@@ -78,13 +78,28 @@ u32 controller_utils_getControllerId()
    {
       char szBuff[256];
       szBuff[0] = 0;
-      if ( 1 == fscanf(fd, "%s", szBuff) && 4 < strlen(szBuff) )
+      if ( (1 == fscanf(fd, "%s", szBuff)) && (1 < strlen(szBuff)) )
       {
-         //log_line("Serial ID of HW: %s", szBuff);
          uControllerId += szBuff[strlen(szBuff)-1] + 256 * szBuff[strlen(szBuff)-2];
+         for( int i=0; i<(int)strlen(szBuff); i++ )
+            uControllerId += (szBuff[i]+1)*i + (szBuff[i]+2)*(1<<i);
       }
+      else
+         log_softerror_and_alarm("Failed to read hardware serial number for generating unique controller Id.");
       fclose(fd);
    }
+   else
+      log_softerror_and_alarm("Failed to get hardware serial number for generating unique controller Id.");
+
+   struct timespec t;
+   clock_gettime(RUBY_HW_CLOCK_ID, &t);
+   uControllerId += t.tv_nsec;
+
+   char szOutput[4096];
+   memset(szOutput, 0, 4096);
+   hw_execute_bash_command("lsusb", szOutput);
+   for( int i=1; i<4096; i++ )
+      uControllerId += szOutput[i]*i;
 
    log_line("Generated a new unique controller ID: %u", uControllerId);
 
@@ -95,7 +110,7 @@ u32 controller_utils_getControllerId()
       fclose(fd);
    }
    else
-      log_softerror_and_alarm("Failed to save the new generated unique controller ID!");
+      log_softerror_and_alarm("Failed to save the new generated unique controller Id!");
 
    return uControllerId;
 }
@@ -368,151 +383,6 @@ int controller_count_asignable_radio_interfaces_to_vehicle_radio_link(Model* pMo
    return iErrorCode;
 }
 
-void propagate_video_profile_changes_to_lower_profiles(Model* pModel, type_video_link_profile* pOrgProfile, type_video_link_profile* pUpdatedProfile, type_video_link_profile* pAllProfiles)
-{
-   if ( (NULL == pModel) || (NULL == pOrgProfile) || (NULL == pUpdatedProfile) || (NULL == pAllProfiles) )
-      return;
-
-   // If EC scheme spreading factor has changed by user, update MQ and LQ video profiles spreading factor too
-   
-   if ( ( (pOrgProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_HIGHBIT) != (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_HIGHBIT) ) ||
-      ( (pOrgProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_LOWBIT) != (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_LOWBIT) ) )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags &= ~(VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_HIGHBIT | VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_LOWBIT);
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_HIGHBIT);
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_LOWBIT);
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags &= ~(VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_HIGHBIT | VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_LOWBIT);
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_HIGHBIT);
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_LOWBIT);
-   }
-
-   if ( ( (pOrgProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION) != (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION) ) ||
-      ( (pOrgProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH) != (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH) ) )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags &= ~(VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION | VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH);
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION);
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH);
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags &= ~(VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION | VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH);
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION);
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= (pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH);
-   }
-
-   pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ONE_WAY_FIXED_VIDEO;
-   pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ONE_WAY_FIXED_VIDEO;
-   if ( pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ONE_WAY_FIXED_VIDEO )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ONE_WAY_FIXED_VIDEO;
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ONE_WAY_FIXED_VIDEO;
-   }
-
-   pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS;
-   pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS;
-   if ( pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS;
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS;
-   }
-
-   pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK;
-   pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK;
-   if ( pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK;
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK;
-   }
-
-   pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_USE_CONTROLLER_INFO_TOO;
-   pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_USE_CONTROLLER_INFO_TOO;
-   if ( pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_USE_CONTROLLER_INFO_TOO )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_USE_CONTROLLER_INFO_TOO;
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_USE_CONTROLLER_INFO_TOO;
-   }
-
-   pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_GO_LOWER_ON_LINK_LOST;
-   pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_GO_LOWER_ON_LINK_LOST;
-   if ( pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_GO_LOWER_ON_LINK_LOST )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_GO_LOWER_ON_LINK_LOST;
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_GO_LOWER_ON_LINK_LOST;
-   }
-
-   pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
-   pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
-   if ( pUpdatedProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
-      pAllProfiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
-   }
-
-   if ( (pOrgProfile->width != pUpdatedProfile->width) || (pOrgProfile->height != pUpdatedProfile->height) )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].width = pUpdatedProfile->width;
-      pAllProfiles[VIDEO_PROFILE_MQ].height = pUpdatedProfile->height;
-      pAllProfiles[VIDEO_PROFILE_LQ].width = pUpdatedProfile->width;
-      pAllProfiles[VIDEO_PROFILE_LQ].height = pUpdatedProfile->height;
-   }
-
-   if ( pOrgProfile->fps != pUpdatedProfile->fps )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].fps = pUpdatedProfile->fps;
-      pAllProfiles[VIDEO_PROFILE_LQ].fps = pUpdatedProfile->fps;
-   }
-
-   if ( pOrgProfile->keyframe_ms != pUpdatedProfile->keyframe_ms )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].keyframe_ms = pUpdatedProfile->keyframe_ms;
-      pAllProfiles[VIDEO_PROFILE_LQ].keyframe_ms = pUpdatedProfile->keyframe_ms;
-   }
-
-   if ( pOrgProfile->h264profile != pUpdatedProfile->h264profile )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].h264profile = pUpdatedProfile->h264profile;
-      pAllProfiles[VIDEO_PROFILE_LQ].h264profile = pUpdatedProfile->h264profile;
-   }
-
-   if ( pOrgProfile->h264level != pUpdatedProfile->h264level )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].h264level = pUpdatedProfile->h264level;
-      pAllProfiles[VIDEO_PROFILE_LQ].h264level = pUpdatedProfile->h264level;
-   }
-
-   if ( pOrgProfile->h264refresh != pUpdatedProfile->h264refresh )
-   {
-      pAllProfiles[VIDEO_PROFILE_MQ].h264refresh = pUpdatedProfile->h264refresh;
-      pAllProfiles[VIDEO_PROFILE_LQ].h264refresh = pUpdatedProfile->h264refresh;
-   }
-
-   pAllProfiles[VIDEO_PROFILE_LQ].video_data_length = pUpdatedProfile->video_data_length;
-   pAllProfiles[VIDEO_PROFILE_MQ].video_data_length = pUpdatedProfile->video_data_length;
-
-   u32 uNoiseLevel = pUpdatedProfile->uProfileFlags & VIDEO_PROFILE_FLAGS_MASK_NOISE;
-
-   pAllProfiles[VIDEO_PROFILE_MQ].uProfileFlags &= ~ VIDEO_PROFILE_FLAGS_MASK_NOISE;
-   pAllProfiles[VIDEO_PROFILE_MQ].uProfileFlags |= uNoiseLevel;
-   pAllProfiles[VIDEO_PROFILE_LQ].uProfileFlags &= ~ VIDEO_PROFILE_FLAGS_MASK_NOISE;
-   pAllProfiles[VIDEO_PROFILE_LQ].uProfileFlags |= uNoiseLevel;
-
-
-   // if EC on user profile is greater than EC on MQ,LQ, update MQ,LQ too
-   if ( pUpdatedProfile != &(pAllProfiles[VIDEO_PROFILE_MQ]) )
-   if ( pUpdatedProfile != &(pAllProfiles[VIDEO_PROFILE_LQ]) )
-   {
-      if ( pUpdatedProfile->iECPercentage > pAllProfiles[VIDEO_PROFILE_MQ].iECPercentage )
-         pAllProfiles[VIDEO_PROFILE_MQ].iECPercentage = pUpdatedProfile->iECPercentage;
-      else
-         pAllProfiles[VIDEO_PROFILE_MQ].iECPercentage = DEFAULT_VIDEO_EC_RATE_MQ;
-
-      if ( pUpdatedProfile->iECPercentage > pAllProfiles[VIDEO_PROFILE_LQ].iECPercentage )
-         pAllProfiles[VIDEO_PROFILE_LQ].iECPercentage = pUpdatedProfile->iECPercentage;
-      else
-         pAllProfiles[VIDEO_PROFILE_LQ].iECPercentage = DEFAULT_VIDEO_EC_RATE_MQ;
-
-      pModel->convertECPercentageToData(&(pAllProfiles[VIDEO_PROFILE_MQ]));
-      pModel->convertECPercentageToData(&(pAllProfiles[VIDEO_PROFILE_LQ]));
-   }
-}
-
 int tx_powers_get_max_usable_power_mw_for_controller()
 {
    // Select the max mw power for any present card
@@ -543,128 +413,6 @@ int tx_powers_get_max_usable_power_mw_for_controller()
    return iMaxPowerMw;
 }
 
-void compute_controller_radio_tx_powers(Model* pModel, shared_mem_radio_stats* pSMRS)
-{
-   ControllerSettings* pCS = get_ControllerSettings();
-
-   log_line("Computing controller radio tx powers. Is fixed power? %s, current model: %s",
-      pCS->iFixedTxPower?"yes":"no", (NULL != pModel)?pModel->getLongName():"None");
-   if ( pCS->iFixedTxPower )
-   {
-      log_line("Nothing to compute. Fixed tx powers.");
-      return;
-   }
-
-   if ( (NULL == pModel) || (NULL == pSMRS) )
-   {
-      log_line("No model or no radio cards assignment. Set all tx powers to default value.");
-      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-      {
-         if ( ! hardware_radio_index_is_wifi_radio(i) )
-            continue;
-         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-         if ( (! pRadioHWInfo->isConfigurable) || (! pRadioHWInfo->isSupported) )
-            continue;
-
-         t_ControllerRadioInterfaceInfo* pCRII = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
-         if ( NULL == pCRII )
-            continue;
-
-         int iCardModel = pCRII->cardModel;
-         if ( iCardModel < 0 )
-            iCardModel = -iCardModel;
-         int iCardMaxPowerMw = tx_powers_get_max_usable_power_mw_for_card(hardware_getBoardType(), iCardModel);
-         pCRII->iRawPowerLevel = DEFAULT_RADIO_TX_POWER_CONTROLLER;
-         int iPowerMw = tx_powers_convert_raw_to_mw(hardware_getBoardType(), iCardModel, pCRII->iRawPowerLevel);
-         log_line("Radio interface %d computed raw tx power to set: %d (%d mW out of max %d mW for this card)",
-            i+1, pCRII->iRawPowerLevel, iPowerMw, iCardMaxPowerMw);
-      }
-      log_line("Done setting all radio cards to default tx power level.");
-      return;
-   }
-
-   log_line("Computing tx powers for %d vehicle radio links...", pModel->radioLinksParams.links_count);
-   
-   for( int iLink=0; iLink<pModel->radioLinksParams.links_count; iLink++ )
-   {
-      int iVehicleLinkMwPower = get_vehicle_radio_link_current_tx_power_mw(pModel, iLink);
-      log_line("Vehicle radio link %d current tx power: %d mw", iLink+1, iVehicleLinkMwPower);
-      // Set uplink power twice as downlink so it has 1.4 times the range
-      iVehicleLinkMwPower *= 4;
-      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-      {
-         if ( pSMRS->radio_interfaces[i].assignedVehicleRadioLinkId != iLink )
-            continue;
-         if ( ! hardware_radio_index_is_wifi_radio(i) )
-            continue;
-         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-         if ( (! pRadioHWInfo->isConfigurable) || (! pRadioHWInfo->isSupported) )
-            continue;
-
-         t_ControllerRadioInterfaceInfo* pCRII = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
-         if ( NULL == pCRII )
-            continue;
-
-         int iCardModel = pCRII->cardModel;
-         if ( iCardModel < 0 )
-            iCardModel = -iCardModel;
-         int iCardMaxPowerMw = tx_powers_get_max_usable_power_mw_for_card(hardware_getBoardType(), iCardModel);
-         int iCardPowerMwToSet = iVehicleLinkMwPower;
-         if ( iCardPowerMwToSet > iCardMaxPowerMw )
-            iCardPowerMwToSet = iCardMaxPowerMw;
-
-         pCRII->iRawPowerLevel = tx_powers_convert_mw_to_raw(hardware_getBoardType(), iCardModel, iCardPowerMwToSet);
-         log_line("Radio interface %d for radio link %d computed raw tx power to set: %d (%d mW out of max %d mW for this card)",
-            i+1, iLink+1, pCRII->iRawPowerLevel, iCardPowerMwToSet, iCardMaxPowerMw);
-      }
-   }
-   log_line("Done computing all radio cards power levels based on vehicle powers.");
-}
-
-void apply_controller_radio_tx_powers(Model* pModel, shared_mem_radio_stats* pSMRS)
-{
-   compute_controller_radio_tx_powers(pModel, pSMRS);
-
-   ControllerSettings* pCS = get_ControllerSettings();
-
-   log_line("Applying controller radio tx powers. Is fixed power? %s, current model: %s",
-      pCS->iFixedTxPower?"yes":"no", (NULL != pModel)?pModel->getLongName():"None");
-   log_line("Applying all radio interfaces raw tx powers...");
-
-   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-   {
-      if ( ! hardware_radio_index_is_wifi_radio(i) )
-         continue;
-      if ( hardware_radio_index_is_sik_radio(i) )
-         continue;
-      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-      if ( (! pRadioHWInfo->isConfigurable) || (! pRadioHWInfo->isSupported) )
-         continue;
-
-      t_ControllerRadioInterfaceInfo* pCRII = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
-      if ( NULL == pCRII )
-         continue;
-
-      int iCardModel = pCRII->cardModel;
-      if ( iCardModel < 0 )
-         iCardModel = -iCardModel;
-      int iPowerRawToSet = pCRII->iRawPowerLevel;
-      int iPowerMwToSet = tx_powers_convert_raw_to_mw(hardware_getBoardType(), iCardModel, iPowerRawToSet);
-      int iCardMaxPowerMw = tx_powers_get_max_usable_power_mw_for_card(hardware_getBoardType(), iCardModel);
-      log_line("Radio interface %d set raw tx power: %d (%d mW out of max %d mW for this card)",
-          i+1, iPowerRawToSet, iPowerMwToSet, iCardMaxPowerMw);
-
-      if ( hardware_radio_driver_is_rtl8812au_card(pRadioHWInfo->iRadioDriver) )
-         hardware_radio_set_txpower_raw_rtl8812au(i, iPowerRawToSet);
-      if ( hardware_radio_driver_is_rtl8812eu_card(pRadioHWInfo->iRadioDriver) )
-         hardware_radio_set_txpower_raw_rtl8812eu(i, iPowerRawToSet);
-      if ( hardware_radio_driver_is_atheros_card(pRadioHWInfo->iRadioDriver) )
-         hardware_radio_set_txpower_raw_atheros(i, iPowerRawToSet);
-   }
-   log_line("Applied all radio interfaces raw tx powers.");
-}
-
-
 bool modelvideoLinkProfileIsOnlyVideoKeyframeChanged(type_video_link_profile* pOldProfile, type_video_link_profile* pNewProfile)
 {
    if ( NULL == pOldProfile || NULL == pNewProfile )
@@ -672,7 +420,7 @@ bool modelvideoLinkProfileIsOnlyVideoKeyframeChanged(type_video_link_profile* pO
 
    type_video_link_profile tmp;
    memcpy(&tmp, pNewProfile, sizeof(type_video_link_profile) );
-   tmp.keyframe_ms = pOldProfile->keyframe_ms;
+   tmp.iKeyframeMS = pOldProfile->iKeyframeMS;
    tmp.uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
    tmp.uProfileEncodingFlags |= (pOldProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME);
    if ( 0 == memcmp(pOldProfile, &tmp, sizeof(type_video_link_profile)) )
@@ -689,7 +437,5 @@ bool controller_utils_usb_import_has_any_controller_id_file() { return false; }
 int controller_count_asignable_radio_interfaces_to_vehicle_radio_link(Model* pModel, int iVehicleRadioLinkId) { return 0; }
 void propagate_video_profile_changes_to_lower_profiles(Model* pModel, type_video_link_profile* pOrg, type_video_link_profile* pUpdated, type_video_link_profile* pAllProfiles){}
 int tx_powers_get_max_usable_power_mw_for_controller(){ return 0; }
-void compute_controller_radio_tx_powers(Model* pModel, shared_mem_radio_stats* pSMRS){}
-void apply_controller_radio_tx_powers(Model* pModel, shared_mem_radio_stats* pSMRS){}
 bool modelvideoLinkProfileIsOnlyVideoKeyframeChanged(type_video_link_profile* pOldProfile, type_video_link_profile* pNewProfile) { return false; }
 #endif

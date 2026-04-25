@@ -28,6 +28,8 @@ class MenuItem
 
      void setHidden(bool bHidden);
      bool isHidden();
+
+     void highlightFirstWord(bool bHighlight);
      
      void setCondensedOnly();
      void setExtraHeight(float fExtraHeight);
@@ -37,6 +39,7 @@ class MenuItem
      void setIsEditable();
      void setNotEditable();
      bool isEditable();
+     bool isEndEditOnBackOnly();
      bool isEditing();
      virtual void beginEdit();
      virtual void endEdit(bool bCanceled);
@@ -72,7 +75,9 @@ class MenuItem
      char* m_pszTooltip;
      bool m_bEnabled;
      bool m_bIsEditable;
+     bool m_bEndEditOnBackOnly;
      bool m_bIsEditing;
+     bool m_bHighlightFirstWord;
      bool m_bShowArrow;
      bool m_bCondensedOnly;
      bool m_bHidden;

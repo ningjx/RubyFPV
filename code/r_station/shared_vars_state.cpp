@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -32,8 +32,10 @@
 
 
 #include "../base/base.h"
+#include "../base/models_list.h"
 #include "../radio/radiolink.h"
 #include "shared_vars.h"
+#include "ruby_rt_station.h"
 #include "timers.h"
 
 type_global_state_station g_State;
@@ -45,7 +47,12 @@ void resetVehicleRuntimeInfo(int iIndex)
 
    log_line("Reset vehicle runtime info for vehicle runtime index %d, VID: %u", iIndex, g_State.vehiclesRuntimeInfo[iIndex].uVehicleId);
 
+   if ( (0 != g_State.vehiclesRuntimeInfo[iIndex].uVehicleId) && (MAX_U32 != g_State.vehiclesRuntimeInfo[iIndex].uVehicleId) )
+   if ( g_State.vehiclesRuntimeInfo[iIndex].bIsAdaptiveVideoActive )
+      send_adaptive_video_paused_to_central(g_State.vehiclesRuntimeInfo[iIndex].uVehicleId, true);
+
    g_State.vehiclesRuntimeInfo[iIndex].uVehicleId = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].bReceivedAnyData = false;
    resetPairingStateForVehicleRuntimeInfo(iIndex);
 
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
@@ -74,15 +81,38 @@ void resetVehicleRuntimeInfo(int iIndex)
    g_State.vehiclesRuntimeInfo[iIndex].uAverageCommandRoundtripMiliseconds = MAX_U32;
    g_State.vehiclesRuntimeInfo[iIndex].uMaxCommandRoundtripMiliseconds = MAX_U32;
    g_State.vehiclesRuntimeInfo[iIndex].uMinCommandRoundtripMiliseconds = MAX_U32;
-   
-   g_State.vehiclesRuntimeInfo[iIndex].bIsDoingRetransmissions = false;
-   g_State.vehiclesRuntimeInfo[iIndex].bIsDoingAdaptive = false;
-   g_State.vehiclesRuntimeInfo[iIndex].uPendingVideoProfileToSet = 0xFF;
-   g_State.vehiclesRuntimeInfo[iIndex].uPendingVideoProfileToSetRequestedBy = 0;
-   g_State.vehiclesRuntimeInfo[iIndex].uLastTimeSentVideoProfileRequest = 0;
-   g_State.vehiclesRuntimeInfo[iIndex].uLastTimeRecvVideoProfileAck = 0;
 
-   g_State.vehiclesRuntimeInfo[iIndex].uPendingKeyFrameToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uTimeLastRecvFCTelemetryFC = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uTimeLastRecvRubyTelemetryExtended = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uTimeLastRecvRubyTelemetryShort = 0;
+   memset( &(g_State.vehiclesRuntimeInfo[iIndex].headerFCTelemetry), 0, sizeof(t_packet_header_fc_telemetry));
+   memset( &(g_State.vehiclesRuntimeInfo[iIndex].headerRubyTelemetryExtended), 0, sizeof(t_packet_header_ruby_telemetry_extended_v6));
+   memset( &(g_State.vehiclesRuntimeInfo[iIndex].headerRubyTelemetryShort), 0, sizeof(t_packet_header_ruby_telemetry_short));
+   parse_msp_reset_state(&(g_State.vehiclesRuntimeInfo[iIndex].mspState));
+
+   g_State.vehiclesRuntimeInfo[iIndex].bIsDoingRetransmissions = false;
+   g_State.vehiclesRuntimeInfo[iIndex].bIsAdaptiveVideoActive = false;
+   g_State.vehiclesRuntimeInfo[iIndex].uAdaptiveVideoActivationTime = g_TimeNow;
+   g_State.vehiclesRuntimeInfo[iIndex].bDidFirstTimeAdaptiveHandshake = false;
+   g_State.vehiclesRuntimeInfo[iIndex].uAdaptiveVideoLastCheckTime = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uAdaptiveVideoRequestId = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uAdaptiveVideoAckId = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uLastTimeSentAdaptiveVideoRequest = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uTimeStartCountingMetricAreOkToSwithHigher = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uLastTimeRecvAdaptiveVideoAck = 0;
+
+   g_State.vehiclesRuntimeInfo[iIndex].uCurrentAdaptiveVideoTargetVideoBitrateBPS = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uCurrentAdaptiveVideoECScheme = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].iCurrentAdaptiveVideoKeyFrameMsTarget = 0;
+   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
+      g_State.vehiclesRuntimeInfo[iIndex].iCurrentDataratesForLinks[i] = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uCurrentDRBoost = 0xFF;
+   g_State.vehiclesRuntimeInfo[iIndex].uPendingVideoBitrateToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uPendingECSchemeToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uPendingDRBoostToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].iPendingKeyFrameMsToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].iAdaptiveLevelNow = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].bIsOnLowestAdaptiveLevel = false;
 }
 
 
@@ -95,6 +125,7 @@ void resetPairingStateForVehicleRuntimeInfo(int iIndex)
    g_State.vehiclesRuntimeInfo[iIndex].uPairingRequestId = 0;
    g_State.vehiclesRuntimeInfo[iIndex].uPairingRequestTime = g_TimeNow;
    g_State.vehiclesRuntimeInfo[iIndex].uPairingRequestInterval = 200;
+   g_State.vehiclesRuntimeInfo[iIndex].bDidFirstTimeAdaptiveHandshake = false;
    g_TimeLastVideoParametersOrProfileChanged = g_TimeNow;
 }
 
@@ -157,7 +188,7 @@ type_global_state_vehicle_runtime_info* getVehicleRuntimeInfo(u32 uVehicleId)
 
 void logCurrentVehiclesRuntimeInfo()
 {
-   char szBuff[256];
+   char szBuff[1024];
    int iCount = 0;
    szBuff[0] = 0;
    for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
@@ -167,8 +198,20 @@ void logCurrentVehiclesRuntimeInfo()
 
       iCount++;
       char szTmp[32];
-      sprintf(szTmp, " %u", g_State.vehiclesRuntimeInfo[i].uVehicleId);
+      sprintf(szTmp, "%u", g_State.vehiclesRuntimeInfo[i].uVehicleId);
+      if ( 0 != szBuff[0] )
+         strcat(szBuff, ", ");
       strcat(szBuff, szTmp);
+      Model* pModel = findModelWithId(g_State.vehiclesRuntimeInfo[i].uVehicleId, 351);
+
+      if ( NULL == pModel )
+         strcat(szBuff, " (name: N/A)");
+      else
+      {
+         strcat(szBuff, " (");
+         strcat(szBuff, pModel->getLongName());
+         strcat(szBuff, ")");
+     }
    }
    log_line("Currently known runtime vehicle IDs (%d):%s", iCount, szBuff);
 }

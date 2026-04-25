@@ -3,6 +3,7 @@
 #include "menu_item_select.h"
 #include "menu_item_slider.h"
 #include "menu_item_range.h"
+#include "menu_item_checkbox.h"
 
 class MenuVehicleOSDElements: public Menu
 {
@@ -23,6 +24,7 @@ class MenuVehicleOSDElements: public Menu
       int m_IndexThrottle, m_IndexPitch, m_IndexCPU;
       int m_IndexHIDOSD, m_IndexRadioLinkBars, m_IndexRCRSSI;
       int m_IndexGrid;
+      int m_IndexShowTxPower;
       int m_IndexRadioLinks, m_IndexRadioInterfaces, m_IndexSignalBars, m_IndexSignalBarsPosition;
       int m_IndexWind, m_IndexTemperature;
       int m_IndexControllerCPU;
@@ -32,4 +34,5 @@ class MenuVehicleOSDElements: public Menu
       MenuItemSlider* m_pItemsSlider[50];
       MenuItemSelect* m_pItemsSelect[50];
       MenuItemRange* m_pItemsRange[50];
+      MenuItemCheckbox* m_pItemsCheckboxes[10];
 };

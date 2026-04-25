@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -128,11 +128,17 @@ MenuAbout::MenuAbout(void)
    addTopLine("---");
    addTopLine(" ");
    addTopLine(L("Ruby system developed by: Petru Soroaga"));
+   addTopLine(L("Main contributors: Jessica Severin, Liuli Xia, Ning"));
    addTopLine("");
-   addTopLine("IP cameras firmware support provided by:");
-   addTopLine("OpenIPC: https://openipc.org");
-   addTopLine("https://github.com/OpenIPC");
-   addTopLine("");
+   
+   if ( (NULL != g_pCurrentModel) && g_pCurrentModel->isRunningOnOpenIPCHardware() )
+   {
+      addTopLine("IP cameras base linux distro support provided by:");
+      addTopLine("OpenIPC: https://openipc.org");
+      addTopLine("https://github.com/OpenIPC");
+      addTopLine("");
+   }
+
    addTopLine(L("For info on the licence terms, check the license.txt file."));
    addTopLine("For more info, questions and suggestions find us on www.rubyfpv.com");
    addTopLine("---");
@@ -156,8 +162,9 @@ void MenuAbout::Render()
    float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
    float iconHeight = 2.0*height_text;
    float iconWidth = iconHeight/g_pRenderEngine->getAspectRatio();
-   g_pRenderEngine->drawIcon(m_RenderXPos + m_RenderWidth - m_sfMenuPaddingX - iconWidth - 0.02, yEnd - iconHeight - 10*g_pRenderEngine->textHeight(g_idFontMenu), iconWidth, iconHeight, g_idIconRuby);
-   g_pRenderEngine->drawIcon(m_RenderXPos + m_RenderWidth - m_sfMenuPaddingX - iconWidth - 0.02, yEnd - iconHeight - 7*g_pRenderEngine->textHeight(g_idFontMenu), iconWidth, iconHeight, g_idIconOpenIPC);
+   g_pRenderEngine->drawIcon(m_RenderXPos + m_RenderWidth - m_sfMenuPaddingX - iconWidth - 0.02, m_RenderYPos - iconHeight + 9.4*height_text, iconWidth, iconHeight, g_idIconRuby);
+   if ( (NULL != g_pCurrentModel) && g_pCurrentModel->isRunningOnOpenIPCHardware() )
+      g_pRenderEngine->drawIcon(m_RenderXPos + m_RenderWidth - m_sfMenuPaddingX - iconWidth - 0.02, yEnd - iconHeight - 7*g_pRenderEngine->textHeight(g_idFontMenu), iconWidth, iconHeight, g_idIconOpenIPC);
 
    RenderEnd(yTop);
 }

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -39,15 +39,19 @@
 #include "../../common/favorites.h"
 #include "../../base/hardware_files.h"
 
-const char* s_textTitle[] = { "My Vehicles",  NULL };
-const char* s_szVehicleNone1 = "No vehicles defined. To add a vehicle:";
-const char* s_szVehicleNone2 = "* Search for a vehicle and then connect to it as controller;";
-const char* s_szVehicleNone3 = "* Or import a previously saved vehicle from a USB memory stick.";
+//const char* s_textTitle[] = { "My Vehicles",  NULL };
+const char* s_szVehicleNone1 = L("No vehicles defined. To add a vehicle:");
+const char* s_szVehicleNone2 = L("* Search for a vehicle and then connect to it as controller;");
+const char* s_szVehicleNone3 = L("* Or import a previously saved vehicle from a USB memory stick.");
 
 MenuVehicles::MenuVehicles(void)
-:Menu(MENU_ID_VEHICLES, "My Vehicles", NULL)
+:Menu(MENU_ID_VEHICLES, L("My Vehicles"), NULL)
 {
-   m_Width = 0.33;
+   if ( g_pControllerSettings->iDeveloperMode )
+      m_Width = 0.38;
+   else
+      m_Width = 0.32;
+
    m_xPos = menu_get_XStartPos(m_Width); m_yPos = 0.2;
    m_iLastSelectedVehicle = -1;
 
@@ -273,7 +277,7 @@ void MenuVehicles::Render()
    float fFavoriteHeight = 1.2*g_pRenderEngine->textHeight(g_idFontMenu);
    float fFavoriteWidth = fFavoriteHeight / g_pRenderEngine->getAspectRatio();
 
-   bool bBlendingEnabled = g_pRenderEngine->isRectBlendingEnabled();
+   bool bAlphaEnabled = g_pRenderEngine->isAlphaBlendingEnabled();
 
    int iCountVehicles = getControllerModelsCount();
    if ( m_bShowSpectator )
@@ -302,7 +306,7 @@ void MenuVehicles::Render()
             g_pRenderEngine->drawIcon(xFav, y0-dy, fFavoriteWidth, fFavoriteHeight, g_idIconFavorite);
       }
    }
-   g_pRenderEngine->setRectBlendingEnabled(bBlendingEnabled);
+   g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
    RenderEnd(yTop);
 }
 

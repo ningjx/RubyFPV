@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -45,11 +45,13 @@ shared_mem_process_stats* g_pProcessStatsRC = NULL;
 shared_mem_process_stats g_ProcessStatsRouter;
 shared_mem_process_stats g_ProcessStatsTelemetry;
 shared_mem_process_stats g_ProcessStatsRC;
+shared_mem_ctrl_ping_stats* g_pSMDbgPingStats = NULL;
+shared_mem_ctrl_ping_stats g_SMDbgPingStats;
 
 controller_runtime_info g_SMControllerRTInfo;
 controller_runtime_info* g_pSMControllerRTInfo = NULL;
-vehicle_runtime_info g_SMVehicleRTInfo;
-vehicle_runtime_info* g_pSMVehicleRTInfo = NULL;
+controller_debug_video_runtime_info g_SMControllerDebugVideoRTInfo;
+controller_debug_video_runtime_info* g_pSMControllerDebugVideoRTInfo = NULL;
 
 t_packet_header_rc_info_downstream* g_pSM_DownstreamInfoRC = NULL; // RC Info received on ground 
 t_packet_header_rc_info_downstream g_SM_DownstreamInfoRC; // RC Info received on ground 
@@ -76,13 +78,6 @@ shared_mem_video_stream_stats_rx_processors g_SM_VideoDecodeStats;
 
 shared_mem_radio_rx_queue_info* g_pSM_RadioRxQueueInfo = NULL;
 shared_mem_radio_rx_queue_info g_SM_RadioRxQueueInfo;
-
-//To fix
-//shared_mem_video_link_stats_and_overwrites* g_pSM_VideoLinkStats = NULL;
-//shared_mem_video_link_stats_and_overwrites g_SM_VideoLinkStats;
-
-shared_mem_video_link_graphs* g_pSM_VideoLinkGraphs = NULL;
-shared_mem_video_link_graphs g_SM_VideoLinkGraphs;
 
 shared_mem_dev_video_bitrate_history g_SM_DevVideoBitrateHistory;
 

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -33,7 +33,7 @@
 #include "../../base/base.h"
 #include "../../base/config.h"
 #include "../../base/hardware.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 
 #include "menu.h"
 #include "menu_confirmation_import_key.h"
@@ -88,7 +88,7 @@ void MenuConfirmationImportKey::onSelectItem()
    }
 
    log_line("Searching for OpenIPC keys on memory stick...");
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("searching keys on memory stick");
 
    char szComm[256];
    char szOutput[1024];
@@ -104,7 +104,7 @@ void MenuConfirmationImportKey::onSelectItem()
       if ( (strlen(szOutput) < 5) || (NULL == strstr(szOutput, "openipc_default.key")) )
       {
          hardware_unmount_usb();
-         ruby_resume_watchdog();
+         ruby_resume_watchdog("searching keys on memory stick");
          addMessage("No file named `gs.key` or `openipc_default.key` found on the memory stick.");
          return;
       }
@@ -130,12 +130,12 @@ void MenuConfirmationImportKey::onSelectItem()
    if ( access(szOutputFile, R_OK ) == -1 )
    {
       hardware_unmount_usb();
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("searching keys on memory stick");
       addMessage("Could not copy the key found on the memory stick.");
       return;
    }
 
    addMessage(1, "Encryption key found on memory stick and it was imported.");
    hardware_unmount_usb();
-   ruby_resume_watchdog();
+   ruby_resume_watchdog("searching keys on memory stick");
 }

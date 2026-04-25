@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -49,12 +49,8 @@ void radio_packet_init(t_packet_header* pPH, u8 component, u8 packet_type, u32 u
    pPH->packet_flags = component & PACKET_FLAGS_MASK_MODULE;
    pPH->packet_type = packet_type;
    pPH->total_length = sizeof(t_packet_header);
-   if ( SYSTEM_SW_VERSION_MINOR < 10 )
-      pPH->packet_flags_extended = 0xFF & ((SYSTEM_SW_VERSION_MAJOR << 4) | SYSTEM_SW_VERSION_MINOR);
-   else
-      pPH->packet_flags_extended = 0xFF & ((SYSTEM_SW_VERSION_MAJOR << 4) | (SYSTEM_SW_VERSION_MINOR/10));
+   pPH->packet_flags_extended = 0;
 }
-
 
 void radio_packet_compute_crc(u8* pBuffer, int length)
 {
@@ -62,7 +58,6 @@ void radio_packet_compute_crc(u8* pBuffer, int length)
    u32* p = (u32*)pBuffer;
    *p = crc;
 }
-
 
 int radio_packet_check_crc(u8* pBuffer, int length)
 {
@@ -73,70 +68,169 @@ int radio_packet_check_crc(u8* pBuffer, int length)
    return 1;
 }
 
-int radio_packet_type_is_high_priority(u8 uPacketFlags, u8 uPacketType)
+void radio_populate_ruby_telemetry_v6_from_ruby_telemetry_v3(t_packet_header_ruby_telemetry_extended_v6* pV6, t_packet_header_ruby_telemetry_extended_v3* pV3)
 {
-   if ( uPacketFlags & PACKET_FLAGS_BIT_RETRANSMITED )
-      return 1;
-   switch(uPacketType)
-   {
-      case PACKET_TYPE_RUBY_PING_CLOCK:
-      case PACKET_TYPE_RUBY_PING_CLOCK_REPLY:
-      case PACKET_TYPE_VIDEO_ACK:
-      case PACKET_TYPE_VIDEO_REQ_MULTIPLE_PACKETS:
-      case PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL:
-      case PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL_ACK:
-      case PACKET_TYPE_VIDEO_SWITCH_VIDEO_KEYFRAME_TO_VALUE:
-      case PACKET_TYPE_VIDEO_SWITCH_VIDEO_KEYFRAME_TO_VALUE_ACK:
-         return 1;
-         break;
-      default:
-         return 0;
-         break;
-   }
-   return 0;
-}
-
-
-void radio_populate_ruby_telemetry_v4_from_ruby_telemetry_v3(t_packet_header_ruby_telemetry_extended_v4* pV4, t_packet_header_ruby_telemetry_extended_v3* pV3)
-{
-   if ( (NULL == pV4) || (NULL == pV3) )
+   if ( (NULL == pV6) || (NULL == pV3) )
       return;
 
-   pV4->uRubyFlags = pV3->uRubyFlags;
-   pV4->rubyVersion = pV3->rubyVersion;
-   pV4->uVehicleId = pV3->uVehicleId;
-   pV4->vehicle_type = pV3->vehicle_type;
-   memcpy(pV4->vehicle_name, pV3->vehicle_name, MAX_VEHICLE_NAME_LENGTH);
-   pV4->radio_links_count = pV3->radio_links_count;
-   memcpy(pV4->uRadioFrequenciesKhz, pV3->uRadioFrequenciesKhz, MAX_RADIO_INTERFACES*sizeof(u32));
+   pV6->uRubyFlags = pV3->uRubyFlags;
+   pV6->rubyVersion = pV3->rubyVersion;
+   pV6->uVehicleId = pV3->uVehicleId;
+   pV6->vehicle_type = pV3->vehicle_type;
+   memcpy(pV6->vehicle_name, pV3->vehicle_name, MAX_VEHICLE_NAME_LENGTH);
+   pV6->radio_links_count = pV3->radio_links_count;
+   memcpy(pV6->uRadioFrequenciesKhz, pV3->uRadioFrequenciesKhz, MAX_RADIO_INTERFACES*sizeof(u32));
 
-   pV4->uRelayLinks = pV3->uRelayLinks;
+   pV6->uRelayLinks = pV3->uRelayLinks;
    
-   pV4->downlink_tx_video_bitrate_bps = pV3->downlink_tx_video_bitrate_bps;
-   pV4->downlink_tx_video_all_bitrate_bps = pV3->downlink_tx_video_all_bitrate_bps;
-   pV4->downlink_tx_data_bitrate_bps = pV3->downlink_tx_data_bitrate_bps;
+   pV6->downlink_tx_video_bitrate_bps = pV3->downlink_tx_video_bitrate_bps;
+   pV6->downlink_tx_video_all_bitrate_bps = pV3->downlink_tx_video_all_bitrate_bps;
+   pV6->downlink_tx_data_bitrate_bps = pV3->downlink_tx_data_bitrate_bps;
 
-   pV4->downlink_tx_video_packets_per_sec = pV3->downlink_tx_video_packets_per_sec;
-   pV4->downlink_tx_data_packets_per_sec = pV3->downlink_tx_data_packets_per_sec;
-   pV4->downlink_tx_compacted_packets_per_sec = pV3->downlink_tx_compacted_packets_per_sec;
+   pV6->downlink_tx_video_packets_per_sec = pV3->downlink_tx_video_packets_per_sec;
+   pV6->downlink_tx_data_packets_per_sec = pV3->downlink_tx_data_packets_per_sec;
+   pV6->downlink_tx_compacted_packets_per_sec = pV3->downlink_tx_compacted_packets_per_sec;
 
-   pV4->temperatureC = pV3->temperatureC;
-   pV4->cpu_load = pV3->cpu_load;
-   pV4->cpu_mhz = pV3->cpu_mhz;
-   pV4->throttled = pV3->throttled;
+   pV6->temperatureC = pV3->temperatureC;
+   pV6->cpu_load = pV3->cpu_load;
+   pV6->cpu_mhz = pV3->cpu_mhz;
+   pV6->throttled = pV3->throttled;
 
-   memcpy(pV4->last_sent_datarate_bps, pV3->last_sent_datarate_bps, MAX_RADIO_INTERFACES*2*sizeof(int));
-   memcpy(pV4->last_recv_datarate_bps, pV3->last_recv_datarate_bps, MAX_RADIO_INTERFACES*sizeof(int));
-   memcpy(pV4->uplink_rssi_dbm, pV3->uplink_rssi_dbm, MAX_RADIO_INTERFACES*sizeof(u8));
-   memcpy(pV4->uplink_link_quality, pV3->uplink_link_quality, MAX_RADIO_INTERFACES*sizeof(u8));
-   memset(pV4->uplink_noise_dbm, 0, MAX_RADIO_INTERFACES*sizeof(u8));
+   memcpy(pV6->last_sent_datarate_bps, pV3->last_sent_datarate_bps, MAX_RADIO_INTERFACES*2*sizeof(int));
+   memcpy(pV6->last_recv_datarate_bps, pV3->last_recv_datarate_bps, MAX_RADIO_INTERFACES*sizeof(int));
+   memcpy(pV6->uplink_rssi_dbm, pV3->uplink_rssi_dbm, MAX_RADIO_INTERFACES*sizeof(u8));
+   memcpy(pV6->uplink_link_quality, pV3->uplink_link_quality, MAX_RADIO_INTERFACES*sizeof(u8));
+   memset(pV6->uplink_rssi_snr, 0, MAX_RADIO_INTERFACES*sizeof(u8));
 
-   pV4->uplink_rc_rssi = pV3->uplink_rc_rssi;
-   pV4->uplink_mavlink_rc_rssi = pV3->uplink_mavlink_rc_rssi;
-   pV4->uplink_mavlink_rx_rssi = pV3->uplink_mavlink_rx_rssi;
+   pV6->uplink_rc_rssi = pV3->uplink_rc_rssi;
+   pV6->uplink_mavlink_rc_rssi = pV3->uplink_mavlink_rc_rssi;
+   pV6->uplink_mavlink_rx_rssi = pV3->uplink_mavlink_rx_rssi;
 
-   pV4->txTimePerSec = pV3->txTimePerSec;
-   pV4->uExtraRubyFlags = pV3->extraFlags;
-   pV4->extraSize = pV3->extraSize;
+   pV6->uExtraRubyFlags = pV3->extraFlags;
+   pV6->extraSize = pV3->extraSize;
+
+   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
+      pV6->iTxPowers[i] = 0;
 }
 
+void radio_populate_ruby_telemetry_v6_from_ruby_telemetry_v4(t_packet_header_ruby_telemetry_extended_v6* pV6, t_packet_header_ruby_telemetry_extended_v4* pV4)
+{
+   if ( (NULL == pV6) || (NULL == pV4) )
+      return;
+
+   pV6->uRubyFlags = pV4->uRubyFlags;
+   pV6->rubyVersion = pV4->rubyVersion;
+   pV6->uVehicleId = pV4->uVehicleId;
+   pV6->vehicle_type = pV4->vehicle_type;
+   memcpy(pV6->vehicle_name, pV4->vehicle_name, MAX_VEHICLE_NAME_LENGTH);
+   
+   pV6->radio_links_count = pV4->radio_links_count;
+   memcpy(pV6->uRadioFrequenciesKhz, pV4->uRadioFrequenciesKhz, MAX_RADIO_INTERFACES*sizeof(u32));
+
+   pV6->uRelayLinks = pV4->uRelayLinks;
+   
+   pV6->downlink_tx_video_bitrate_bps = pV4->downlink_tx_video_bitrate_bps;
+   pV6->downlink_tx_video_all_bitrate_bps = pV4->downlink_tx_video_all_bitrate_bps;
+   pV6->downlink_tx_data_bitrate_bps = pV4->downlink_tx_data_bitrate_bps;
+
+   pV6->downlink_tx_video_packets_per_sec = pV4->downlink_tx_video_packets_per_sec;
+   pV6->downlink_tx_data_packets_per_sec = pV4->downlink_tx_data_packets_per_sec;
+   pV6->downlink_tx_compacted_packets_per_sec = pV4->downlink_tx_compacted_packets_per_sec;
+
+   pV6->temperatureC = pV4->temperatureC;
+   pV6->cpu_load = pV4->cpu_load;
+   pV6->cpu_mhz = pV4->cpu_mhz;
+   pV6->throttled = pV4->throttled;
+
+   memcpy(pV6->last_sent_datarate_bps, pV4->last_sent_datarate_bps, MAX_RADIO_INTERFACES*2*sizeof(int));
+   memcpy(pV6->last_recv_datarate_bps, pV4->last_recv_datarate_bps, MAX_RADIO_INTERFACES*sizeof(int));
+   memcpy(pV6->uplink_rssi_dbm, pV4->uplink_rssi_dbm, MAX_RADIO_INTERFACES*sizeof(u8));
+   memcpy(pV6->uplink_link_quality, pV4->uplink_link_quality, MAX_RADIO_INTERFACES*sizeof(u8));
+   memset(pV6->uplink_rssi_snr, 0, MAX_RADIO_INTERFACES*sizeof(u8));
+
+   pV6->uplink_rc_rssi = pV4->uplink_rc_rssi;
+   pV6->uplink_mavlink_rc_rssi = pV4->uplink_mavlink_rc_rssi;
+   pV6->uplink_mavlink_rx_rssi = pV4->uplink_mavlink_rx_rssi;
+
+   pV6->uExtraRubyFlags = pV4->uExtraRubyFlags;
+   pV6->extraSize = pV4->extraSize;
+
+   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
+      pV6->iTxPowers[i] = 0;
+}
+
+
+void radio_populate_ruby_telemetry_v6_from_ruby_telemetry_v5(t_packet_header_ruby_telemetry_extended_v6* pV6, t_packet_header_ruby_telemetry_extended_v5* pV5)
+{
+   if ( (NULL == pV6) || (NULL == pV5) )
+      return;
+
+   pV6->uRubyFlags = pV5->uRubyFlags;
+   pV6->rubyVersion = pV5->rubyVersion;
+   pV6->uVehicleId = pV5->uVehicleId;
+   pV6->vehicle_type = pV5->vehicle_type;
+   memcpy(pV6->vehicle_name, pV5->vehicle_name, MAX_VEHICLE_NAME_LENGTH);
+   
+   pV6->radio_links_count = pV5->radio_links_count;
+   memcpy(pV6->uRadioFrequenciesKhz, pV5->uRadioFrequenciesKhz, MAX_RADIO_INTERFACES*sizeof(u32));
+
+   pV6->uRelayLinks = pV5->uRelayLinks;
+   
+   pV6->downlink_tx_video_bitrate_bps = pV5->downlink_tx_video_bitrate_bps;
+   pV6->downlink_tx_video_all_bitrate_bps = pV5->downlink_tx_video_all_bitrate_bps;
+   pV6->downlink_tx_data_bitrate_bps = pV5->downlink_tx_data_bitrate_bps;
+
+   pV6->downlink_tx_video_packets_per_sec = pV5->downlink_tx_video_packets_per_sec;
+   pV6->downlink_tx_data_packets_per_sec = pV5->downlink_tx_data_packets_per_sec;
+   pV6->downlink_tx_compacted_packets_per_sec = pV5->downlink_tx_compacted_packets_per_sec;
+
+   pV6->temperatureC = pV5->temperatureC;
+   pV6->cpu_load = pV5->cpu_load;
+   pV6->cpu_mhz = pV5->cpu_mhz;
+   pV6->throttled = pV5->throttled;
+
+   memcpy(pV6->last_sent_datarate_bps, pV5->last_sent_datarate_bps, MAX_RADIO_INTERFACES*2*sizeof(int));
+   memcpy(pV6->last_recv_datarate_bps, pV5->last_recv_datarate_bps, MAX_RADIO_INTERFACES*sizeof(int));
+   memcpy(pV6->uplink_rssi_dbm, pV5->uplink_rssi_dbm, MAX_RADIO_INTERFACES*sizeof(u8));
+   memcpy(pV6->uplink_link_quality, pV5->uplink_link_quality, MAX_RADIO_INTERFACES*sizeof(u8));
+   memcpy(pV6->uplink_rssi_snr, pV5->uplink_rssi_snr, MAX_RADIO_INTERFACES*sizeof(u8));
+   memcpy(pV6->iTxPowers, pV5->iTxPowers, MAX_RADIO_INTERFACES*sizeof(int));
+
+   pV6->uplink_rc_rssi = pV5->uplink_rc_rssi;
+   pV6->uplink_mavlink_rc_rssi = pV5->uplink_mavlink_rc_rssi;
+   pV6->uplink_mavlink_rx_rssi = pV5->uplink_mavlink_rx_rssi;
+
+   pV6->uExtraRubyFlags = pV5->uExtraRubyFlags;
+   pV6->extraSize = pV5->extraSize;
+}
+
+void radio_packets_log_sizes()
+{
+   /*
+   char szBuff[128];
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header: %d bytes", (int)sizeof(t_packet_header));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_command: %d bytes", (int)sizeof(t_packet_header_command));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_command_response: %d bytes", (int)sizeof(t_packet_header_command_response));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_video_segment: %d bytes", (int)sizeof(t_packet_header_video_segment));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_video_segment_important: %d bytes", (int)sizeof(t_packet_header_video_segment_important));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_ruby_telemetry_short: %d bytes", (int)sizeof(t_packet_header_ruby_telemetry_short));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_ruby_telemetry_extended_v4: %d bytes", (int)sizeof(t_packet_header_ruby_telemetry_extended_v4));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_ruby_telemetry_extended_v5: %d bytes", (int)sizeof(t_packet_header_ruby_telemetry_extended_v5));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_ruby_telemetry_extended_extra_info: %d bytes", (int)sizeof(t_packet_header_ruby_telemetry_extended_extra_info));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_ruby_telemetry_extended_extra_info_retransmissions: %d bytes", (int)sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_fc_telemetry: %d bytes", (int)sizeof(t_packet_header_fc_telemetry));
+   log_always(szBuff);
+   sprintf(szBuff, "[Radio] Size of radio t_packet_header_fc_extra: %d bytes", (int)sizeof(t_packet_header_fc_extra));
+   log_always(szBuff);
+   */
+}

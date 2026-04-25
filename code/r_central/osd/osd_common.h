@@ -44,6 +44,7 @@ extern u32 g_idIconSDCard;
 extern u32 g_idImgMSPOSDBetaflight;
 extern u32 g_idImgMSPOSDINAV;
 extern u32 g_idImgMSPOSDArdupilot;
+extern u32 g_idImgMSPOSDPitLab;
 
 extern float g_fOSDStatsForcePanelWidth;
 extern float g_fOSDStatsBgTransparency;
@@ -51,6 +52,15 @@ extern float g_fOSDStatsBgTransparency;
 extern u32 g_uOSDElementChangeTimeout;
 extern u32 g_uOSDElementChangeBlinkInterval;
 extern bool g_bOSDElementChangeNotification;
+
+const double* osdGetColorVideoFrameNormal();
+const double* osdGetColorVideoFrameI();
+const double* osdGetColorVideoFrameO();
+const double* osdGetColorVideoFrameEC();
+const double* osdGetColorVideoFrameECMax();
+const double* osdGetColorVideoFrameRetr();
+const double* osdGetColorVideoFrameRetrDiscard();
+const double* osdGetColorVideoFrameMissing();
 
 float osd_getMarginX();
 float osd_getMarginY();
@@ -119,5 +129,4 @@ int osd_get_current_data_source_vehicle_index();
 Model* osd_get_current_data_source_vehicle_model();
 u32 osd_get_current_data_source_vehicle_id();
 
-char* osd_format_video_adaptive_level(Model* pModel, int iLevel);
 

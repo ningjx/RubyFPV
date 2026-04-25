@@ -14,10 +14,6 @@
 
 #include "processor_rx_video.h"
 
-// Define this to get profile logs about receiving and processing rx packets times
-#define PROFILE_RX 1
-#define PROFILE_RX_MAX_TIME 5
-
 extern bool g_bQuit;
 extern bool g_bDebugState;
 
@@ -30,7 +26,6 @@ extern bool g_bSearching;
 extern u32  g_uSearchFrequency;
 extern u32  g_uAcceptedFirmwareType;
 extern bool g_bUpdateInProgress;
-extern bool g_bNegociatingRadioLinks;
 
 // Router
 
@@ -38,9 +33,8 @@ extern ProcessorRxVideo* g_pVideoProcessorRxList[MAX_VIDEO_PROCESSORS];
 
 extern controller_runtime_info g_SMControllerRTInfo;
 extern controller_runtime_info* g_pSMControllerRTInfo;
-extern vehicle_runtime_info g_SMVehicleRTInfo;
-extern vehicle_runtime_info* g_pSMVehicleRTInfo;
-
+extern controller_debug_video_runtime_info g_SMControllerDebugVideoRTInfo;
+extern controller_debug_video_runtime_info* g_pSMControllerDebugVideoRTInfo;
 
 extern shared_mem_radio_stats_rx_hist* g_pSM_HistoryRxStats;
 extern shared_mem_radio_stats_rx_hist g_SM_HistoryRxStats;
@@ -62,11 +56,11 @@ extern shared_mem_radio_rx_queue_info g_SM_RadioRxQueueInfo;
 extern shared_mem_radio_stats g_SM_RadioStats;
 extern shared_mem_radio_stats* g_pSM_RadioStats;
 
-// To fix
-//extern shared_mem_video_link_stats_and_overwrites* g_pSM_VideoLinkStats;
-extern shared_mem_video_link_graphs* g_pSM_VideoLinkGraphs;
 extern shared_mem_process_stats* g_pProcessStats;
 extern shared_mem_process_stats* g_pProcessStatsCentral;
+
+extern shared_mem_ctrl_ping_stats* g_pSMDbgPingStats;
+extern shared_mem_ctrl_ping_stats g_SMDbgPingStats;
 
 extern int g_fIPCFromCentral;
 extern int g_fIPCToCentral;
@@ -78,6 +72,7 @@ extern int g_fIPCFromRC;
 extern t_sik_radio_state g_SiKRadiosState;
 
 extern bool g_bFirstModelPairingDone;
+extern bool g_bOSDPluginsNeedTelemetryStreams;
 
 // Used for Atheros cards data rates set;
 extern u32 g_uLastInterceptedCommandCounterToSetRadioFlags;

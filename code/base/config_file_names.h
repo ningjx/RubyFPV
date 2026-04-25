@@ -13,11 +13,11 @@
 #define LOG_FILE_VIDEO "log_video.txt"
 #define LOG_FILE_CAPTURE_VEYE "log_capture_veye.txt"
 #define LOG_FILE_VEHICLE "log_vehicle_%s.txt"
+#define LOG_FILE_LIVE_VEHICLE_LOG "log_live_vehicle.txt"
 
 #define FILE_FORMAT_SCREENSHOT "picture-%s-%d-%d-%d.png"
 #define FILE_FORMAT_VIDEO_INFO "video-%s-%d-%d-%d.info"
 
-#define LOG_USE_PROCESS "use_log_process"
 #define CONFIG_FILENAME_DEBUG "debug"
 #define FILE_INFO_VERSION "version_ruby_base.txt"
 #define FILE_INFO_SHORT_LAST_UPDATE "ruby_update.log"
@@ -52,15 +52,19 @@
 #define FILE_CONFIG_OSD_PLUGINS_SETTINGS "osd_plugins_settings.cfg"
 #define FILE_CONFIG_CORE_PLUGINS_SETTINGS "core_plugins_settings.cfg"
 #define FILE_CONFIG_CONTROLLER_SETTINGS "controller_settings.cfg"
-#define FILE_CONFIG_CONTROLLER_INTERFACES "controller_interfaces.cfg"
+#define FILE_CONFIG_CONTROLLER_INPUT_INTERFACES "controller_input_interfaces.cfg"
+#define FILE_CONFIG_CONTROLLER_RADIO_INTERFACES "controller_radio_interfaces.cfg"
 #define FILE_CONFIG_CONTROLLER_ID "controller_id.cfg"
 #define FILE_CONFIG_CONTROLLER_OSD_WIDGETS "osd_widgets.cfg"
 #define FILE_CONFIG_CONTROLLER_FAVORITES_VEHICLES "favorites.cfg"
+#define FILE_CONFIG_FAST_BOOT_COUNTER "fast_boot_counter.txt"
 
 #define FILE_TEMP_USB_TETHERING_DEVICE "usb_tethering"
 #define FILE_TEMP_VIDEO_MEM_FILE "tmpVideo.h26x"
 #define FILE_TEMP_VIDEO_FILE "tmpVideo.h26x"
 #define FILE_TEMP_VIDEO_FILE_INFO "tmpVideo.info"
+#define FILE_TEMP_VIDEO_FILE_OSD "tmpVideo.osd"
+#define FILE_TEMP_VIDEO_FILE_SRT "tmpVideo.srt"
 #define FILE_TEMP_VIDEO_FILE_PROCESS_ERROR "tmpErrorVideo.stat"
 #define FILE_TEMP_UPDATE_IN_PROGRESS "updateinprogress"
 #define FILE_TEMP_UPDATE_IN_PROGRESS_APPLY "updateinprogressapply"
@@ -74,15 +78,12 @@
 #define FILE_TEMP_CONTROLLER_LOCAL_STATS "tmp_local_stats.inf"
 #define FILE_TEMP_CONTROLLER_LOAD_LOCAL_STATS "tmp_load_local_stats"
 #define FILE_TEMP_CONTROLLER_CENTRAL_CRASHED "tmp_central_crashed"
-#define FILE_TEMP_CONTROLLER_PAUSE_WATCHDOG "pausecontrollerwatchdog"
 #define FILE_TEMP_HDMI_CHANGED "tmp_hdmi_changed"
 #define FILE_TEMP_CAMERA_NAME "cam_name.txt"
 #define FILE_TEMP_CURRENT_VIDEO_PARAMS "current_video_config.txt"
 #define FILE_TEMP_SIK_CONFIG_FINISHED "sik_config_complete"
 #define FILE_TEMP_AUDIO_RECORDING "audio.wav"
 #define FILE_TEMP_RADIOS_CONFIGURED "radio_configured"
-#define FILE_TEMP_INTRO_PLAYING "intro_playing"
-#define FILE_TEMP_STOP "cmdstop"
 #define SUBFOLDER_UPDATES_PI    "bin/pi/"
 #define SUBFOLDER_UPDATES_RADXA "bin/radxaz3/"
 #define SUBFOLDER_UPDATES_OIPC  "bin/ssc338q/"
@@ -90,9 +91,9 @@
 
 
 #define CONFIG_FILE_FULLPATH_MAJESTIC_LOG "/tmp/maj.log"
-#define CONFIG_FILE_FULLPATH_RESTART "/tmp/restart"
 #define CONFIG_FILE_FULLPATH_PAUSE_VIDEO_PLAYER "/tmp/pausedvr"
 
+#define FOLDER_RUBY_FIFO_TEMP "/tmp/ruby/"
 
 //-------------------------------------------
 

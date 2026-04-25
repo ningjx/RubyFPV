@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -300,9 +300,6 @@ void MenuItemRadio::Render(float xPos, float yPos, bool bSelected, float fWidthS
    else
       m_nFocusedIndex = -1;
 
-   //bool bEnableBlending = g_pRenderEngine->isRectBlendingEnabled();
-   //g_pRenderEngine->enableRectBlending();
-
    for( int i=0; i<m_nSelectionsCount; i++ )
    {
       float yItem = y;
@@ -366,7 +363,6 @@ void MenuItemRadio::Render(float xPos, float yPos, bool bSelected, float fWidthS
 
    g_pRenderEngine->setColors(get_Color_MenuText());
    g_pRenderEngine->setStrokeSize(1);
-   //g_pRenderEngine->setRectBlendingEnabled(bEnableBlending);
 }
 
 void MenuItemRadio::RenderCondensed(float xPos, float yPos, bool bSelected, float fWidthSelection)

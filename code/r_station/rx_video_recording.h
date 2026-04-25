@@ -6,7 +6,7 @@ void rx_video_recording_init();
 void rx_video_recording_uninit();
 
 void rx_video_recording_start();
-void rx_video_recording_stop();
+bool rx_video_recording_stop();
 bool rx_video_is_recording();
 u32  rx_video_recording_get_last_start_stop_time();
 

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -57,10 +57,10 @@ MenuVehicleDataLink::MenuVehicleDataLink(void)
    m_IndexPort = addMenuItem(m_pItemsSelect[0]);
 
    m_pItemsSelect[1] = new MenuItemSelect("Vehicle Serial Baudrate", "Sets the baud rate on the vehicle serial port for the auxiliary data link.");
-   for( int i=0; i<hardware_get_serial_baud_rates_count(); i++ )
+   for( int i=0; i<hardware_serial_get_baud_rates_count(); i++ )
    {
       char szBuff[32];
-      sprintf(szBuff, "%d bps", hardware_get_serial_baud_rates()[i]);
+      sprintf(szBuff, "%d bps", hardware_serial_get_baud_rates()[i]);
       m_pItemsSelect[1]->addSelection(szBuff);
    }
    m_pItemsSelect[1]->setIsEditable();
@@ -102,7 +102,7 @@ void MenuVehicleDataLink::valuesToUI()
    bool bSpeedFound = false;
    for(int i=0; i<m_pItemsSelect[1]->getSelectionsCount(); i++ )
    {
-      if ( hardware_get_serial_baud_rates()[i] == (int)uCurrentSerialPortSpeed )
+      if ( hardware_serial_get_baud_rates()[i] == (int)uCurrentSerialPortSpeed )
       {
          m_pItemsSelect[1]->setSelection(i);
          bSpeedFound = true;
@@ -191,7 +191,7 @@ void MenuVehicleDataLink::onSelectItem()
          u8 uCurrentUsage = new_info.serial_port_supported_and_usage[iSerialPort-1] & 0xFF;
          if ( uCurrentUsage != SERIAL_PORT_USAGE_DATA_LINK )
          {
-            if ( (uCurrentUsage == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK) || (uCurrentUsage == SERIAL_PORT_USAGE_MSP_OSD) )
+            if ( uCurrentUsage == SERIAL_PORT_USAGE_TELEMETRY )
             {
                MenuConfirmation* pMC = new MenuConfirmation("Telemetry Link Disabled", "The serial port was used by your telemetry link. It was reasigned to the auxiliary data link.",1, true);
                pMC->m_yPos = 0.3;
@@ -219,7 +219,7 @@ void MenuVehicleDataLink::onSelectItem()
       if ( -1 == iCurrentSerialPortIndex )
          return;
 
-      long val = hardware_get_serial_baud_rates()[m_pItemsSelect[1]->getSelectedIndex()];
+      long val = hardware_serial_get_baud_rates()[m_pItemsSelect[1]->getSelectedIndex()];
       if ( val == g_pCurrentModel->hardwareInterfacesInfo.serial_port_speed[iCurrentSerialPortIndex] )
          return;
 

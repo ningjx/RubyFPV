@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <unistd.h>
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/ctrl_settings.h"
@@ -45,9 +46,10 @@
 #include "../base/radio_utils.h"
 #include "../base/hardware.h"
 #include "../base/hardware_files.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/parse_fc_telemetry.h"
+#include "../base/utils.h"
 #include "../common/string_utils.h"
 #include "../common/radio_stats.h"
 #include "../radio/radiolink.h"
@@ -104,9 +106,40 @@ int s_iSearchSikLBT = -1;
 int s_iSearchSikMCSTR = -1;
 
 u32 s_uTimeLastTryReadIPCMessages = 0;
-
+u32 s_uTimeLastCheckForVideoPackets = 0;
 u32 s_uAlarmIndexToCentral = 0;
 
+bool s_bIsEOFDetected = false;
+
+u32 router_get_last_time_checked_for_video_packets()
+{
+   return s_uTimeLastCheckForVideoPackets;
+}
+
+bool router_is_eof()
+{
+   return s_bIsEOFDetected;
+}
+
+
+void _router_update_frame_eof()
+{
+   if ( g_bSearching || (NULL == g_pCurrentModel) || (! is_sw_version_atleast(g_pCurrentModel, 11, 7)) )
+   {
+      s_bIsEOFDetected = true;
+      return;
+   }
+   type_global_state_vehicle_runtime_info* pRTInfo = getVehicleRuntimeInfo(g_pCurrentModel->uVehicleId);
+   if ( (NULL == pRTInfo) || (! pRTInfo->bIsPairingDone) )
+   {
+      s_bIsEOFDetected = true;
+      return;
+   }
+
+   g_TimeNow = get_current_timestamp_ms();
+   radio_rx_check_update_eof(g_TimeNow, (((u32)g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileFlags) & VIDEO_PROFILE_FLAG_MASK_RETRANSMISSIONS_GUARD_MASK)>>8, g_pCurrentModel->video_params.iVideoFPS, g_pCurrentModel->getCurrentVideoProfileMaxRetransmissionWindow());
+   s_bIsEOFDetected = radio_rx_is_eof_detected()?true:false;
+}
 
 void send_alarm_to_central(u32 uAlarm, u32 uFlags1, u32 uFlags2)
 {
@@ -181,665 +214,6 @@ void _broadcast_radio_interface_init_failed(int iInterfaceIndex)
    log_line("Sent message to central that radio interface %d failed to initialize.", iInterfaceIndex+1);
 }
 
-
-void _compute_radio_interfaces_assignment()
-{
-   log_line("------------------------------------------------------------------");
-
-   if ( g_bSearching || (NULL == g_pCurrentModel) )
-   {
-      log_error_and_alarm("Invalid parameters for assigning radio interfaces");
-      return;
-   }
-
-   g_SM_RadioStats.countVehicleRadioLinks = 0;
-   g_SM_RadioStats.countVehicleRadioLinks = g_pCurrentModel->radioLinksParams.links_count;
- 
-   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
-   {
-      g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId = -1;
-      g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId = -1;
-      g_SM_RadioStats.radio_links[i].matchingVehicleRadioLinkId = -1;
-   }
-
-   //---------------------------------------------------------------
-   // See how many active radio links the vehicle has
-
-   u32 uStoredMainFrequencyForModel = get_model_main_connect_frequency(g_pCurrentModel->uVehicleId);
-   int iStoredMainRadioLinkForModel = -1;
-
-   int iCountAssignedVehicleRadioLinks = 0;
-
-   int iCountVehicleActiveUsableRadioLinks = 0;
-   u32 uConnectFirstUsableFrequency = 0;
-   int iConnectFirstUsableRadioLinkId = 0;
-
-   log_line("Computing local radio interfaces assignment to vehicle radio links...");
-   log_line("Vehicle (%u, %s) main 'connect to' frequency: %s, vehicle has a total of %d radio links.",
-      g_pCurrentModel->uVehicleId, g_pCurrentModel->getLongName(), str_format_frequency(uStoredMainFrequencyForModel), g_pCurrentModel->radioLinksParams.links_count);
-
-   for( int i=0; i<g_pCurrentModel->radioLinksParams.links_count; i++ )
-   {
-      if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
-      {
-         log_line("Vehicle's radio link %d is disabled. Skipping it.", i+1);
-         continue;
-      }
-
-      // Ignore vehicle's relay radio links
-      if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
-      {
-         log_line("Vehicle's radio link %d is used for relaying. Skipping it.", i+1);
-         continue;
-      }
-
-      if ( (g_pCurrentModel->sw_version>>16) >= 45 )
-      if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
-      {
-         log_line("Vehicle's radio link %d is used for relaying. Skipping it.", i+1);
-         continue;       
-      }      
-
-      log_line("Vehicle's radio link %d is usable, frequency: %s", i+1, str_format_frequency(g_pCurrentModel->radioLinksParams.link_frequency_khz[i]));
-      iCountVehicleActiveUsableRadioLinks++;
-      if ( 0 == uConnectFirstUsableFrequency )
-      {
-         uConnectFirstUsableFrequency = g_pCurrentModel->radioLinksParams.link_frequency_khz[i];
-         iConnectFirstUsableRadioLinkId = i;
-      }
-      if ( g_pCurrentModel->radioLinksParams.link_frequency_khz[i] == uStoredMainFrequencyForModel )
-      {
-         iStoredMainRadioLinkForModel = i;
-         log_line("Vehicle's radio link %d is the main connect to radio link.", i+1);
-      }
-   }
-
-   log_line("Vehicle has %d active (enabled and not relay) radio links (out of %d radio links)", iCountVehicleActiveUsableRadioLinks, g_pCurrentModel->radioLinksParams.links_count);
-      
-   if ( 0 == iCountVehicleActiveUsableRadioLinks )
-   {
-      log_error_and_alarm("Vehicle has no active (enabled and not relay) radio links (out of %d radio links)", g_pCurrentModel->radioLinksParams.links_count);
-      return;
-   }
-
-   //--------------------------------------------------------------------------
-   // Begin - Check what vehicle radio links are supported by each radio interface.
-
-   bool bInterfaceSupportsVehicleLink[MAX_RADIO_INTERFACES][MAX_RADIO_INTERFACES];
-   bool bInterfaceSupportsMainConnectLink[MAX_RADIO_INTERFACES];
-   int iInterfaceSupportedLinksCount[MAX_RADIO_INTERFACES];
-   
-   bool bCtrlInterfaceWasAssigned[MAX_RADIO_INTERFACES];
-   bool bVehicleLinkWasAssigned[MAX_RADIO_INTERFACES];
-   int  iVehicleLinkWasAssignedToControllerLinkIndex[MAX_RADIO_INTERFACES];
-
-   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
-   {
-      bCtrlInterfaceWasAssigned[i] = false;
-      bVehicleLinkWasAssigned[i] = false;
-      iVehicleLinkWasAssignedToControllerLinkIndex[i] = -1;
-
-      bInterfaceSupportsMainConnectLink[i] = false;
-      iInterfaceSupportedLinksCount[i] = 0;
-      for( int k=0; k<MAX_RADIO_INTERFACES; k++ )
-         bInterfaceSupportsVehicleLink[i][k] = false;
-   }
-
-   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-   {
-      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-      if ( NULL == pRadioHWInfo )
-      {
-         log_softerror_and_alarm("Failed to get controller's radio interface %d hardware info. Skipping it.", i+1);
-         continue;
-      }
-      if ( controllerIsCardDisabled(pRadioHWInfo->szMAC) )
-      {
-         log_line("Controller's radio interface %d is disabled. Skipping it.", i+1);
-         continue;
-      }
-
-      u32 cardFlags = controllerGetCardFlags(pRadioHWInfo->szMAC);
-
-      for( int iRadioLink=0; iRadioLink<g_pCurrentModel->radioLinksParams.links_count; iRadioLink++ )
-      {
-         if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
-            continue;
-         if ( (g_pCurrentModel->sw_version>>16) >= 45 )
-         if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
-            continue;
-
-         // Uplink type radio link and RX only radio interface
-
-         if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_CAN_RX )
-         if ( ! (g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_CAN_TX) )
-         if ( ! (cardFlags & RADIO_HW_CAPABILITY_FLAG_CAN_TX) )
-            continue;
-
-         // Downlink type radio link and TX only radio interface
-
-         if ( ! (g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_CAN_RX) )
-         if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_CAN_TX )
-         if ( ! (cardFlags & RADIO_HW_CAPABILITY_FLAG_CAN_RX) )
-            continue;
-
-         bool bDoesMatch = false;
-
-         // Match ELRS serial radio links
-         if ( (g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK_ELRS ) ||
-              (pRadioHWInfo->iCardModel == CARD_MODEL_SERIAL_RADIO_ELRS) )
-         {
-            if ( (g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK_ELRS ) &&
-                 (pRadioHWInfo->iCardModel == CARD_MODEL_SERIAL_RADIO_ELRS) )
-               bDoesMatch = true;
-         }
-         else if ( hardware_radio_supports_frequency(pRadioHWInfo, g_pCurrentModel->radioLinksParams.link_frequency_khz[iRadioLink]) )
-            bDoesMatch = true;
-
-         if ( bDoesMatch )
-         {
-            log_line("Controller's radio interface %d does support vehicle's radio link %d (%s).", i+1, iRadioLink+1, str_format_frequency(g_pCurrentModel->radioLinksParams.link_frequency_khz[iRadioLink]));
-            bInterfaceSupportsVehicleLink[i][iRadioLink] = true;
-            iInterfaceSupportedLinksCount[i]++;
-
-            if ( uStoredMainFrequencyForModel == g_pCurrentModel->radioLinksParams.link_frequency_khz[iRadioLink] )
-               bInterfaceSupportsMainConnectLink[i] = true;
-         }
-      }
-   }
-
-   // End - Check what vehicle radio links are supported by each radio interface.
-   //--------------------------------------------------------------------------
-
-   //---------------------------------------------------------------
-   // Begin - Model with a single active radio link
-
-   if ( 1 == iCountVehicleActiveUsableRadioLinks )
-   {
-      log_line("Computing controller's radio interfaces assignment to vehicle's radio link %d (vehicle has a single active (enabled and not relay) radio link on %s)", iConnectFirstUsableRadioLinkId+1, str_format_frequency(uConnectFirstUsableFrequency));
-      
-      int iCountInterfacesAssigned = 0;
-
-      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-      {
-         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-         if ( controllerIsCardDisabled(pRadioHWInfo->szMAC) )
-         {
-            log_line("  * Radio interface %d is disabled, do not assign it.", i+1);
-            continue;
-         }
-         if ( ! hardware_radio_supports_frequency(pRadioHWInfo, uConnectFirstUsableFrequency) )
-         {
-            log_line("  * Radio interface %d does not support %s, do not assign it.", i+1, str_format_frequency(uConnectFirstUsableFrequency));
-            continue;
-         }
-         g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId = 0;
-         g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId = iConnectFirstUsableRadioLinkId;
-         g_SM_RadioStats.radio_links[0].matchingVehicleRadioLinkId = iConnectFirstUsableRadioLinkId;
-         iCountInterfacesAssigned++;
-         t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
-         if ( NULL != pCardInfo )  
-            log_line("  * Assigned radio interface %d (%s) to vehicle radio link %d", i+1, str_get_radio_card_model_string(pCardInfo->cardModel), iConnectFirstUsableRadioLinkId+1);
-         else
-            log_line("  * Assigned radio interface %d (%s) to vehicle radio link %d", i+1, "Unknown Type", iConnectFirstUsableRadioLinkId+1);
-      }
-      iCountAssignedVehicleRadioLinks = 1;
-      g_SM_RadioStats.countLocalRadioLinks = 1;
-      if ( NULL != g_pSM_RadioStats )
-         memcpy((u8*)g_pSM_RadioStats, (u8*)&g_SM_RadioStats, sizeof(shared_mem_radio_stats));
-      if ( 0 == iCountInterfacesAssigned )
-         send_alarm_to_central(ALARM_ID_CONTROLLER_NO_INTERFACES_FOR_RADIO_LINK,iConnectFirstUsableRadioLinkId, 0);
-      
-      log_line("Controller will have %d radio links active/connected to vehicle.", iCountAssignedVehicleRadioLinks);
-      log_line("Done computing radio interfaces assignment to radio links.");
-      log_line("------------------------------------------------------------------");
-      return;
-   }
-
-   // End - Model with a single active radio link
-   //---------------------------------------------------------------
-
-
-   //---------------------------------------------------------------
-   // Begin - Model with a multiple active radio links
-
-   log_line("Computing controller's radio interfaces assignment to vehicle's radio links (vehicle has %d active radio links (enabled and not relay), main controller connect frequency is: %s)", iCountVehicleActiveUsableRadioLinks, str_format_frequency(uStoredMainFrequencyForModel));
-
-   //---------------------------------------------------------------
-   // Begin - First, assign the radio interfaces that supports only a single radio link
-
-   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-   {
-      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-      if ( (NULL == pRadioHWInfo) || (controllerIsCardDisabled(pRadioHWInfo->szMAC)) )
-         continue;
-      if ( iInterfaceSupportedLinksCount[i] != 1 )
-         continue;
-
-      int iSupportedVehicleLinkByInterface = -1;
-      for( int k=0; k<MAX_RADIO_INTERFACES; k++ )
-      {
-         if ( bInterfaceSupportsVehicleLink[i][k] )
-         {
-            iSupportedVehicleLinkByInterface = k;
-            break;
-         }
-      }
-      if ( (-1 == iSupportedVehicleLinkByInterface) || (g_pCurrentModel->radioLinksParams.link_capabilities_flags[iSupportedVehicleLinkByInterface] & RADIO_HW_CAPABILITY_FLAG_DISABLED) )
-         continue;
-      
-      if ( ! bVehicleLinkWasAssigned[iSupportedVehicleLinkByInterface] )
-      {
-         iVehicleLinkWasAssignedToControllerLinkIndex[iSupportedVehicleLinkByInterface] = iCountAssignedVehicleRadioLinks;
-         iCountAssignedVehicleRadioLinks++;
-      }
-      bVehicleLinkWasAssigned[iSupportedVehicleLinkByInterface] = true;
-      bCtrlInterfaceWasAssigned[i] = true;
-      
-      g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId = iVehicleLinkWasAssignedToControllerLinkIndex[iSupportedVehicleLinkByInterface];
-      g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId = iSupportedVehicleLinkByInterface;
-      g_SM_RadioStats.radio_links[iVehicleLinkWasAssignedToControllerLinkIndex[iSupportedVehicleLinkByInterface]].matchingVehicleRadioLinkId = iSupportedVehicleLinkByInterface;
-
-      t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
-      if ( NULL != pCardInfo )  
-         log_line("  * Step A) Assigned controller's radio interface %d (%s) to controller local radio link %d, vehicle's radio link %d, %s, as it supports a single radio link from vehicle.", i+1, str_get_radio_card_model_string(pCardInfo->cardModel), g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId+1, iSupportedVehicleLinkByInterface+1, str_format_frequency(g_pCurrentModel->radioLinksParams.link_frequency_khz[iSupportedVehicleLinkByInterface]));
-      else
-         log_line("  * Step A) Assigned controller's radio interface %d (%s) to controller local radio link %d, vehicle's radio link %d, %s, as it supports a single radio link from vehicle.", i+1, "Unknown Type", g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId+1, iSupportedVehicleLinkByInterface+1, str_format_frequency(g_pCurrentModel->radioLinksParams.link_frequency_khz[iSupportedVehicleLinkByInterface]));
-   }
-
-   //---------------------------------------------------------------
-   // End - First, assign the radio interfaces that supports only a single radio link
-
-   //---------------------------------------------------------------
-   // Assign at least one radio interface to the main connect radio link
-
-   if ( (iStoredMainRadioLinkForModel != -1) && (! bVehicleLinkWasAssigned[iStoredMainRadioLinkForModel]) )
-   {
-      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-      {
-         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-         if ( NULL == pRadioHWInfo || controllerIsCardDisabled(pRadioHWInfo->szMAC) )
-            continue;
-         if ( bCtrlInterfaceWasAssigned[i] )
-            continue;
-         if ( ! bInterfaceSupportsMainConnectLink[i] )
-            continue;
-
-         if ( ! bVehicleLinkWasAssigned[iStoredMainRadioLinkForModel] )
-         {
-            iVehicleLinkWasAssignedToControllerLinkIndex[iStoredMainRadioLinkForModel] = iCountAssignedVehicleRadioLinks;
-            iCountAssignedVehicleRadioLinks++;
-         }
-         bVehicleLinkWasAssigned[iStoredMainRadioLinkForModel] = true;
-         bCtrlInterfaceWasAssigned[i] = true;
-         
-         g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId = iVehicleLinkWasAssignedToControllerLinkIndex[iStoredMainRadioLinkForModel];
-         g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId = iStoredMainRadioLinkForModel;
-         g_SM_RadioStats.radio_links[iVehicleLinkWasAssignedToControllerLinkIndex[iStoredMainRadioLinkForModel]].matchingVehicleRadioLinkId = iStoredMainRadioLinkForModel;
-
-         t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
-         if ( NULL != pCardInfo )  
-            log_line("  * Step B) Assigned controller's radio interface %d (%s) to controller local radio link %d, vehicle's main connect radio link %d, %s", i+1, str_get_radio_card_model_string(pCardInfo->cardModel), g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId+1, iStoredMainRadioLinkForModel+1, str_format_frequency(uStoredMainFrequencyForModel));
-         else
-            log_line("  * Step B) Assigned controller's radio interface %d (%s) to controller local radio link %d, vehicle's main connect radio link %d, %s", i+1, "Unknown Type", g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId+1, iStoredMainRadioLinkForModel+1, str_format_frequency(uStoredMainFrequencyForModel));
-         break;
-      }
-   }
-
-   //---------------------------------------------------------------
-   // Assign alternativelly each remaining radio interfaces to one radio link
-
-   // Assign to the first vehicle's radio link that has no cards assigned to
-
-   int iVehicleRadioLinkIdToAssign = 0;
-   int iSafeCounter = 10;
-   while ( true && (iSafeCounter > 0) )
-   {
-      iSafeCounter--;
-      if ( ! bVehicleLinkWasAssigned[iVehicleRadioLinkIdToAssign] )
-         break;       
-
-      iVehicleRadioLinkIdToAssign++;
-      if ( iVehicleRadioLinkIdToAssign >= g_pCurrentModel->radioLinksParams.links_count )
-      {
-         iVehicleRadioLinkIdToAssign = 0;
-         break;
-      }
-   }
-
-   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-   {
-      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-      if ( NULL == pRadioHWInfo || controllerIsCardDisabled(pRadioHWInfo->szMAC) )
-         continue;
-      if ( iInterfaceSupportedLinksCount[i] < 2 )
-         continue;
-      if ( bCtrlInterfaceWasAssigned[i] )
-         continue;
-
-      int k=0;
-      do
-      {
-         if ( bInterfaceSupportsVehicleLink[i][iVehicleRadioLinkIdToAssign] )
-         {
-            if ( ! bVehicleLinkWasAssigned[iVehicleRadioLinkIdToAssign] )
-            {
-               iVehicleLinkWasAssignedToControllerLinkIndex[iVehicleRadioLinkIdToAssign] = iCountAssignedVehicleRadioLinks;
-               iCountAssignedVehicleRadioLinks++;
-            }
-            bVehicleLinkWasAssigned[iVehicleRadioLinkIdToAssign] = true;
-            bCtrlInterfaceWasAssigned[i] = true;
-            
-            g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId = iVehicleLinkWasAssignedToControllerLinkIndex[iVehicleRadioLinkIdToAssign];
-            g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId = iVehicleRadioLinkIdToAssign;
-            g_SM_RadioStats.radio_links[iVehicleLinkWasAssignedToControllerLinkIndex[iVehicleRadioLinkIdToAssign]].matchingVehicleRadioLinkId = iVehicleRadioLinkIdToAssign;
-
-            t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
-            if ( NULL != pCardInfo )  
-               log_line("  * C) Assigned controller's radio interface %d (%s) to controller local radio link %d, radio link %d, %s", i+1, str_get_radio_card_model_string(pCardInfo->cardModel), g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId+1, iVehicleRadioLinkIdToAssign+1, str_format_frequency(g_pCurrentModel->radioLinksParams.link_frequency_khz[iVehicleRadioLinkIdToAssign]));
-            else
-               log_line("  * C) Assigned controller's radio interface %d (%s) to controller local radio link %d, radio link %d, %s", i+1, "Unknown Type", g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId+1, iVehicleRadioLinkIdToAssign+1, str_format_frequency(g_pCurrentModel->radioLinksParams.link_frequency_khz[iVehicleRadioLinkIdToAssign]));
-         }
-         k++;
-         iVehicleRadioLinkIdToAssign++;
-         if ( iVehicleRadioLinkIdToAssign >= g_pCurrentModel->radioLinksParams.links_count )
-            iVehicleRadioLinkIdToAssign = 0;
-      }
-      while ( (! bCtrlInterfaceWasAssigned[i]) && (k <= MAX_RADIO_INTERFACES) );
-   }
-
-   g_SM_RadioStats.countLocalRadioLinks = iCountAssignedVehicleRadioLinks;
-   log_line("Assigned %d controller local radio links to vehicle radio links (vehicle has %d active radio links)", iCountAssignedVehicleRadioLinks, iCountVehicleActiveUsableRadioLinks);
-   
-   if ( NULL != g_pSM_RadioStats )
-      memcpy((u8*)g_pSM_RadioStats, (u8*)&g_SM_RadioStats, sizeof(shared_mem_radio_stats));
-
-   //---------------------------------------------------------------
-   // Log errors
-
-   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-   {
-      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-      if ( NULL == pRadioHWInfo || controllerIsCardDisabled(pRadioHWInfo->szMAC) )
-      {
-         log_line("  * Radio interface %d is disabled. It was not assigned to any radio link.", i+1 );
-         continue;
-      }
-      if ( iInterfaceSupportedLinksCount[i] == 0 )
-      {
-         log_line("  * Radio interface %d does not support any radio links.", i+1 );
-         continue;
-      }
-   }
-
-   for( int i=0; i<g_pCurrentModel->radioLinksParams.links_count; i++ )
-   {
-      if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
-         continue;
-
-      // Ignore vehicle's relay radio links
-      if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
-         continue;
-
-      if ( ! bVehicleLinkWasAssigned[i] )
-      {
-         log_softerror_and_alarm("  * No controller radio interfaces where assigned to vehicle radio link %d !", i+1);
-         int iCountAssignableRadioInterfaces = controller_count_asignable_radio_interfaces_to_vehicle_radio_link(g_pCurrentModel, i);
-         if ( 0 == iCountAssignableRadioInterfaces )
-            send_alarm_to_central(ALARM_ID_CONTROLLER_NO_INTERFACES_FOR_RADIO_LINK, (u32)i, 0);
-      }
-   }
-   log_line("Radio links mapping (%d controller local radio links to %d vehicle radio links:", g_SM_RadioStats.countLocalRadioLinks, g_pCurrentModel->radioLinksParams.links_count);
-   for( int i=0; i<g_SM_RadioStats.countLocalRadioLinks; i++ )
-      log_line("* Local radio link %d mapped to vehicle radio link %d;", i+1, g_SM_RadioStats.radio_links[i].matchingVehicleRadioLinkId+1);
-
-   log_line("Done computing radio interfaces assignment to radio links.");
-   log_line("------------------------------------------------------------------");
-}
-
-
-bool links_set_cards_frequencies_for_search( u32 uSearchFreq, bool bSiKSearch, int iAirDataRate, int iECC, int iLBT, int iMCSTR )
-{
-   log_line("Links: Set all cards frequencies for search mode to %s", str_format_frequency(uSearchFreq));
-   if ( bSiKSearch )
-      log_line("Search SiK mode update. Change all cards frequencies and update SiK params: Airrate: %d bps, ECC/LBT/MCSTR: %d/%d/%d",
-         iAirDataRate, iECC, iLBT, iMCSTR);
-   else
-      log_line("No SiK mode update. Just change all interfaces frequencies");
-   
-   Preferences* pP = get_Preferences();
-
-   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-   {
-      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-      if ( NULL == pRadioHWInfo )
-         continue;
-
-      u32 flags = controllerGetCardFlags(pRadioHWInfo->szMAC);
-      char szFlags[128];
-      szFlags[0] = 0;
-      str_get_radio_capabilities_description(flags, szFlags);
-         
-      log_line("Checking controller radio interface %d (%s) settings: MAC: [%s], flags: %s",
-            i+1, pRadioHWInfo->szName, pRadioHWInfo->szMAC, szFlags );
-
-      if ( controllerIsCardDisabled(pRadioHWInfo->szMAC) )
-      {
-         log_line("Links: Radio interface %d is disabled. Skipping it.", i+1);
-         continue;
-      }
-
-      if ( ! pRadioHWInfo->isConfigurable )
-      {
-         radio_stats_set_card_current_frequency(&g_SM_RadioStats, i, pRadioHWInfo->uCurrentFrequencyKhz);
-         log_line("Links: Radio interface %d is not configurable. Skipping it.", i+1);
-         continue;
-      }
-
-      if ( 0 == hardware_radio_supports_frequency(pRadioHWInfo, uSearchFreq ) )
-      {
-         log_line("Links: Radio interface %d does not support search frequency %s. Skipping it.", i+1, str_format_frequency(uSearchFreq));
-         continue;
-      }
-
-      if ( ! (flags & RADIO_HW_CAPABILITY_FLAG_CAN_RX) )
-      {
-         log_line("Links: Radio interface %d can't Rx. Skipping it.", i+1);
-         continue;
-      }
-
-      if ( ! (flags & RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA) )
-      {
-         log_line("Links: Radio interface %d can't be used for data Rx. Skipping it.", i+1);
-         continue;
-      }
-
-      if ( bSiKSearch && hardware_radio_is_sik_radio(pRadioHWInfo) )
-      {
-         t_ControllerRadioInterfaceInfo* pCRII = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
-         u32 uFreqKhz = uSearchFreq;
-         u32 uDataRate = iAirDataRate;
-         u32 uTxPower = DEFAULT_RADIO_SIK_TX_POWER;
-         if ( NULL != pCRII )
-            uTxPower = pCRII->iRawPowerLevel;
-         u32 uECC = iECC;
-         u32 uLBT = iLBT;
-         u32 uMCSTR = iMCSTR;
-
-         bool bDataRateOk = false;
-         for( int k=0; k<getSiKAirDataRatesCount(); k++ )
-         {
-            if ( (int)uDataRate == getSiKAirDataRates()[k] )
-            {
-               bDataRateOk = true;
-               break;
-            }
-         }
-
-         if ( ! bDataRateOk )
-         {
-            log_softerror_and_alarm("Invalid radio datarate for SiK radio: %d bps. Revert to %d bps.", uDataRate, DEFAULT_RADIO_DATARATE_SIK_AIR);
-            uDataRate = DEFAULT_RADIO_DATARATE_SIK_AIR;
-         }
-         
-         int iRetry = 0;
-         while ( iRetry < 2 )
-         {
-            int iRes = hardware_radio_sik_set_params(pRadioHWInfo, 
-                   uFreqKhz,
-                   DEFAULT_RADIO_SIK_FREQ_SPREAD, DEFAULT_RADIO_SIK_CHANNELS,
-                   DEFAULT_RADIO_SIK_NETID,
-                   uDataRate, uTxPower, 
-                   uECC, uLBT, uMCSTR,
-                   NULL);
-            if ( iRes != 1 )
-            {
-               log_softerror_and_alarm("Failed to configure SiK radio interface %d", i+1);
-               iRetry++;
-            }
-            else
-            {
-               log_line("Updated successfully SiK radio interface %d to txpower %d, airrate: %d bps, ECC/LBT/MCSTR: %d/%d/%d",
-                   i+1, uTxPower, uDataRate, uECC, uLBT, uMCSTR);
-               radio_stats_set_card_current_frequency(&g_SM_RadioStats, i, uSearchFreq);
-               break;
-            }
-         }
-      }
-      else
-      {
-         if ( radio_utils_set_interface_frequency(NULL, i, -1, uSearchFreq, g_pProcessStats, pP->iDebugWiFiChangeDelay) )
-            radio_stats_set_card_current_frequency(&g_SM_RadioStats, i, uSearchFreq);
-      }
-   }
-
-   if ( NULL != g_pSM_RadioStats )
-      memcpy((u8*)g_pSM_RadioStats, (u8*)&g_SM_RadioStats, sizeof(shared_mem_radio_stats));
-   log_line("Links: Set all cards frequencies for search mode to %s. Completed.", str_format_frequency(uSearchFreq));
-   return true;
-}
-
-bool links_set_cards_frequencies_and_params(int iVehicleLinkId)
-{
-   if ( g_bSearching || (NULL == g_pCurrentModel) )
-   {
-      log_error_and_alarm("Invalid parameters for setting radio interfaces frequencies");
-      return false;
-   }
-
-   if ( (iVehicleLinkId < 0) || (iVehicleLinkId >= hardware_get_radio_interfaces_count()) )
-      log_line("Links: Setting all cards frequencies and params according to vehicle radio links...");
-   else
-      log_line("Links: Setting cards frequencies and params only for vehicle radio link %d", iVehicleLinkId+1);
-
-   Preferences* pP = get_Preferences();
-         
-   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-   {
-      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-      if ( NULL == pRadioHWInfo )
-         continue;
-      
-      if ( ! pRadioHWInfo->isConfigurable )
-      {
-         radio_stats_set_card_current_frequency(&g_SM_RadioStats, i, pRadioHWInfo->uCurrentFrequencyKhz);
-         log_line("Links: Radio interface %d is not configurable. Skipping it.", i+1);
-         continue;
-      }
-      if ( controllerIsCardDisabled(pRadioHWInfo->szMAC) )
-      {
-         log_line("Links: Radio interface %d is disabled. Skipping it.", i+1);
-         continue;
-      }
-
-      int nAssignedVehicleRadioLinkId = g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId;
-      if ( nAssignedVehicleRadioLinkId < 0 || nAssignedVehicleRadioLinkId >= g_pCurrentModel->radioLinksParams.links_count )
-      {
-         log_line("Links: Radio interface %d is not assigned to any vehicle radio link. Skipping it.", i+1);
-         continue;
-      }
-
-      if ( ( iVehicleLinkId >= 0 ) && (nAssignedVehicleRadioLinkId != iVehicleLinkId) )
-         continue;
-
-      if ( 0 == hardware_radio_supports_frequency(pRadioHWInfo, g_pCurrentModel->radioLinksParams.link_frequency_khz[nAssignedVehicleRadioLinkId] ) )
-      {
-         log_line("Links: Radio interface %d does not support vehicle radio link %d frequency %s. Skipping it.", i+1, nAssignedVehicleRadioLinkId+1, str_format_frequency(g_pCurrentModel->radioLinksParams.link_frequency_khz[nAssignedVehicleRadioLinkId]));
-         continue;
-      }
-
-      if ( hardware_radio_is_sik_radio(pRadioHWInfo) )
-      {
-         if ( iVehicleLinkId >= 0 )
-            radio_links_flag_update_sik_interface(i);
-         else
-         {
-            u32 uFreqKhz = g_pCurrentModel->radioLinksParams.link_frequency_khz[nAssignedVehicleRadioLinkId];
-            u32 uDataRate = g_pCurrentModel->radioLinksParams.link_datarate_data_bps[nAssignedVehicleRadioLinkId];
-            u32 uTxPower = DEFAULT_RADIO_SIK_TX_POWER;
-            t_ControllerRadioInterfaceInfo* pCRII = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
-            if ( NULL != pCRII )
-               uTxPower = pCRII->iRawPowerLevel;
-            u32 uECC = (g_pCurrentModel->radioLinksParams.link_radio_flags[nAssignedVehicleRadioLinkId] & RADIO_FLAGS_SIK_ECC)? 1:0;
-            u32 uLBT = (g_pCurrentModel->radioLinksParams.link_radio_flags[nAssignedVehicleRadioLinkId] & RADIO_FLAGS_SIK_LBT)? 1:0;
-            u32 uMCSTR = (g_pCurrentModel->radioLinksParams.link_radio_flags[nAssignedVehicleRadioLinkId] & RADIO_FLAGS_SIK_MCSTR)? 1:0;
-
-            bool bDataRateOk = false;
-            for( int k=0; k<getSiKAirDataRatesCount(); k++ )
-            {
-               if ( (int)uDataRate == getSiKAirDataRates()[k] )
-               {
-                  bDataRateOk = true;
-                  break;
-               }
-            }
-
-            if ( ! bDataRateOk )
-            {
-               log_softerror_and_alarm("Invalid radio datarate for SiK radio: %d bps. Revert to %d bps.", uDataRate, DEFAULT_RADIO_DATARATE_SIK_AIR);
-               uDataRate = DEFAULT_RADIO_DATARATE_SIK_AIR;
-            }
-            
-            int iRetry = 0;
-            while ( iRetry < 2 )
-            {
-               int iRes = hardware_radio_sik_set_params(pRadioHWInfo, 
-                      uFreqKhz,
-                      DEFAULT_RADIO_SIK_FREQ_SPREAD, DEFAULT_RADIO_SIK_CHANNELS,
-                      DEFAULT_RADIO_SIK_NETID,
-                      uDataRate, uTxPower, 
-                      uECC, uLBT, uMCSTR,
-                      NULL);
-               if ( iRes != 1 )
-               {
-                  log_softerror_and_alarm("Failed to configure SiK radio interface %d", i+1);
-                  iRetry++;
-               }
-               else
-               {
-                  log_line("Updated successfully SiK radio interface %d to txpower %d, airrate: %d bps, ECC/LBT/MCSTR: %d/%d/%d",
-                     i+1, uTxPower, uDataRate, uECC, uLBT, uMCSTR);
-                  radio_stats_set_card_current_frequency(&g_SM_RadioStats, i, g_pCurrentModel->radioLinksParams.link_frequency_khz[nAssignedVehicleRadioLinkId]);
-                  break;
-               }
-            }
-         }
-      }
-      else
-      {
-         if ( radio_utils_set_interface_frequency(g_pCurrentModel, i, iVehicleLinkId, g_pCurrentModel->radioLinksParams.link_frequency_khz[nAssignedVehicleRadioLinkId], g_pProcessStats, pP->iDebugWiFiChangeDelay) )
-            radio_stats_set_card_current_frequency(&g_SM_RadioStats, i, g_pCurrentModel->radioLinksParams.link_frequency_khz[nAssignedVehicleRadioLinkId]);
-      }
-   }
-
-   if ( NULL != g_pSM_RadioStats )
-      memcpy((u8*)g_pSM_RadioStats, (u8*)&g_SM_RadioStats, sizeof(shared_mem_radio_stats));
-
-   hardware_save_radio_info();
-
-   return true;
-}
-
 void reasign_radio_links(bool bSilent)
 {
    log_line("ROUTER REASIGN LINKS START -----------------------------------------------------");
@@ -861,10 +235,9 @@ void reasign_radio_links(bool bSilent)
    else
       radio_set_bypass_socket_buffers(0);
 
-   _compute_radio_interfaces_assignment();
-   links_set_cards_frequencies_and_params(-1);
+   radio_links_compute_auto_radio_interfaces_assignment(-1);
+   radio_links_set_cards_frequencies_and_params(-1);
    radio_links_open_rxtx_radio_interfaces();
-
    radio_rx_start_rx_thread(&g_SM_RadioStats, (int)g_bSearching, g_uAcceptedFirmwareType);
 
    if ( ! bSilent )
@@ -904,6 +277,30 @@ void send_message_to_central(u32 uPacketType, u32 uParam, bool bTelemetryToo)
       ruby_ipc_channel_send_message(g_fIPCToTelemetry, buffer, PH.total_length);
 }
 
+void send_adaptive_video_paused_to_central(u32 uVehicleId, bool bPaused)
+{
+   if ( -1 == g_fIPCToCentral )
+      return;
+
+   t_packet_header PH;
+   radio_packet_init(&PH, PACKET_COMPONENT_LOCAL_CONTROL, PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, STREAM_ID_DATA);
+   PH.vehicle_id_src = uVehicleId;
+   PH.vehicle_id_dest = bPaused?1:0;
+   PH.total_length = sizeof(t_packet_header);
+
+   u8 buffer[MAX_PACKET_TOTAL_SIZE];
+   memcpy(buffer, (u8*)&PH, sizeof(t_packet_header));
+   radio_packet_compute_crc(buffer, PH.total_length);
+   
+   if ( NULL != g_pProcessStats )
+      g_pProcessStats->lastIPCOutgoingTime = g_TimeNow;
+
+   if ( ! ruby_ipc_channel_send_message(g_fIPCToCentral, buffer, PH.total_length) )
+      log_ipc_send_central_error(buffer, PH.total_length);
+   else
+      log_line("Sent message %s to central, VID: %d, adaptive is %s", str_get_packet_type(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE), uVehicleId, bPaused?"paused":"resumed");
+}
+
 void _check_for_atheros_datarate_change_command_to_vehicle(u8* pPacketBuffer)
 {
    if ( NULL == pPacketBuffer )
@@ -940,7 +337,7 @@ void _check_for_atheros_datarate_change_command_to_vehicle(u8* pPacketBuffer)
 }
 
 
-void _process_and_send_packet(u8* pPacketBuffer, int iPacketLength)
+void _process_and_send_packet(u8* pPacketBuffer, int iPacketLength, u32 uTimeAdded)
 {
    _check_for_atheros_datarate_change_command_to_vehicle(pPacketBuffer);
 
@@ -950,14 +347,6 @@ void _process_and_send_packet(u8* pPacketBuffer, int iPacketLength)
    preprocess_radio_out_packet(pPacketBuffer, iPacketLength);
 
    int send_count = 1;
-   
-   if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_COMMANDS )
-   if ( pPH->packet_type == PACKET_TYPE_COMMAND )
-   {
-      t_packet_header_command* pPHC = (t_packet_header_command*)(pPacketBuffer + sizeof(t_packet_header));
-      if ( pPHC->command_type == COMMAND_ID_SET_RADIO_LINK_FREQUENCY )
-         send_count = 5;
-   }
 
    if ( (pPH->packet_type == PACKET_TYPE_VEHICLE_RECORDING) )
       send_count = 2;
@@ -966,21 +355,24 @@ void _process_and_send_packet(u8* pPacketBuffer, int iPacketLength)
    if ( pPH->packet_type == PACKET_TYPE_RUBY_PING_CLOCK )
    {
       // Store info about this ping
+      g_TimeNow = get_current_timestamp_ms();
       for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
       {
-         if ( g_State.vehiclesRuntimeInfo[i].uVehicleId == pPH->vehicle_id_dest )
+         if ( g_State.vehiclesRuntimeInfo[i].uVehicleId != 0 )
          {
             u8 uLocalRadioLinkId = 0;
             memcpy(&uLocalRadioLinkId, pPacketBuffer+sizeof(t_packet_header)+sizeof(u8), sizeof(u8));
             if ( uLocalRadioLinkId < MAX_RADIO_INTERFACES )
-            {
                g_State.vehiclesRuntimeInfo[i].uTimeLastPingSentToVehicleOnLocalRadioLinks[uLocalRadioLinkId] = g_TimeNow;
-               break;
-            }
          }
       }
    }
 
+   if ( 0 != uTimeAdded )
+   {
+      //u32 uTime = get_current_timestamp_micros();
+      //log_line("DBG queue and send packet took %u microsec for packet %s", uTime - uTimeAdded, str_get_packet_type(pPH->packet_type));
+   }
    static int s_iTxErrorsCount = 0;
    for( int i=0; i<send_count; i++ )
    {
@@ -1014,14 +406,98 @@ void _process_and_send_packets_individually(t_packet_queue* pRadioQueue)
          g_pProcessStats->lastIPCIncomingTime = g_TimeNow;
 
       int iPacketLength = -1;
-      u8* pPacketBuffer = packets_queue_pop_packet(pRadioQueue, &iPacketLength);
+      u32 uTimeAdded = 0;
+      u8* pPacketBuffer = packets_queue_pop_packet_and_time(pRadioQueue, &iPacketLength, &uTimeAdded);
       if ( NULL == pPacketBuffer || -1 == iPacketLength )
          break;
 
-      _process_and_send_packet(pPacketBuffer, iPacketLength);
+      _process_and_send_packet(pPacketBuffer, iPacketLength, uTimeAdded);
    }
 }
 
+void _preprocess_central_ipc_packet(u8* pPacketBuffer)
+{
+   if ( NULL == pPacketBuffer )
+      return;
+   t_packet_header* pPH = (t_packet_header*)pPacketBuffer;
+
+   if ( pPH->packet_type == PACKET_TYPE_NEGOCIATE_RADIO_LINKS )
+   if ( pPH->total_length >= (int)sizeof(t_packet_header) + 2*(int)sizeof(u8) )
+   {
+      static bool s_bMustSwitchBackLinksAfterNegociation = false;
+      static int  s_iLastTestedNegociateRadioLinkInterface = -1;
+      // uCommand is second byte after header
+      u8 uCommand = pPacketBuffer[sizeof(t_packet_header)+1];
+      log_line("Received negociate radio packet from central. Negociate command: %d", uCommand);
+
+      if ( (uCommand == NEGOCIATE_RADIO_TEST_PARAMS) )
+      {
+         int iVehicleRadioInterface = (int)pPacketBuffer[sizeof(t_packet_header)+2];
+         if ( (NULL != g_pCurrentModel) && (iVehicleRadioInterface >= 0) && (iVehicleRadioInterface < MAX_RADIO_INTERFACES) )
+         {
+            int iVehicleRadioLink = g_pCurrentModel->radioInterfacesParams.interface_link_id[iVehicleRadioInterface];
+            if ( (iVehicleRadioLink >= 0) && (iVehicleRadioLink < g_pCurrentModel->radioLinksParams.links_count) )
+            {
+               log_line("Received negociate radio packet for testing vehicle's radio link %d, radio interface: %d", iVehicleRadioLink+1, iVehicleRadioInterface+1);
+               if ( s_iLastTestedNegociateRadioLinkInterface != iVehicleRadioInterface )
+               {
+                  s_iLastTestedNegociateRadioLinkInterface = iVehicleRadioInterface;
+                  bool bAllLocalLinksOnRightLink = true;
+                  for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+                  {
+                     radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+                     if ( NULL == pRadioHWInfo )
+                     {
+                        log_softerror_and_alarm("Failed to get controller's radio interface %d hardware info. Skipping it.", i+1);
+                        continue;
+                     }
+                     if ( controllerIsCardDisabled(pRadioHWInfo->szMAC) )
+                     {
+                        log_line("Controller's radio interface %d is disabled. Skipping it.", i+1);
+                        continue;
+                     }
+                     if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != iVehicleRadioInterface )
+                     {
+                        bAllLocalLinksOnRightLink = false;
+                        break;
+                     }
+                  }
+
+                  if ( ! bAllLocalLinksOnRightLink )
+                  {
+                     s_bMustSwitchBackLinksAfterNegociation = true;
+                     log_line("Must reasign radio links to currently testing negociate vehicle's radio interface %d", iVehicleRadioInterface+1);
+                     radio_rx_stop_rx_thread();
+                     radio_links_close_rxtx_radio_interfaces();
+                     radio_links_compute_auto_radio_interfaces_assignment(iVehicleRadioLink);
+                     radio_links_set_cards_frequencies_and_params(-1);
+                     radio_links_open_rxtx_radio_interfaces();
+                     radio_rx_start_rx_thread(&g_SM_RadioStats, (int)g_bSearching, g_uAcceptedFirmwareType);
+                  }
+                  else
+                     log_line("Current controller radio interfaces are already connected to the vehicle's radio link %d", iVehicleRadioLink+1);
+               }
+            }
+         }
+      }
+
+      if ( (uCommand == NEGOCIATE_RADIO_APPLY_PARAMS) || (uCommand == NEGOCIATE_RADIO_END_TESTS) )
+      {
+          if ( s_bMustSwitchBackLinksAfterNegociation )
+          {
+             s_bMustSwitchBackLinksAfterNegociation = false;
+             s_iLastTestedNegociateRadioLinkInterface = -1;
+             log_line("Must auto reasign radio links after negociate radio flow finished.");
+             radio_rx_stop_rx_thread();
+             radio_links_close_rxtx_radio_interfaces();
+             radio_links_compute_auto_radio_interfaces_assignment(-1);
+             radio_links_set_cards_frequencies_and_params(-1);
+             radio_links_open_rxtx_radio_interfaces();
+             radio_rx_start_rx_thread(&g_SM_RadioStats, (int)g_bSearching, g_uAcceptedFirmwareType);
+          }
+      }
+   }
+}
 
 void _read_ipc_pipes(u32 uTimeNow)
 {
@@ -1033,6 +509,8 @@ void _read_ipc_pipes(u32 uTimeNow)
    while ( (maxPacketsToRead > 0) && (NULL != ruby_ipc_try_read_message(g_fIPCFromCentral, s_PipeBufferCommands, &s_PipeBufferCommandsPos, s_BufferCommands)) )
    {
       maxPacketsToRead--;
+
+      _preprocess_central_ipc_packet(s_BufferCommands);
       t_packet_header* pPH = (t_packet_header*)s_BufferCommands;
       if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_LOCAL_CONTROL )
          packets_queue_add_packet(&s_QueueControlPackets, s_BufferCommands); 
@@ -1087,17 +565,11 @@ void init_shared_memory_objects()
    else
       log_line("Opened shared mem to controller runtime info for writing.");
 
-   if ( NULL != g_pSMControllerRTInfo )
-      memcpy((u8*)g_pSMControllerRTInfo, (u8*)&g_SMControllerRTInfo, sizeof(controller_runtime_info));
-
-   g_pSMVehicleRTInfo = vehicle_rt_info_open_for_write();
-   if ( NULL == g_pSMVehicleRTInfo )
-      log_softerror_and_alarm("Failed to open shared mem to vehicle runtime info for writing: %s", SHARED_MEM_VEHICLE_RUNTIME_INFO);
+   g_pSMControllerDebugVideoRTInfo = controller_debug_video_rt_info_open_for_write();
+   if ( NULL == g_pSMControllerDebugVideoRTInfo )
+      log_softerror_and_alarm("Failed to open shared mem to controller debug video runtime info for writing: %s", SHARED_MEM_CONTROLLER_DEBUG_VIDEO_RUNTIME_INFO);
    else
-      log_line("Opened shared mem to vehicle runtime info for writing.");
-
-   if ( NULL != g_pSMVehicleRTInfo )
-      memcpy((u8*)g_pSMVehicleRTInfo, (u8*)&g_SMVehicleRTInfo, sizeof(vehicle_runtime_info));
+      log_line("Opened shared mem to controller debug video runtime info for writing.");
 
    g_pSM_RadioStats = shared_mem_radio_stats_open_for_write();
    if ( NULL == g_pSM_RadioStats )
@@ -1113,7 +585,10 @@ void init_shared_memory_objects()
    else
       shared_mem_radio_stats_rx_hist_reset(&g_SM_HistoryRxStats);
   
-   radio_stats_reset(&g_SM_RadioStats, g_pControllerSettings->nGraphRadioRefreshInterval);
+   if ( NULL == g_pCurrentModel )
+      radio_stats_reset(&g_SM_RadioStats, DEFAULT_OSD_RADIO_GRAPH_REFRESH_PERIOD_MS);
+   else
+      radio_stats_reset(&g_SM_RadioStats, g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs);
 
    if ( NULL != g_pSM_RadioStats )
       memcpy((u8*)g_pSM_RadioStats, (u8*)&g_SM_RadioStats, sizeof(shared_mem_radio_stats));
@@ -1163,20 +638,6 @@ void init_shared_memory_objects()
    {
       g_State.vehiclesRuntimeInfo[0].uVehicleId = g_pCurrentModel->uVehicleId;
    }
-
-// To fix
-     /*
-   g_pSM_VideoLinkStats = shared_mem_video_link_stats_open_for_write();
-   if ( NULL == g_pSM_VideoLinkStats )
-      log_softerror_and_alarm("Failed to open shared mem video link stats for writing: %s", SHARED_MEM_VIDEO_LINK_STATS);
-   else
-      log_line("Opened shared mem video link stats stats for writing.");
-*/
-   g_pSM_VideoLinkGraphs = shared_mem_video_link_graphs_open_for_write();
-   if ( NULL == g_pSM_VideoLinkGraphs )
-      log_softerror_and_alarm("Failed to open shared mem video link graphs for writing: %s", SHARED_MEM_VIDEO_LINK_GRAPHS);
-   else
-      log_line("Opened shared mem video link graphs stats for writing.");
 
    g_pProcessStats = shared_mem_process_stats_open_write(SHARED_MEM_WATCHDOG_ROUTER_RX);
    if ( NULL == g_pProcessStats )
@@ -1251,18 +712,17 @@ int _consume_ipc_messages()
 
       int length = -1;
       u8* pBuffer = packets_queue_pop_packet(&s_QueueControlPackets, &length);
-      if ( NULL == pBuffer || -1 == length )
+      if ( (NULL == pBuffer) || (-1 == length) )
          break;
 
       t_packet_header* pPH = (t_packet_header*)pBuffer;
       log_line("Received local packet from central, type: %s", str_get_packet_type(pPH->packet_type));
-      process_local_control_packet(pPH);
+      process_local_control_packet(pBuffer);
       log_line("Done handling received local packet from central, type: %s", str_get_packet_type(pPH->packet_type));
       iConsumed++;
    }
    return iConsumed;
 }
-
 
 int _try_read_consume_rx_packets(bool bHighPriority, int iCountMax, u32 uTimeoutMicrosec)
 {
@@ -1284,53 +744,33 @@ int _try_read_consume_rx_packets(bool bHighPriority, int iCountMax, u32 uTimeout
       iCountConsumed++;
       if ( g_bQuit )
          break;
-
-      t_packet_header* pPH = (t_packet_header*)pPacket;
-      if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_VIDEO )
-      if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA )
-      {
-         if ( ! g_bSearching )
-         if ( ! (pPH->packet_flags & PACKET_FLAGS_BIT_RETRANSMITED) )
-         {
-            t_packet_header_video_segment* pPHVS = (t_packet_header_video_segment*)(pPacket + sizeof(t_packet_header));
-            if ( pPHVS->uCurrentBlockPacketIndex >= pPHVS->uCurrentBlockDataPackets )
-               g_SMControllerRTInfo.uRxVideoECPackets[g_SMControllerRTInfo.iCurrentIndex][0]++;
-            else
-               g_SMControllerRTInfo.uRxVideoPackets[g_SMControllerRTInfo.iCurrentIndex][0]++;
-         }
-      }
-      if ( g_bSearching )
-      if ( pPH->packet_type != PACKET_TYPE_VIDEO_DATA )
-         log_line("Process received radio packet (%s) while searching.", str_get_packet_type(pPH->packet_type));
+      
+      g_SMControllerRTInfo.uRxLastDeltaTime[g_SMControllerRTInfo.iCurrentIndex][0] = g_TimeNow - g_SMControllerRTInfo.uCurrentSliceStartTime;
       process_received_single_radio_packet(iRadioInterfaceIndex, pPacket, iPacketLength);      
       shared_mem_radio_stats_rx_hist_update(&g_SM_HistoryRxStats, iRadioInterfaceIndex, pPacket, g_TimeNow);
       g_SMControllerRTInfo.uRxProcessedPackets[g_SMControllerRTInfo.iCurrentIndex]++;
-
-      if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_VIDEO )
-      if ( pPH->packet_type == PACKET_TYPE_VIDEO_DATA )
-      if ( ! (pPH->packet_flags & PACKET_FLAGS_BIT_RETRANSMITED) )
-      if ( ! g_bSearching )
-      {
-         bool bEndFrameDetected = false;
-         ProcessorRxVideo* pProcessorRxVideo = ProcessorRxVideo::getVideoProcessorForVehicleId(g_pCurrentModel->uVehicleId, 0);
-         if ( (NULL != pProcessorRxVideo) && (NULL != pProcessorRxVideo->m_pVideoRxBuffer) )
-         {
-            if ( pProcessorRxVideo->m_pVideoRxBuffer->isFrameEndDetected() )
-                bEndFrameDetected = true;
-         }
-
-         static u32 s_uTimeFirstRecvFrameVideoPacket = 0;
-         if ( bEndFrameDetected )
-         {
-             //log_line("DBG frame rx duration: %d ms", g_TimeNow - s_uTimeFirstRecvFrameVideoPacket);
-             s_uTimeFirstRecvFrameVideoPacket = 0;
-         }
-         if ( 0 == s_uTimeFirstRecvFrameVideoPacket )
-            s_uTimeFirstRecvFrameVideoPacket = g_TimeNow;
-      }      
    }
 
    return iCountConsumed;
+}
+
+void _check_send_packets(bool bDoTxSync)
+{
+   bool bSendNow = false;
+
+   type_global_state_vehicle_runtime_info* pRTInfo = getVehicleRuntimeInfo(g_pCurrentModel->uVehicleId);
+   if ( (NULL == pRTInfo) || (! pRTInfo->bIsPairingDone) )
+      bSendNow = true;
+   else if ( (!bDoTxSync) || g_bUpdateInProgress || (!g_pCurrentModel->hasCamera()) || (g_TimeNow > s_QueueRadioPacketsRegPrio.timeFirstPacket + 55) )
+      bSendNow = true;
+   else if ( router_is_eof() )
+      bSendNow = true;
+
+   if ( ! bSendNow )
+      return;
+
+   _process_and_send_packets_individually(&s_QueueRadioPacketsHighPrio);
+   _process_and_send_packets_individually(&s_QueueRadioPacketsRegPrio);
 }
 
 void _main_loop_searching();
@@ -1348,18 +788,20 @@ void handle_sigint(int sig)
   
 int main(int argc, char *argv[])
 {
+   if ( strcmp(argv[argc-1], "-ver") == 0 )
+   {
+      printf("%d.%d (b-%d)", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR, SYSTEM_SW_BUILD_NUMBER);
+      return 0;
+   }
+
    signal(SIGPIPE, SIG_IGN);
    signal(SIGINT, handle_sigint);
    signal(SIGTERM, handle_sigint);
    signal(SIGQUIT, handle_sigint);
-   
-   if ( strcmp(argv[argc-1], "-ver") == 0 )
-   {
-      printf("%d.%d (b%d)", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR/10, SYSTEM_SW_BUILD_NUMBER);
-      return 0;
-   }
-      
+         
    log_init("Router");
+   log_arguments(argc, argv);
+   log_line_forced_to_file("Linux mem page size: %d bytes", getpagesize());
    
    hardware_detectBoardAndSystemType();
 
@@ -1407,6 +849,11 @@ int main(int argc, char *argv[])
    if ( g_bSearching )
       log_line("Launched router in search mode, search frequency: %s, search firmware type: %s", str_format_frequency(g_uSearchFrequency), str_format_firmware_type(g_uAcceptedFirmwareType));
 
+
+   int iCPUCoresCount = hw_procs_get_cpu_count();
+   log_line("Detected CPU with %d cores.", iCPUCoresCount);   
+
+   utils_log_radio_packets_sizes();
    radio_init_link_structures();
    radio_enable_crc_gen(1);
    hardware_enumerate_radio_interfaces(); 
@@ -1417,8 +864,6 @@ int main(int argc, char *argv[])
    load_Preferences();   
    load_ControllerSettings();
    load_ControllerInterfacesSettings();
-   hardware_i2c_load_device_settings();
-
    controllerRadioInterfacesLogInfo();
 
    g_pControllerSettings = get_ControllerSettings();
@@ -1427,6 +872,11 @@ int main(int argc, char *argv[])
    if ( pP->nLogLevel != 0 )
       log_only_errors();
  
+   if ( g_pControllerSettings->iCoresAdjustment )
+   {
+      hw_set_current_thread_affinity("station", CORE_AFFINITY_STATION_GS, CORE_AFFINITY_STATION_GS);
+      radio_rx_set_cpu_affinity(CORE_AFFINITY_RX_RADIO);
+   }
    if ( NULL != g_pControllerSettings )
       radio_rx_set_timeout_interval(g_pControllerSettings->iDevRxLoopTimeout);
      
@@ -1456,33 +906,32 @@ int main(int argc, char *argv[])
       g_uAcceptedFirmwareType = g_pCurrentModel->getVehicleFirmwareType();
    }
 
-   //if ( NULL != g_pControllerSettings )
-   //   hw_set_priority_current_proc(g_pControllerSettings->iNiceRouter);
- 
    if ( NULL != g_pCurrentModel )
    if ( g_pControllerSettings->iDeveloperMode )
    {
-      radio_tx_set_dev_mode();
-      radio_rx_set_dev_mode();
-      radio_set_debug_flag();
+      radio_tx_set_dev_mode(1);
+      radio_rx_set_dev_mode(1);
+      radio_set_debug_flag(1);
    }
 
    packet_utils_init();
 
    if ( (NULL != g_pControllerSettings) && g_pControllerSettings->iPrioritiesAdjustment )
    {
-      radio_rx_set_custom_thread_priority(g_pControllerSettings->iRadioRxThreadPriority);
-      radio_tx_set_custom_thread_priority(g_pControllerSettings->iRadioTxThreadPriority);
+      hw_set_priority_current_proc(g_pControllerSettings->iThreadPriorityRouter);
+      radio_rx_set_custom_thread_raw_priority(g_pControllerSettings->iThreadPriorityRadioRx);
+      radio_tx_set_custom_thread_raw_priority(g_pControllerSettings->iThreadPriorityRadioTx);
    }
 
    controller_rt_info_init(&g_SMControllerRTInfo);
-   vehicle_rt_info_init(&g_SMVehicleRTInfo);
    init_shared_memory_objects();
 
    log_line("Init shared mem objects: done");
 
    if ( -1 == open_pipes() )
    {
+      g_bQuit = true;
+      packet_utils_uninit();
       radio_link_cleanup();
       log_error_and_alarm("Failed to open required pipes. Exit.");
       return -1;
@@ -1501,38 +950,16 @@ int main(int argc, char *argv[])
    if ( g_bSearching )
    {
       if ( s_iSearchSikAirRate > 0 )
-         links_set_cards_frequencies_for_search(g_uSearchFrequency, true, s_iSearchSikAirRate, s_iSearchSikECC, s_iSearchSikLBT, s_iSearchSikMCSTR );
+         radio_links_set_cards_frequencies_for_search(g_uSearchFrequency, true, s_iSearchSikAirRate, s_iSearchSikECC, s_iSearchSikLBT, s_iSearchSikMCSTR );
       else
-         links_set_cards_frequencies_for_search(g_uSearchFrequency, false, -1,-1,-1,-1 );
+         radio_links_set_cards_frequencies_for_search(g_uSearchFrequency, false, -1,-1,-1,-1 );
       hardware_save_radio_info();
       radio_links_open_rxtx_radio_interfaces_for_search(g_uSearchFrequency);
    }
    else
    {
-      _compute_radio_interfaces_assignment();
-
-      for( int iRadioLink=0; iRadioLink<g_pCurrentModel->radioLinksParams.links_count; iRadioLink++ )
-      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-      {
-         if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
-            continue;
-         if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != iRadioLink )
-            continue;
-         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-         if ( NULL == pRadioHWInfo )
-            continue;
-         if ( ! pRadioHWInfo->isConfigurable )
-            continue;
-         if ( (pRadioHWInfo->iRadioType != RADIO_TYPE_ATHEROS) &&
-              (pRadioHWInfo->iRadioType != RADIO_TYPE_RALINK) )
-            continue;
-
-         int nRateTx = compute_packet_uplink_datarate(iRadioLink, i, &(g_pCurrentModel->radioLinksParams), NULL);
-         update_atheros_card_datarate(g_pCurrentModel, i, nRateTx, g_pProcessStats);
-         g_TimeNow = get_current_timestamp_ms();
-      }
-
-      links_set_cards_frequencies_and_params(-1);
+      radio_links_compute_auto_radio_interfaces_assignment(-1);
+      radio_links_set_cards_frequencies_and_params(-1);
       radio_links_open_rxtx_radio_interfaces();
    }
 
@@ -1549,8 +976,8 @@ int main(int argc, char *argv[])
       char szBuffF[128];
       for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
       {
-         str_get_radio_frame_flags_description(g_pCurrentModel->radioInterfacesParams.interface_current_radio_flags[i], szBuffF);
-         log_line("Radio frame flags for radio interface %d: %u, %s", i+1, g_pCurrentModel->radioInterfacesParams.interface_current_radio_flags[i], szBuffF);
+         str_get_radio_frame_flags_description(g_pCurrentModel->radioInterfacesParams.interface_supported_radio_flags[i], szBuffF);
+         log_line("Supported radio frame flags for radio interface %d: %u, %s", i+1, g_pCurrentModel->radioInterfacesParams.interface_supported_radio_flags[i], szBuffF);
       }
    }
 
@@ -1595,9 +1022,6 @@ int main(int argc, char *argv[])
          send_alarm_to_central(ALARM_ID_FIRMWARE_OLD, i, 0);
    }
 
-   if ( g_pControllerSettings->iPrioritiesAdjustment )
-      hw_increase_current_thread_priority("Main thread", DEFAULT_PRIORITY_THREAD_ROUTER);
-
    log_line("");
    log_line("");
    log_line("----------------------------------------------");
@@ -1615,6 +1039,7 @@ int main(int argc, char *argv[])
       log_line("Running main loop for sync type: %d", g_pCurrentModel->rxtx_sync_type);
 
    int iLoopTimeErrorsCount = 0;
+   g_TimeNow = get_current_timestamp_ms();
    u32 uLastLoopTime = g_TimeNow;
    g_pProcessStats->uLoopTimer1 = g_pProcessStats->uLoopTimer2 = g_TimeNow;
 
@@ -1624,23 +1049,36 @@ int main(int argc, char *argv[])
       g_pProcessStats->lastActiveTime = g_TimeNow;
       g_pProcessStats->uLoopCounter++;
       g_pProcessStats->uLoopSubStep = 0;
-
-      if ( g_TimeNow - uLastLoopTime >= 10 )
+      u32 uMaxLoopTime = 15;
+      if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->video_params.iVideoFPS > 0) )
+         uMaxLoopTime = 800 / g_pCurrentModel->video_params.iVideoFPS;
+      if ( g_TimeNow - uLastLoopTime >= uMaxLoopTime )
       {
          iLoopTimeErrorsCount++;
-         log_softerror_and_alarm("Main loop took too long: %u ms (=%u + %u + %u) cnt2: %u, cnt3: %u",
+         log_softerror_and_alarm("Main loop took too long (max %u ms, fps: %d): %u ms (=%u + %u + %u) cnt2: %u, cnt3: %u",
+            uMaxLoopTime, (g_pCurrentModel!= NULL)?g_pCurrentModel->video_params.iVideoFPS:-1,
             g_TimeNow - uLastLoopTime,
             g_pProcessStats->uLoopTimer1 - uLastLoopTime,
             g_pProcessStats->uLoopTimer2 - g_pProcessStats->uLoopTimer1,
             g_TimeNow - g_pProcessStats->uLoopTimer2,
             g_pProcessStats->uLoopCounter2, g_pProcessStats->uLoopCounter3);
       }
-      if ( g_TimeNow - uLastLoopTime >= 70 )
-      {
+      g_uLoopCounter++;
+
+      if ( (g_TimeNow - uLastLoopTime >= 70) && (! g_bSearching) )
          discardRetransmissionsInfoAndBuffersOnLengthyOp();
-      }
   
       uLastLoopTime = g_TimeNow;
+
+      if ( g_bSearching )
+      {
+         static u32 s_uTimeLastSearchAliveLog = 0;
+         if ( g_TimeNow > s_uTimeLastSearchAliveLog + 500 )
+         {
+            s_uTimeLastSearchAliveLog = g_TimeNow;
+            log_line("Still in search mode, all active...");
+         }
+      }
       
       if ( g_bSearching )
          _main_loop_searching();
@@ -1652,6 +1090,7 @@ int main(int argc, char *argv[])
          _main_loop_simple(false);
       else
          _main_loop_simple(false);
+
       if ( g_bQuit )
          break;
    }
@@ -1662,6 +1101,7 @@ int main(int argc, char *argv[])
 
    log_line("Stopping...");
 
+   packet_utils_uninit();
    radio_rx_stop_rx_thread();
    radio_link_cleanup();
    unload_CorePlugins();
@@ -1671,7 +1111,7 @@ int main(int argc, char *argv[])
       uninit_processing_audio();
 
    controller_rt_info_close(g_pSMControllerRTInfo);
-   vehicle_rt_info_close(g_pSMVehicleRTInfo);
+   controller_debug_video_rt_info_close(g_pSMControllerDebugVideoRTInfo);
    
    shared_mem_radio_stats_rx_hist_close(g_pSM_HistoryRxStats);
    shared_mem_process_stats_close(SHARED_MEM_WATCHDOG_ROUTER_RX, g_pProcessStats);
@@ -1679,13 +1119,12 @@ int main(int argc, char *argv[])
    shared_mem_video_stream_stats_rx_processors_close(g_pSM_VideoDecodeStats);
    shared_mem_radio_rx_queue_info_close(g_pSM_RadioRxQueueInfo);
    g_pSM_RadioRxQueueInfo = NULL;
-   // To fix shared_mem_video_link_stats_close(g_pSM_VideoLinkStats);
-   shared_mem_video_link_graphs_close(g_pSM_VideoLinkGraphs);
    shared_mem_radio_stats_close(g_pSM_RadioStats);
    shared_mem_video_frames_stats_close(g_pSM_VideoFramesStatsOutput);
    //shared_mem_video_frames_stats_radio_in_close(g_pSM_VideoInfoStatsRadioIn);
    shared_mem_router_vehicles_runtime_info_close(g_pSM_RouterVehiclesRuntimeInfo);
 
+   shared_mem_ctrl_ping_stats_info_close(g_pSMDbgPingStats);
    radio_links_close_rxtx_radio_interfaces(); 
   
    ruby_close_ipc_channel(g_fIPCFromCentral);
@@ -1697,6 +1136,7 @@ int main(int argc, char *argv[])
 
    if ( NULL != g_pCurrentModel )
    if ( g_pCurrentModel->relay_params.isRelayEnabledOnRadioLinkId >= 0 )
+   if ( ! (g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_PERMANENT_REMOTE) )
    {
       g_pCurrentModel->relay_params.uCurrentRelayMode = RELAY_MODE_MAIN | RELAY_MODE_IS_RELAY_NODE;
       saveControllerModel(g_pCurrentModel);
@@ -1754,60 +1194,71 @@ void video_processors_cleanup()
 
 static u32 uMaxLoopTime = DEFAULT_MAX_LOOP_TIME_MILISECONDS;
 
-void _main_loop_try_recevive_video_data()
+void _main_loop_try_recevive_data()
 {
    g_pProcessStats->uLoopCounter2 = g_pProcessStats->uLoopCounter3 = 0;
 
-   for( int i=0; i<MAX_VIDEO_PROCESSORS; i++ )
-   {
-      if( NULL != g_pVideoProcessorRxList[i] )
-         g_pVideoProcessorRxList[i]->m_pVideoRxBuffer->resetFrameEndDetectedFlag();
-   }
-
    u32 uTimeStart = g_TimeNow;
-   u32 uMaxWait = 2;
-   u32 uReadTimeoutMicros = 600;
-   int iMaxCountToConsume = 5;
    int iTotalConsumedHighPriority = 0;
    int iTotalConsumedRegPriority = 0;
    int iTotalConsumeLoops = 0;
+   int iMaxCountToConsumeOnce = 100;
+   u32 uReadTimeoutMicrosVideo = 200;
+   u32 uReadTimeoutMicrosHigh = 200;
 
-   while ( (g_TimeNow < uTimeStart + uMaxWait) && ((iTotalConsumedRegPriority+iTotalConsumedHighPriority) < iMaxCountToConsume) && (!g_bQuit) )
+   do
    {
+      s_uTimeLastCheckForVideoPackets = g_TimeNow;
       iTotalConsumeLoops++;
 
       //---------------------------------------------
       // Check and process first:
       //  Retransmissions received and pings received and other high priority radio messages
-      int iConsumedHigh = _try_read_consume_rx_packets(true, iMaxCountToConsume, 0);
-      int iConsumedReg = _try_read_consume_rx_packets(false, iMaxCountToConsume, uReadTimeoutMicros);
+      //  Video data and other data
+      int iConsumedHigh = _try_read_consume_rx_packets(true, iMaxCountToConsumeOnce, uReadTimeoutMicrosHigh);
+      int iConsumedReg = _try_read_consume_rx_packets(false, iMaxCountToConsumeOnce, uReadTimeoutMicrosVideo);
       iTotalConsumedHighPriority += iConsumedHigh;
       iTotalConsumedRegPriority += iConsumedReg;
-
       g_pProcessStats->uLoopCounter2 += iConsumedHigh;
       g_pProcessStats->uLoopCounter3 += iConsumedReg;
-      
-      // No more received regular data (video packets)
-      if ( (0 == iConsumedReg) && (iTotalConsumedRegPriority > 0) )
+      if ( (0 == iConsumedReg) && (0 == iConsumedHigh) )
          break;
 
-      g_TimeNow = get_current_timestamp_ms();
-   }
+      if ( 0 != iConsumedReg )
+      {
+         uReadTimeoutMicrosVideo = 1000;
+         uReadTimeoutMicrosHigh = 0;
+      }
+      else
+      {
+         uReadTimeoutMicrosVideo = 0;
+         uReadTimeoutMicrosHigh = 500;
+      }
+   } while ( (!g_bQuit) && (g_TimeNow < uTimeStart+15) );
+
+   _router_update_frame_eof();
 
    static int s_iCountConsumePacketsLogError = 0;
-   if ( g_TimeNow > uTimeStart + uMaxWait + 5 )
+   if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->video_params.iVideoFPS > 0) )
+   if ( g_TimeNow >= uTimeStart + 1000/g_pCurrentModel->video_params.iVideoFPS )
    {
       //if ( 0 == (s_iCountConsumePacketsLogError % 10) )
-         log_softerror_and_alarm("Consuming %d video packets and %d high priority packets in %d consume loops took too long: %u ms", iTotalConsumedRegPriority, iTotalConsumedHighPriority, iTotalConsumeLoops, g_TimeNow - uTimeStart);
+         log_softerror_and_alarm("Reading and consuming %d video/reg packets and %d high priority packets in %d consume loops took too long (fps %d): %u ms", iTotalConsumedRegPriority, iTotalConsumedHighPriority, iTotalConsumeLoops, g_pCurrentModel->video_params.iVideoFPS, g_TimeNow - uTimeStart);
       s_iCountConsumePacketsLogError++;
    }
+
 }
 
 void _main_loop_searching()
 {
-   _main_loop_try_recevive_video_data();
+   g_pProcessStats->uLoopTimer1 = g_TimeNow = get_current_timestamp_ms();
+
+   _main_loop_try_recevive_data();
+
+   g_TimeNow = g_pProcessStats->uLoopTimer2 = get_current_timestamp_ms();
 
    router_periodic_loop();
+
    _read_ipc_pipes(g_TimeNow);
    _consume_ipc_messages();
 
@@ -1826,17 +1277,20 @@ void _main_loop_searching()
 
 void _main_loop_simple(bool bDoBasicTxSync)
 {
+   g_TimeNow = get_current_timestamp_ms();
+
    u32 tTime0 = g_TimeNow;
 
-   _main_loop_try_recevive_video_data();
-   
-   g_TimeNow = g_pProcessStats->uLoopTimer1 = get_current_timestamp_ms();
+   _main_loop_try_recevive_data();
+
+   g_TimeNow = get_current_timestamp_ms();
+   g_pProcessStats->uLoopTimer1 = g_TimeNow;
    u32 tTime1 = g_TimeNow;
 
    for( int i=0; i<MAX_VIDEO_PROCESSORS; i++ )
    {
       if ( g_pVideoProcessorRxList[i] != NULL )
-         g_pVideoProcessorRxList[i]->periodicLoop(g_TimeNow, false);
+         g_pVideoProcessorRxList[i]->periodicLoopProcessor(g_TimeNow, false);
    }
    
    if ( controller_rt_info_will_advance_index(&g_SMControllerRTInfo, g_TimeNow) )
@@ -1844,13 +1298,13 @@ void _main_loop_simple(bool bDoBasicTxSync)
 
    router_periodic_loop();
 
-   _read_ipc_pipes(tTime1);
+   _read_ipc_pipes(g_TimeNow);
 
    _consume_ipc_messages();
 
    if ( (NULL != g_pCurrentModel) && g_pCurrentModel->hasCamera() )
       rx_video_output_periodic_loop();
-
+   
    g_TimeNow = g_pProcessStats->uLoopTimer2 = get_current_timestamp_ms();
    u32 tTime2 = g_TimeNow;
 
@@ -1858,54 +1312,17 @@ void _main_loop_simple(bool bDoBasicTxSync)
    {
       for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
       {
-         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-         g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iCountAntennas = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount;
-         for( int k=0; k<pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount; k++ )
-         {
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].uLastTimeCapture[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.uLastTimeCapture[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmLast[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmLast[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmMin[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMin[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmMax[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMax[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmAvg[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmAvg[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmChangeSpeedMin[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmChangeSpeedMin[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmChangeSpeedMax[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmChangeSpeedMax[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmNoiseLast[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmNoiseLast[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmNoiseMin[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmNoiseMin[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmNoiseMax[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmNoiseMax[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmNoiseAvg[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmNoiseAvg[k];
-         }
-         radio_stats_reset_signal_info_for_card(&g_SM_RadioStats, i);
+         memcpy((u8*)&(g_SMControllerRTInfo.radioInterfacesSignalInfoVideo[g_SMControllerRTInfo.iCurrentIndex][i]), (u8*)&(g_SM_RadioStats.radio_interfaces[i].signalInfo.signalInfoVideo), sizeof(type_runtime_radio_rx_signal_info));
+         memcpy((u8*)&(g_SMControllerRTInfo.radioInterfacesSignalInfoData[g_SMControllerRTInfo.iCurrentIndex][i]), (u8*)&(g_SM_RadioStats.radio_interfaces[i].signalInfo.signalInfoData), sizeof(type_runtime_radio_rx_signal_info));
       }
+      radio_rx_reset_signal_info();
+      radio_stats_reset_rx_signal_info(&g_SM_RadioStats);
    }
 
    g_TimeNow = get_current_timestamp_ms();
    u32 tTime3 = g_TimeNow;
 
-   bool bSendNow = false;
-
-   if ( (!bDoBasicTxSync) || g_bUpdateInProgress || (!g_pCurrentModel->hasCamera()) )
-      bSendNow = true;
-   if ( g_TimeNow > s_QueueRadioPacketsRegPrio.timeFirstPacket + 55 )
-      bSendNow = true;
-
-   if ( ! bSendNow )
-   if ( bDoBasicTxSync )
-   {
-      ProcessorRxVideo* pProcessorRxVideo = ProcessorRxVideo::getVideoProcessorForVehicleId(g_pCurrentModel->uVehicleId, 0);
-      if ( (NULL != pProcessorRxVideo) && (NULL != pProcessorRxVideo->m_pVideoRxBuffer) )
-      {
-         if ( pProcessorRxVideo->m_pVideoRxBuffer->isFrameEndDetected() )
-             bSendNow = true;
-         if ( g_TimeNow >= pProcessorRxVideo->getLastestVideoPacketReceiveTime() + DEFAULT_VIDEO_END_FRAME_DETECTION_TIMEOUT )
-             bSendNow = true;
-      }
-   }
-
-   if ( bSendNow )
-   {
-      _process_and_send_packets_individually(&s_QueueRadioPacketsHighPrio);
-      _process_and_send_packets_individually(&s_QueueRadioPacketsRegPrio);
-   }
+   _check_send_packets(bDoBasicTxSync);
 
    g_TimeNow = get_current_timestamp_ms();
    u32 tTime4 = g_TimeNow;
@@ -1970,9 +1387,10 @@ void _main_loop_simple(bool bDoBasicTxSync)
 
 void _main_loop_adv_sync()
 {
+   g_TimeNow = get_current_timestamp_ms();
    u32 tTime0 = g_TimeNow;
 
-   _main_loop_try_recevive_video_data();
+   _main_loop_try_recevive_data();
 
    // To fix
    /*
@@ -1988,6 +1406,7 @@ void _main_loop_adv_sync()
    }
    */
 
+   g_TimeNow = get_current_timestamp_ms();
    bool bAnyVehicleMustSyncNow = false;
 
    for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
@@ -1996,7 +1415,6 @@ void _main_loop_adv_sync()
          continue;
       if ( ! g_State.vehiclesRuntimeInfo[i].bIsPairingDone )
          continue;
-      type_global_state_vehicle_runtime_info* pRuntimeInfo = &(g_State.vehiclesRuntimeInfo[i]);
       Model* pModel = findModelWithId(g_State.vehiclesRuntimeInfo[i].uVehicleId, 28);
 
       if ( (NULL == pModel) || pModel->isVideoLinkFixedOneWay() || (! pModel->hasCamera()) )
@@ -2006,11 +1424,9 @@ void _main_loop_adv_sync()
       if ( (NULL != pProcessorRxVideo) && (NULL != pProcessorRxVideo->m_pVideoRxBuffer) )
       {
          bool bSyncNow = false;
-         if ( pProcessorRxVideo->m_pVideoRxBuffer->isFrameEndDetected() )
+         if ( g_TimeNow >= pProcessorRxVideo->getLastestVideoPacketReceiveTime() + ((((u32)pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileFlags) & VIDEO_PROFILE_FLAG_MASK_RETRANSMISSIONS_GUARD_MASK)>>8) )
              bSyncNow = true;
-         if ( g_TimeNow >= pProcessorRxVideo->getLastestVideoPacketReceiveTime() + DEFAULT_VIDEO_END_FRAME_DETECTION_TIMEOUT )
-             bSyncNow = true;
-         pProcessorRxVideo->periodicLoop(g_TimeNow, bSyncNow);
+         pProcessorRxVideo->periodicLoopProcessor(g_TimeNow, bSyncNow);
 
          if ( bSyncNow )
             bAnyVehicleMustSyncNow = true;
@@ -2037,52 +1453,17 @@ void _main_loop_adv_sync()
    {
       for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
       {
-         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
-         g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iCountAntennas = pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount;
-         for( int k=0; k<pRadioHWInfo->runtimeInterfaceInfoRx.radioHwRxInfo.nAntennaCount; k++ )
-         {
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmLast[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmLast[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmMin[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMin[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmMax[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMax[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmAvg[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmAvg[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmChangeSpeedMin[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmChangeSpeedMin[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmChangeSpeedMax[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmChangeSpeedMax[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmNoiseLast[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmNoiseLast[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmNoiseMin[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmNoiseMin[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmNoiseMax[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmNoiseMax[k];
-            g_SMControllerRTInfo.radioInterfacesDbm[g_SMControllerRTInfo.iCurrentIndex][i].iDbmNoiseAvg[k] = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmNoiseAvg[k];
-         }
-         radio_stats_reset_signal_info_for_card(&g_SM_RadioStats, i);
+         memcpy((u8*)&(g_SMControllerRTInfo.radioInterfacesSignalInfoVideo[g_SMControllerRTInfo.iCurrentIndex][i]), (u8*)&(g_SM_RadioStats.radio_interfaces[i].signalInfo.signalInfoVideo), sizeof(type_runtime_radio_rx_signal_info));
+         memcpy((u8*)&(g_SMControllerRTInfo.radioInterfacesSignalInfoData[g_SMControllerRTInfo.iCurrentIndex][i]), (u8*)&(g_SM_RadioStats.radio_interfaces[i].signalInfo.signalInfoData), sizeof(type_runtime_radio_rx_signal_info));
       }
+      radio_rx_reset_signal_info();
+      radio_stats_reset_rx_signal_info(&g_SM_RadioStats);
    }
 
    g_TimeNow = get_current_timestamp_ms();
    u32 tTime3 = g_TimeNow;
 
-   bool bSendNow = false;
-
-   if ( g_bUpdateInProgress || (!g_pCurrentModel->hasCamera()) )
-      bSendNow = true;
-   if ( g_TimeNow > s_QueueRadioPacketsRegPrio.timeFirstPacket + 55 )
-      bSendNow = true;
-
-   if ( ! bSendNow )
-   {
-      ProcessorRxVideo* pProcessorRxVideo = ProcessorRxVideo::getVideoProcessorForVehicleId(g_pCurrentModel->uVehicleId, 0);
-      if ( (NULL != pProcessorRxVideo) && (NULL != pProcessorRxVideo->m_pVideoRxBuffer) )
-      {
-         if ( pProcessorRxVideo->m_pVideoRxBuffer->isFrameEndDetected() )
-             bSendNow = true;
-         if ( g_TimeNow >= pProcessorRxVideo->getLastestVideoPacketReceiveTime() + 5 )
-             bSendNow = true;
-      }
-   }
-
-   if ( bSendNow )
-   {
-      _process_and_send_packets_individually(&s_QueueRadioPacketsHighPrio);
-      _process_and_send_packets_individually(&s_QueueRadioPacketsRegPrio);
-   }
+   _check_send_packets(true);
 
    g_TimeNow = get_current_timestamp_ms();
    u32 tTime4 = g_TimeNow;

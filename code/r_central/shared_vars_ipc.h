@@ -20,11 +20,13 @@ extern shared_mem_process_stats* g_pProcessStatsRC;
 extern shared_mem_process_stats g_ProcessStatsRouter;
 extern shared_mem_process_stats g_ProcessStatsTelemetry;
 extern shared_mem_process_stats g_ProcessStatsRC;
+extern shared_mem_ctrl_ping_stats* g_pSMDbgPingStats;
+extern shared_mem_ctrl_ping_stats g_SMDbgPingStats;
 
 extern controller_runtime_info g_SMControllerRTInfo;
 extern controller_runtime_info* g_pSMControllerRTInfo;
-extern vehicle_runtime_info g_SMVehicleRTInfo;
-extern vehicle_runtime_info* g_pSMVehicleRTInfo;
+extern controller_debug_video_runtime_info g_SMControllerDebugVideoRTInfo;
+extern controller_debug_video_runtime_info* g_pSMControllerDebugVideoRTInfo;
 
 extern t_packet_header_rc_info_downstream* g_pSM_DownstreamInfoRC; // RC Info received on ground from vehicle
 extern t_packet_header_rc_info_downstream g_SM_DownstreamInfoRC;
@@ -51,13 +53,6 @@ extern shared_mem_video_stream_stats_rx_processors g_SM_VideoDecodeStats;
 
 extern shared_mem_radio_rx_queue_info* g_pSM_RadioRxQueueInfo;
 extern shared_mem_radio_rx_queue_info g_SM_RadioRxQueueInfo;
-
-// To fix
-//extern shared_mem_video_link_stats_and_overwrites* g_pSM_VideoLinkStats;
-//extern shared_mem_video_link_stats_and_overwrites g_SM_VideoLinkStats;
-
-extern shared_mem_video_link_graphs* g_pSM_VideoLinkGraphs;
-extern shared_mem_video_link_graphs g_SM_VideoLinkGraphs;
 
 extern shared_mem_dev_video_bitrate_history g_SM_DevVideoBitrateHistory;
 

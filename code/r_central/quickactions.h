@@ -4,8 +4,10 @@ bool quickActionCheckVehicle(const char* szText);
 
 void executeQuickActionTakePicture();
 void executeQuickActionRecord();
-void executeQuickActionSwitchVideoProfile();
 void executeQuickActionCycleOSD();
 void executeQuickActionRelaySwitch();
 void executeQuickActionSwitchFavoriteVehicle();
 void executeQuickActionSwitchPITMode();
+void executeQuickActionToggleRCEnabled();
+void executeQuickActionCameraProfileSwitch();
+void executeQuickActionOSDSize();

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -161,29 +161,18 @@ void alarms_to_string(u32 uAlarms, u32 uFlags1, u32 uFlags2, char* szOutput)
       u32 uTimeSpike = (uFlags1 >> 16);
       sprintf(szBuff, ", Repeated overflow: %u ms, Spike overflow: %u ms", uTimeRepeated, uTimeSpike);
    }
-   
-   else if ( ! (uAlarms & ALARM_ID_GENERIC_STATUS_UPDATE) )
+   else if ( (uAlarms & ALARM_ID_LINK_TO_CONTROLLER_RECOVERED) || (uAlarms & ALARM_ID_LINK_TO_CONTROLLER_LOST) )
    {
-      char szFlags1[128];
-      szFlags1[0] = 0;
-      switch ( uFlags1 )
-      {
-         case ALARM_ID_GENERIC_TYPE_UNKNOWN_VIDEO: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_UNKNOWN_VIDEO"); break;
-         case ALARM_ID_GENERIC_TYPE_RECEIVED_DEPRECATED_MESSAGE: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_RECEIVED_DEPRECATED_MESSAGE"); break;
-         case ALARM_ID_GENERIC_TYPE_SWAP_RADIO_INTERFACES_NOT_POSSIBLE : strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_SWAP_RADIO_INTERFACES_NOT_POSSIBLE"); break;
-         case ALARM_ID_GENERIC_TYPE_SWAP_RADIO_INTERFACES_FAILED: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_SWAP_RADIO_INTERFACES_FAILED"); break;
-         case ALARM_ID_GENERIC_TYPE_SWAPPED_RADIO_INTERFACES: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_SWAPPED_RADIO_INTERFACES"); break;
-         case ALARM_ID_GENERIC_TYPE_RELAYED_TELEMETRY_LOST: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_RELAYED_TELEMETRY_LOST"); break;
-         case ALARM_ID_GENERIC_TYPE_RELAYED_TELEMETRY_RECOVERED: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_RELAYED_TELEMETRY_RECOVERED"); break;
-         case ALARM_ID_GENERIC_TYPE_ADAPTIVE_VIDEO_LEVEL_MISSMATCH: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_ADAPTIVE_VIDEO_LEVEL_MISSMATCH"); break;
-         case ALARM_ID_GENERIC_TYPE_WRONG_OPENIPC_KEY: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_WRONG_OPENIPC_KEY"); break;
-         case ALARM_ID_GENERIC_TYPE_MISSED_TELEMETRY_DATA: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_MISSED_TELEMETRY_DATA"); break;
-         default: sprintf(szFlags1, "Unknown (%u)", uFlags1);
-
-      }
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), ", Flags1: %s, Flags2: %u", szFlags1, uFlags2);
+      if ( uFlags1 && uFlags2 )
+         strcpy(szBuff, ", Impacted high & low speed radio links");
+      else if ( uFlags1 )
+         strcpy(szBuff, ", Impacted high speed radio links");
+      else if ( uFlags2 )
+         strcpy(szBuff, ", Impacted low speed radio links");
+      else
+         strcpy(szBuff, ", Impacted: unknown radio links");
    }
-   else
+   else if ( uAlarms & ALARM_ID_GENERIC_STATUS_UPDATE )
    {
       char szFlags1[128];
       szFlags1[0] = 0;
@@ -196,6 +185,39 @@ void alarms_to_string(u32 uAlarms, u32 uFlags1, u32 uFlags2, char* szOutput)
       else if ( uFlags1 == ALARM_FLAG_GENERIC_STATUS_SENT_PAIRING_REQUEST ) strcpy(szFlags1, "ALARM_FLAG_GENERIC_STATUS_SENT_PAIRING_REQUEST");
       else
          sprintf(szFlags1, "Unknown: %u", uFlags1);
+      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), ", Flags1: %s, Flags2: %u", szFlags1, uFlags2);
+   }
+   else if ( uAlarms & ALARM_ID_VEHICLE_VIDEO_CAPTURE_RESTARTED )
+   {
+      char szFlags1[128];
+      szFlags1[0] = 0;
+      if ( uFlags1 == ALARM_FLAG_VIDEO_CAPTURE_MALFUNCTION )
+         strcpy(szFlags1, "ALARM_FLAG_VIDEO_CAPTURE_MALFUNCTION");
+      else if ( uFlags1 == ALARM_FLAG_VIDEO_CAPTURE_PARAMETERS_UPDATE )
+         strcpy(szFlags1, "ALARM_FLAG_VIDEO_CAPTURE_PARAMETERS_UPDATE");
+      else
+         sprintf(szFlags1, "Unknown: %u", uFlags1);
+      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), ", Flags1: %s, Flags2: %u", szFlags1, uFlags2);
+   }
+   else
+   {
+      char szFlags1[128];
+      szFlags1[0] = 0;
+      switch ( uFlags1 )
+      {
+         case ALARM_ID_GENERIC_TYPE_UNKNOWN_VIDEO: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_UNKNOWN_VIDEO"); break;
+         case ALARM_ID_GENERIC_TYPE_RECEIVED_DEPRECATED_MESSAGE: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_RECEIVED_DEPRECATED_MESSAGE"); break;
+         case ALARM_ID_GENERIC_TYPE_SWAP_RADIO_INTERFACES_NOT_POSSIBLE : strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_SWAP_RADIO_INTERFACES_NOT_POSSIBLE"); break;
+         case ALARM_ID_GENERIC_TYPE_SWAP_RADIO_INTERFACES_FAILED: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_SWAP_RADIO_INTERFACES_FAILED"); break;
+         case ALARM_ID_GENERIC_TYPE_SWAPPED_RADIO_INTERFACES: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_SWAPPED_RADIO_INTERFACES"); break;
+         case ALARM_ID_GENERIC_TYPE_RELAYED_TELEMETRY_LOST: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_RELAYED_TELEMETRY_LOST"); break;
+         case ALARM_ID_GENERIC_TYPE_RELAYED_TELEMETRY_RECOVERED: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_RELAYED_TELEMETRY_RECOVERED"); break;
+         case ALARM_ID_GENERIC_TYPE_WRONG_OPENIPC_KEY: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_WRONG_OPENIPC_KEY"); break;
+         case ALARM_ID_GENERIC_TYPE_MISSED_TELEMETRY_DATA: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_MISSED_TELEMETRY_DATA"); break;
+         case ALARM_ID_GENERIC_TYPE_UNKNOWN_VEHICLE: strcpy(szFlags1, "ALARM_ID_GENERIC_TYPE_UNKNOWN_VEHICLE"); break;
+         default: sprintf(szFlags1, "Unknown (%u)", uFlags1);
+
+      }
       snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), ", Flags1: %s, Flags2: %u", szFlags1, uFlags2);
    }
    strcat(szOutput, szBuff);

@@ -2,6 +2,7 @@
 #include "../base/config.h"
 #include "../base/hardware_radio.h"
 #include "shared_vars.h"
+#include "osd/osd_common.h"
 #include <math.h>
 
 float g_fOSDDbm[MAX_RADIO_INTERFACES];
@@ -21,6 +22,8 @@ void shared_vars_osd_reset_before_pairing()
 
 void shared_vars_osd_update()
 {
+   Model* pActiveModel = osd_get_current_data_source_vehicle_model();
+
    for ( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
    {
       radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
@@ -28,57 +31,34 @@ void shared_vars_osd_update()
          continue;
       if ( ! pRadioHWInfo->isHighCapacityInterface )
          continue;
-
-      int idbmMaxForRadioCard = -1000;
-      int iSNRMaxForRadioCard = -1000;
-      u32 uTimeCapture = 0;
-
-      /*
-      for( int k=0; k<g_SM_RadioStats.radio_interfaces[i].signalInfo.iAntennaCount; k++ )
+      
+      int iRadioDBM = g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxDBMVideoForInterface;
+      int iSNR = g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxSNRVideoForInterface;
+      u32 uTimeUpdate = g_SMControllerRTInfo.radioInterfacesSignals[i].uLastUpdateTimeVideo;
+      
+      if ( (NULL == pActiveModel) || (! pActiveModel->hasCamera()) )
       {
-         if ( g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMax[k] < 1000 )
-         if ( g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMax[k] > idbmMaxForRadioCard )
-            idbmMaxForRadioCard = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMax[k];
+         iRadioDBM = g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxDBMDataForInterface;
+         iSNR = g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxSNRDataForInterface;
+         uTimeUpdate = g_SMControllerRTInfo.radioInterfacesSignals[i].uLastUpdateTimeData;
       }
-      */
 
-      int iIndex = g_SMControllerRTInfo.iCurrentIndex;
-      iIndex--;
-      if ( iIndex < 0 )
-         iIndex = SYSTEM_RT_INFO_INTERVALS-1;
-      for( int iAnt=0; iAnt<g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iCountAntennas; iAnt++ )
+      if ( (iRadioDBM > -500) && (iRadioDBM < 500) )
       {
-         if ( g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt] < 500 )
-         if ( g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt] > -120 )
-         if ( g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt] > idbmMaxForRadioCard )
-         {
-            idbmMaxForRadioCard = g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt];
-            uTimeCapture = g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].uLastTimeCapture[iAnt];
-            int iSNR = g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt] - g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmNoiseMin[iAnt];
-            if ( iSNR < 500 )
-            if ( iSNR > -120 )
-               iSNRMaxForRadioCard = iSNR;
-         }
-      }
-     
-      if ( idbmMaxForRadioCard > -120 )
-      {
-         g_uOSDDbmLastCaptureTime[i] = uTimeCapture;
-         if ( fabs(g_fOSDDbm[i] - (float)idbmMaxForRadioCard) > 10.0 )
-            g_fOSDDbm[i] = 0.6 * g_fOSDDbm[i] + 0.4 * (float)idbmMaxForRadioCard;
+         if ( 0 == g_uOSDDbmLastCaptureTime[i] )
+            g_fOSDDbm[i] = iRadioDBM;
          else
-            g_fOSDDbm[i] = 0.5 * g_fOSDDbm[i] + 0.5 * (float)idbmMaxForRadioCard;
+            g_fOSDDbm[i] = (g_fOSDDbm[i]*5 + iRadioDBM)/6;
       }
-      if ( iSNRMaxForRadioCard > -120 )
+
+      if ( (iSNR > -500) && (iSNR < 500) )
       {
-         if ( iSNRMaxForRadioCard < g_fOSDSNR[i] - 10 )
-            g_fOSDSNR[i] = (float)iSNRMaxForRadioCard;
-         else if ( iSNRMaxForRadioCard < g_fOSDSNR[i] - 5 )
-            g_fOSDSNR[i] = 0.4 * g_fOSDSNR[i] + 0.6 * (float)iSNRMaxForRadioCard;
-         if ( fabs(g_fOSDSNR[i] - (float)iSNRMaxForRadioCard) > 10.0 )
-            g_fOSDSNR[i] = 0.6 * g_fOSDSNR[i] + 0.4 * (float)iSNRMaxForRadioCard;
+         if ( 0 == g_uOSDDbmLastCaptureTime[i] )
+            g_fOSDSNR[i] = iSNR;
          else
-            g_fOSDSNR[i] = 0.5 * g_fOSDSNR[i] + 0.5 * (float)iSNRMaxForRadioCard;
+            g_fOSDSNR[i] = (g_fOSDSNR[i]*5 + iSNR)/6;
       }
+
+      g_uOSDDbmLastCaptureTime[i] = uTimeUpdate;
    }
 }

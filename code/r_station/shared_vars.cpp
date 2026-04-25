@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -45,7 +45,6 @@ bool g_bSearching = false;
 u32  g_uSearchFrequency = 0;
 u32  g_uAcceptedFirmwareType = MODEL_FIRMWARE_TYPE_RUBY;
 bool g_bUpdateInProgress = false;
-bool g_bNegociatingRadioLinks = false;
 
 // Router
 
@@ -53,8 +52,8 @@ ProcessorRxVideo* g_pVideoProcessorRxList[MAX_VIDEO_PROCESSORS];
 
 controller_runtime_info g_SMControllerRTInfo;
 controller_runtime_info* g_pSMControllerRTInfo = NULL;
-vehicle_runtime_info g_SMVehicleRTInfo;
-vehicle_runtime_info* g_pSMVehicleRTInfo = NULL;
+controller_debug_video_runtime_info g_SMControllerDebugVideoRTInfo;
+controller_debug_video_runtime_info* g_pSMControllerDebugVideoRTInfo = NULL;
 
 shared_mem_radio_stats_rx_hist* g_pSM_HistoryRxStats = NULL;
 shared_mem_radio_stats_rx_hist g_SM_HistoryRxStats;
@@ -76,11 +75,11 @@ shared_mem_radio_rx_queue_info g_SM_RadioRxQueueInfo;
 shared_mem_radio_stats g_SM_RadioStats;
 shared_mem_radio_stats* g_pSM_RadioStats = NULL;
 
-// To fix
-//shared_mem_video_link_stats_and_overwrites* g_pSM_VideoLinkStats = NULL;
-shared_mem_video_link_graphs* g_pSM_VideoLinkGraphs = NULL;
 shared_mem_process_stats* g_pProcessStats = NULL;
 shared_mem_process_stats* g_pProcessStatsCentral = NULL;
+
+shared_mem_ctrl_ping_stats* g_pSMDbgPingStats = NULL;
+shared_mem_ctrl_ping_stats g_SMDbgPingStats;
 
 int g_fIPCFromCentral = -1;
 int g_fIPCToCentral = -1;
@@ -92,6 +91,7 @@ int g_fIPCFromRC = -1;
 t_sik_radio_state g_SiKRadiosState;
 
 bool g_bFirstModelPairingDone = false;
+bool g_bOSDPluginsNeedTelemetryStreams = false;
 
 u32 g_uLastInterceptedCommandCounterToSetRadioFlags = MAX_U32;
 u32 g_uLastRadioLinkIndexForSentSetRadioLinkFlagsCommand = MAX_U32;

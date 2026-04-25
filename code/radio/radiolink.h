@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -61,19 +61,15 @@ extern "C" {
 void radio_init_link_structures();
 void radio_link_cleanup();
 void radio_enable_crc_gen(int enable);
-void radio_set_debug_flag();
+void radio_set_debug_flag(int iDebugFlag);
 void radio_set_link_clock_delta(int iVehicleBehindMilisec);
 int  radio_get_link_clock_delta();
 void radio_set_use_pcap_for_tx(int iEnablePCAPTx);
 void radio_set_bypass_socket_buffers(int iBypass);
-int  radio_set_out_datarate(int rate_bps); // positive: classic in bps, negative: MCS; returns 1 if it was changed
+int  radio_set_out_datarate(int rate_bps, u8 uPacketType, u32 uTimeNow); // positive: classic in bps, negative: MCS; returns 1 if it was changed
 u32  radio_get_current_frames_flags();
 u32  radio_get_current_frames_flags_datarate();
-void radio_set_frames_flags(u32 frameFlags); // frame type, MSC Flags
-int  radio_has_temporary_frames_flags();
-u32  radio_get_temporary_frames_flags();
-void radio_set_temporary_frames_flags(u32 uFrameFlags);
-void radio_remove_temporary_frames_flags();
+void radio_set_frames_flags(u32 frameFlags, u32 uTimeNow); // frame type, MSC Flags
 u32 radio_get_received_frames_type();
 
 void radio_reset_packets_default_frequencies(int iRCEnabled);
@@ -90,7 +86,7 @@ void radio_close_interfaces_for_read();
 void radio_close_interface_for_read(int interfaceIndex);
 void radio_close_interface_for_write(int interfaceIndex);
 
-u8* radio_process_wlan_data_in(int interfaceNumber, int* outPacketLength, u32 uTimeNow);
+u8* radio_process_wlan_data_in(int interfaceNumber, int* piOutPacketLength, int* piOutRxDatarate, u32 uTimeNow);
 int radio_get_last_read_error_code();
 
 // returns 0 for failure, total length of packet for success

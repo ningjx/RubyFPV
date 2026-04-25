@@ -1,6 +1,7 @@
 #pragma once
 #include "base.h"
 #include "config.h"
+#include "hardware_radio.h"
 
 #define MAX_HISTORY_RADIO_STATS_RECV_SLICES 50
 #define MAX_RADIO_STATS_INTERFACE_RX_HISTORY_SLICES 100
@@ -52,27 +53,11 @@ typedef struct
 
 typedef struct 
 {
-   int iDbmLast[MAX_RADIO_ANTENNAS];
-   int iDbmMin[MAX_RADIO_ANTENNAS];
-   int iDbmMax[MAX_RADIO_ANTENNAS];
-   int iDbmAvg[MAX_RADIO_ANTENNAS];
-   int iDbmChangeSpeedMax[MAX_RADIO_ANTENNAS];
-   int iDbmChangeSpeedMin[MAX_RADIO_ANTENNAS];
-   int iDbmNoiseLast[MAX_RADIO_ANTENNAS];
-   int iDbmNoiseMin[MAX_RADIO_ANTENNAS];
-   int iDbmNoiseMax[MAX_RADIO_ANTENNAS];
-   int iDbmNoiseAvg[MAX_RADIO_ANTENNAS];
-   u32 uLastTimeCapture[MAX_RADIO_ANTENNAS];
-} ALIGN_STRUCT_SPEC_INFO shared_mem_radio_stats_radio_interface_rx_signal;
-
-typedef struct 
-{
    int iAntennaCount;
-   shared_mem_radio_stats_radio_interface_rx_signal dbmValuesAll;
-   shared_mem_radio_stats_radio_interface_rx_signal dbmValuesVideo;
-   shared_mem_radio_stats_radio_interface_rx_signal dbmValuesData;
-   int iDbmBest;
-   int iDbmNoiseLowest;
+   type_runtime_radio_rx_signal_info signalInfoAll;
+   type_runtime_radio_rx_signal_info signalInfoVideo;
+   type_runtime_radio_rx_signal_info signalInfoData;
+   
 } ALIGN_STRUCT_SPEC_INFO shared_mem_radio_stats_radio_interface_rx_signal_all;
 
 typedef struct

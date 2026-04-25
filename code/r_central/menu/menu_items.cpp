@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -41,6 +41,8 @@ MenuItem::MenuItem(const char* title)
    m_bEnabled = true;
    m_bHidden = false;
    m_bIsEditable = false;
+   m_bHighlightFirstWord = false;
+   m_bEndEditOnBackOnly = false;
    m_bIsEditing = false;
    m_bShowArrow = false;
    m_bCondensedOnly = false;
@@ -68,7 +70,9 @@ MenuItem::MenuItem(const char* title, const char* tooltip)
    m_ItemType = MENU_ITEM_TYPE_SIMPLE;
    m_bEnabled = true;
    m_bHidden = false;
+   m_bHighlightFirstWord = false;
    m_bIsEditable = false;
+   m_bEndEditOnBackOnly = false;
    m_bIsEditing = false;
    m_bShowArrow = false;
    m_bCondensedOnly = false;
@@ -126,6 +130,8 @@ void MenuItem::beginEdit() { if ( m_bIsEditable ) m_bIsEditing = true; }
 void MenuItem::endEdit(bool bCanceled) { if ( m_bIsEditable ) m_bIsEditing = false; }
 bool MenuItem::isEditing() { return m_bIsEditing; }
 bool MenuItem::isEditable() { return m_bIsEditable; }
+bool MenuItem::isEndEditOnBackOnly() { return m_bEndEditOnBackOnly; }
+
 void MenuItem::showArrow() { m_bShowArrow = true; }
 void MenuItem::setCondensedOnly() { m_bCondensedOnly = true; }
 
@@ -137,6 +143,11 @@ void MenuItem::setHidden(bool bHidden)
 bool MenuItem::isHidden()
 {
    return m_bHidden;
+}
+
+void MenuItem::highlightFirstWord(bool bHighlight)
+{
+   m_bHighlightFirstWord = bHighlight;
 }
 
 void MenuItem::setExtraHeight(float fExtraHeight)
@@ -323,6 +334,25 @@ void MenuItem::RenderBaseTitle(float xPos, float yPos, bool bSelected, float fWi
    }
    g_pRenderEngine->drawText(xPos + m_fMarginX, yPos+g_pRenderEngine->getPixelHeight()*0.2, g_idFontMenu, m_pszTitle);
 
+   if ( m_bHighlightFirstWord )
+   {
+      char szTmp[1024];
+      strncpy(szTmp, m_pszTitle, 1023);
+      szTmp[1023] = 0;
+      char *p = szTmp;
+      while ( *p )
+      {
+         if ( *p == ' ' )
+         {
+            *p = 0;
+            break;
+         }
+         p++;
+      }
+      g_pRenderEngine->setColors(get_Color_IconError());
+      g_pRenderEngine->drawText(xPos + m_fMarginX, yPos+g_pRenderEngine->getPixelHeight()*0.2, g_idFontMenu, szTmp);
+   }
+   
    float xEnd = xPos + width_text - 2.0*g_pRenderEngine->getPixelWidth();
    float yEnd = yPos + height_text*0.5;
 

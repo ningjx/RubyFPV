@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -62,7 +62,7 @@ u8 radio_packets_short_get_next_id_for_radio_interface(int iInterfaceIndex)
 
 int radio_buffer_is_valid_short_packet(u8* pBuffer, int iLength)
 {
-   if ( (NULL == pBuffer) || (iLength < sizeof(t_packet_header_short)) )
+   if ( (NULL == pBuffer) || (iLength < (int)sizeof(t_packet_header_short)) )
       return 0;
 
    if ( ((*pBuffer) != SHORT_PACKET_START_BYTE_REG_PACKET) &&

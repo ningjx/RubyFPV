@@ -23,5 +23,5 @@ int keyboard_consume_input_events();
 int keyboard_has_long_press_flag();
 
 u32 keyboard_get_triggered_input_events();
-u32 keyboard_add_triggered_input_event(u32 uEventId);
+void keyboard_clear_triggered_back_event();
 u32 keyboard_add_triggered_gpio_input_events();

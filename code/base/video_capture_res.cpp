@@ -42,14 +42,19 @@ int g_iListCaptureResolutionsVeyeCount307 = 2;
 
 type_video_capture_resolution_info g_listCaptureResolutionsOpenIPC[] = 
 {
+   {1024,576, 120, "SD 576"},
+   {832, 624, 120, "SD 624 4:3"},
+   {960, 720, 120, "720p 4:3"},
    {1280,720, 120, "720p"},
    {1456,816, 120, "820p"},
+   {1440, 1080, 90, "1080p 4:3"},
    {1920,1080, 90, "1080p"},
+   {1920, 1440, 90, "1.4k 4:3"},
    {2240,1264, 60, "2K"},
    {3200,1800, 30, "3K"},
    {3840,2160, 20, "4k"}
 };
-int g_iListCaptureResolutionsOpenIPCCount = 6;
+int g_iListCaptureResolutionsOpenIPCCount = 11;
 
 
 type_video_capture_resolution_info* getOptionsVideoResolutions(int iCameraType)

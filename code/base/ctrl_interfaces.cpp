@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -13,7 +13,7 @@
         in the documentation and/or other materials provided with the distribution.
         * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permitted.
@@ -33,12 +33,13 @@
 #include "base.h"
 #include "config.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "hardware_radio.h"
 #include "ctrl_interfaces.h"
 #include "ctrl_settings.h"
 #include "tx_powers.h"
 #include "../common/string_utils.h"
+#include "../radio/radioflags.h"
 
 #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 
@@ -76,6 +77,7 @@ void _controller_interfaces_add_card(const char* szMAC)
    s_CIS.listRadioInterfaces[s_CIS.radioInterfacesCount].cardModel = 0;
    if ( NULL != pRadioInfo )
       s_CIS.listRadioInterfaces[s_CIS.radioInterfacesCount].cardModel = pRadioInfo->iCardModel;
+   s_CIS.listRadioInterfaces[s_CIS.radioInterfacesCount].uSupportedRadioFlags = RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES | RADIO_FLAGS_FRAME_TYPE_DATA | RADIO_FLAGS_MCS;
    s_CIS.listRadioInterfaces[s_CIS.radioInterfacesCount].capabilities_flags = RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA | RADIO_HW_CAPABILITY_FLAG_CAN_RX | RADIO_HW_CAPABILITY_FLAG_CAN_TX;
    
    if ( hardware_radio_is_sik_radio(pRadioInfo) )
@@ -99,6 +101,8 @@ void _controller_interfaces_add_card(const char* szMAC)
       s_iNewCardRadioInterfaceIndex = i;
       break;
    }
+   log_line("CtrlInterfaces: Added new radio interface at index %d (%d in list now): MAC: %s",
+     s_iNewCardRadioInterfaceIndex, s_CIS.radioInterfacesCount, s_CIS.listRadioInterfaces[s_CIS.radioInterfacesCount-1].szMAC);
 }
 
 int _controller_interfaces_get_card_index(const char* szMAC)
@@ -129,44 +133,20 @@ void reset_ControllerInterfacesSettings()
    s_CIS.inputInterfacesCount = 0;
 }
 
-int save_ControllerInterfacesSettings()
+int _saveControllerInputInterfaces()
 {
-   char szFile[128];
+   char szFile[MAX_FILE_PATH_SIZE];
    strcpy(szFile, FOLDER_CONFIG);
-   strcat(szFile, FILE_CONFIG_CONTROLLER_INTERFACES);
+   strcat(szFile, FILE_CONFIG_CONTROLLER_INPUT_INTERFACES);
+   hardware_file_check_and_fix_access_c(szFile);
    FILE* fd = fopen(szFile, "w");
    if ( NULL == fd )
    {
-      log_softerror_and_alarm("Failed to save controller interfaces settings to file: %s", szFile);
+      log_softerror_and_alarm("CtrlInterfaces: Failed to save controller interfaces settings to file: %s", szFile);
       return 0;
    }
 
-   fprintf(fd, "%s\n", CONTROLLER_INTERFACES_STAMP_ID);
-   
-   fprintf(fd, "radio_cards_settings: %d\n", s_CIS.radioInterfacesCount );
-   for( int i=0; i<s_CIS.radioInterfacesCount; i++ )
-   {
-      char szBuff[1024];
-      strcpy(szBuff, s_CIS.listRadioInterfaces[i].szUserDefinedName);
-      int kSize = (int)strlen(szBuff);
-      for( int k=0; k<kSize; k++ )
-         if ( szBuff[k] == ' ' || szBuff[k] == 10 || szBuff[k] == 13 )
-            szBuff[k] = '~';
-      if ( szBuff[0] == '~' && szBuff[1] == 0 )
-         szBuff[0] = 0;
-      if (  0 == szBuff[0] )
-         fprintf(fd, "~ %s %d %u %d\n", s_CIS.listRadioInterfaces[i].szMAC, s_CIS.listRadioInterfaces[i].cardModel, s_CIS.listRadioInterfaces[i].capabilities_flags, s_CIS.listRadioInterfaces[i].iRawPowerLevel);
-      else
-         fprintf(fd, "%s %s %d %u %d\n", szBuff, s_CIS.listRadioInterfaces[i].szMAC, s_CIS.listRadioInterfaces[i].cardModel, s_CIS.listRadioInterfaces[i].capabilities_flags, s_CIS.listRadioInterfaces[i].iRawPowerLevel);
-      fprintf(fd, "%d\n", s_CIS.listRadioInterfaces[i].iInternal);
-      log_line("Saved raw tx power for card %d: %d", i, s_CIS.listRadioInterfaces[i].iRawPowerLevel);
-   }
-
-   fprintf(fd, "TX_Preferred: %d\n", s_CIS.listMACTXPreferredCount );
-   for( int i=0; i<s_CIS.listMACTXPreferredCount; i++ )
-      fprintf(fd, " %s\n", s_CIS.listMACTXPreferredOrdered[i]);
-
-   fprintf(fd, "Input_Interfaces: %d\n", s_CIS.inputInterfacesCount );
+   fprintf(fd, "%d\n", s_CIS.inputInterfacesCount );
    for( int i=0; i<s_CIS.inputInterfacesCount; i++ )
    {
       char szName[MAX_JOYSTICK_INTERFACE_NAME];
@@ -193,140 +173,95 @@ int save_ControllerInterfacesSettings()
       fprintf(fd, "\n");
    }
 
-   // Extra params
-
-   if ( NULL != fd )
-      fclose(fd);
-
-   log_line("Saved controller interfaces settings to file: %s", szFile);
-   log_line("Saved controller interfaces settings for %d radio interfaces, %d input devices.", s_CIS.radioInterfacesCount, s_CIS.inputInterfacesCount);
+   fclose(fd);
+   hardware_file_check_and_fix_access_c(szFile);
+   log_line("CtrlInterfaces: Saved controller interfaces settings for %d input devices to file: %s", s_CIS.inputInterfacesCount, szFile);
    return 1;
 }
 
-int load_ControllerInterfacesSettings()
+int _saveControllerRadioInterfaces()
 {
-   char szFile[128];
+   char szFile[MAX_FILE_PATH_SIZE];
    strcpy(szFile, FOLDER_CONFIG);
-   strcat(szFile, FILE_CONFIG_CONTROLLER_INTERFACES);
+   strcat(szFile, FILE_CONFIG_CONTROLLER_RADIO_INTERFACES);
+   hardware_file_check_and_fix_access_c(szFile);
+   FILE* fd = fopen(szFile, "w");
+   if ( NULL == fd )
+   {
+      log_softerror_and_alarm("CtrlInterfaces: Failed to save controller radio interfaces settings to file: %s", szFile);
+      return 0;
+   }
+
+   fprintf(fd, "%d\n", s_CIS.radioInterfacesCount );
+   for( int i=0; i<s_CIS.radioInterfacesCount; i++ )
+   {
+      char szBuff[1024];
+      strcpy(szBuff, s_CIS.listRadioInterfaces[i].szUserDefinedName);
+      int kSize = (int)strlen(szBuff);
+      for( int k=0; k<kSize; k++ )
+         if ( szBuff[k] == ' ' || szBuff[k] == 10 || szBuff[k] == 13 )
+            szBuff[k] = '~';
+      if ( szBuff[0] == '~' && szBuff[1] == 0 )
+         szBuff[0] = 0;
+      if (  0 == szBuff[0] )
+         fprintf(fd, "~ %s %d %u %u %d\n", s_CIS.listRadioInterfaces[i].szMAC, s_CIS.listRadioInterfaces[i].cardModel, s_CIS.listRadioInterfaces[i].capabilities_flags, s_CIS.listRadioInterfaces[i].uSupportedRadioFlags, s_CIS.listRadioInterfaces[i].iRawPowerLevel);
+      else
+         fprintf(fd, "%s %s %d %u %u %d\n", szBuff, s_CIS.listRadioInterfaces[i].szMAC, s_CIS.listRadioInterfaces[i].cardModel, s_CIS.listRadioInterfaces[i].capabilities_flags, s_CIS.listRadioInterfaces[i].uSupportedRadioFlags, s_CIS.listRadioInterfaces[i].iRawPowerLevel);
+      fprintf(fd, "%d\n", s_CIS.listRadioInterfaces[i].iInternal);
+      log_line("CtrlInterfaces: Saved raw tx power for card %d (MAC: %s, card model: %s): %d", i, s_CIS.listRadioInterfaces[i].szMAC, str_get_radio_card_model_string(s_CIS.listRadioInterfaces[i].cardModel), s_CIS.listRadioInterfaces[i].iRawPowerLevel);
+   }
+
+   fprintf(fd, "TX_Preferred: %d\n", s_CIS.listMACTXPreferredCount );
+   for( int i=0; i<s_CIS.listMACTXPreferredCount; i++ )
+   {
+      fprintf(fd, " %s\n", s_CIS.listMACTXPreferredOrdered[i]);
+   }
+   fclose(fd);
+   hardware_file_check_and_fix_access_c(szFile);
+   log_line("CtrlInterfaces: Saved controller radio interfaces settings for %d radio interfaces to file %s", s_CIS.radioInterfacesCount, szFile);
+   return 1;
+}
+
+int save_ControllerInterfacesSettings()
+{
+
+   if ( ! _saveControllerInputInterfaces() )
+      reset_ControllerInterfacesSettings();
+   if ( ! _saveControllerRadioInterfaces() )
+      reset_ControllerInterfacesSettings();
+
+   return 1;
+}
+
+int _loadControllerInputInterfaces()
+{
+   char szFile[MAX_FILE_PATH_SIZE];
+   strcpy(szFile, FOLDER_CONFIG);
+   strcat(szFile, FILE_CONFIG_CONTROLLER_INPUT_INTERFACES);
    FILE* fd = fopen(szFile, "r");
    if ( NULL == fd )
    {
-      log_softerror_and_alarm("Failed to load controller interfaces settings from file: %s (missing file). Reset and create the file.", szFile);
-      reset_ControllerInterfacesSettings();
-      save_ControllerInterfacesSettings();
+      log_softerror_and_alarm("CtrlInterfaces: Failed to load controller interfaces settings from file: %s (missing file). Reset and create the file.", szFile);
       return 0;
    }
 
    int failed = 0;
-   char szBuff[256];
-   szBuff[0] = 0;
-   if ( 1 != fscanf(fd, "%s", szBuff) )
-      failed = 1;
-   if ( 0 != strcmp(szBuff, CONTROLLER_INTERFACES_STAMP_ID) )
-      failed = 2;
 
-   if ( failed )
+   if ( 1 != fscanf(fd, "%d", &s_CIS.inputInterfacesCount) )
    {
-      reset_ControllerInterfacesSettings();
-      log_softerror_and_alarm("Failed to load controller interfaces settings from file: %s (invalid config file stamp)", szFile);
+      s_CIS.inputInterfacesCount = 0;
+      log_softerror_and_alarm("CtrlInterfaces: Failed to load controller interfaces settings from file: %s (invalid config file, error code: %d)", szFile, 1);
       fclose(fd);
       return 0;
    }
 
-   // Radio interfaces
-
-   s_CIS.radioInterfacesCount = 0;
-   if ( 1 != fscanf(fd, "%*s %d", &s_CIS.radioInterfacesCount) )
-   {
-      failed = 4;
-      s_CIS.radioInterfacesCount = 0;
-      log_softerror_and_alarm("Failed to load controller interfaces settings from file: %s (invalid ri count)", szFile);
-   }
-
-   if ( ! failed )
-   {
-      log_line("Loading %d controller interfaces settings...", s_CIS.radioInterfacesCount);
-      for( int i=0; i<s_CIS.radioInterfacesCount; i++ )
-      {
-         u32 tmp = 0;
-         int tmp2 = 0;
-         s_CIS.listRadioInterfaces[i].szUserDefinedName = (char*)malloc(64);
-         if ( 5 != fscanf(fd, "%s %s %d %u %d", s_CIS.listRadioInterfaces[i].szUserDefinedName, s_CIS.listRadioInterfaces[i].szMAC, &(s_CIS.listRadioInterfaces[i].cardModel), &tmp, &tmp2) )
-         {
-            failed = 5;
-            log_softerror_and_alarm("Failed to load controller interfaces settings from file: %s (invalid ri data)", szFile);
-         }
-         if ( failed )
-         {
-            s_CIS.radioInterfacesCount = 0;
-            break;
-         }
-
-         if ( 1 != fscanf(fd, "%d", &s_CIS.listRadioInterfaces[i].iInternal) )
-         {
-            failed = 1;
-            s_CIS.radioInterfacesCount = 0;
-            break;
-         }
-
-         s_CIS.listRadioInterfaces[i].capabilities_flags = tmp;
-         s_CIS.listRadioInterfaces[i].iRawPowerLevel = tmp2;
-
-         int kSize = (int)strlen(s_CIS.listRadioInterfaces[i].szUserDefinedName);
-         for( int k=0; k<kSize; k++ )
-            if ( s_CIS.listRadioInterfaces[i].szUserDefinedName[k] == '~' )
-               s_CIS.listRadioInterfaces[i].szUserDefinedName[k] = ' ';
-
-         if ( 0 == s_CIS.listRadioInterfaces[i].szUserDefinedName[0] || (s_CIS.listRadioInterfaces[i].szUserDefinedName[0] == ' ' && 0 == s_CIS.listRadioInterfaces[i].szUserDefinedName[1]) )
-         {
-             s_CIS.listRadioInterfaces[i].szUserDefinedName[0] = 0;
-         }
-         char szFlags[128];
-         str_get_radio_capabilities_description(s_CIS.listRadioInterfaces[i].capabilities_flags, szFlags);
-         log_line("Loaded controller interface %d settings: MAC: [%s], name: [%s], flags: %s, raw tx power: %d",
-            i, s_CIS.listRadioInterfaces[i].szMAC, s_CIS.listRadioInterfaces[i].szUserDefinedName,
-            szFlags, s_CIS.listRadioInterfaces[i].iRawPowerLevel );
-      }
-   }
-   s_CIS.listMACTXPreferredCount = 0;
-   if ( 1 != fscanf(fd, "%*s %d", &s_CIS.listMACTXPreferredCount) )
-   {
-      failed = 6;
-      s_CIS.listMACTXPreferredCount = 0;
-      log_softerror_and_alarm("Failed to load controller interfaces settings from file: %s (invalid txp count)", szFile);
-   }
-
-   if ( ! failed )
-   for( int i=0; i<s_CIS.listMACTXPreferredCount; i++ )
-   {
-      if ( 1 != fscanf(fd, "%s", s_CIS.listMACTXPreferredOrdered[i]) )
-      {
-         failed = 7;
-         log_softerror_and_alarm("Failed to load controller interfaces settings from file: %s (invalid txp data)", szFile);
-      }
-      if ( failed )
-      {
-         s_CIS.listMACTXPreferredCount = 0;
-         break;
-      }
-   }
-
-   // Input interfaces
-
-   if ( (!failed) && (1 != fscanf(fd, "%*s %d", &s_CIS.inputInterfacesCount)) )
-   {
-      failed = 8;
-      s_CIS.inputInterfacesCount = 0;
-      log_softerror_and_alarm("Failed to load controller interfaces settings from file: %s (invalid input icount)", szFile);
-   }
-   if ( ! failed )
    for( int i=0; i<s_CIS.inputInterfacesCount; i++ )
    {
       int index = 0;
       if ( 2 != fscanf(fd, "%d %s", &index, s_CIS.inputInterfaces[i].szInterfaceName) )
       {
          failed = 9;
-         log_softerror_and_alarm("Failed to load controller interfaces settings from file: %s (invalid ii data)", szFile);
+         log_softerror_and_alarm("CtrlInterfaces: Failed to load controller interfaces settings from file: %s (invalid ii data)", szFile);
       }
       if ( index != i+1 )
          failed = 10;
@@ -361,20 +296,142 @@ int load_ControllerInterfacesSettings()
             failed = 15;
    }
 
-   // Extra params
-   if ( ! failed )
-   {
-   }
-
    if ( failed )
    {
-      log_softerror_and_alarm("Failed to load controller interfaces settings from file: %s (invalid config file, error code: %d)", szFile, failed);
+      log_softerror_and_alarm("CtrlInterfaces: Failed to load controller interfaces settings from file: %s (invalid config file, error code: %d)", szFile, failed);
       fclose(fd);
       return 0;
    }
    fclose(fd);
-   log_line("Loaded controller interfaces settings from file: %s", szFile);
-   log_line("Loaded controller interfaces settings for %d radio interfaces, %d input devices.", s_CIS.radioInterfacesCount, s_CIS.inputInterfacesCount);
+   log_line("CtrlInterfaces: Loaded controller input interfaces settings from file: %s", szFile);
+   log_line("CtrlInterfaces: Loaded controller input interfaces settings for %d input devices.", s_CIS.inputInterfacesCount);
+
+   for( int i=0; i<s_CIS.inputInterfacesCount; i++ )
+   {
+      log_line("CtrlInterfaces: Input interface %d: UID: %u, calibrated: %s, name: %s",
+         i+1, s_CIS.inputInterfaces[i].uId, s_CIS.inputInterfaces[i].bCalibrated?"Yes":"No",
+         s_CIS.inputInterfaces[i].szInterfaceName);
+   }
+   return 1;
+}
+
+int _loadControllerRadioInterfaces()
+{
+   char szFile[MAX_FILE_PATH_SIZE];
+   strcpy(szFile, FOLDER_CONFIG);
+   strcat(szFile, FILE_CONFIG_CONTROLLER_RADIO_INTERFACES);
+   FILE* fd = fopen(szFile, "r");
+   if ( NULL == fd )
+   {
+      log_softerror_and_alarm("CtrlInterfaces: Failed to load controller radio interfaces settings from file: %s (missing file). Reset and create the file.", szFile);
+      return 0;
+   }
+
+   int failed = 0;
+
+   s_CIS.radioInterfacesCount = 0;
+   if ( 1 != fscanf(fd, "%d", &s_CIS.radioInterfacesCount) )
+   {
+      s_CIS.radioInterfacesCount = 0;
+      log_softerror_and_alarm("CtrlInterfaces: Failed to load controller radio interfaces settings from file: %s (invalid ri count)", szFile);
+      fclose(fd);
+      return 0;
+   }
+
+   for( int i=0; i<s_CIS.radioInterfacesCount; i++ )
+   {
+      u32 tmp = 0;
+      int tmp2 = 0;
+      s_CIS.listRadioInterfaces[i].szUserDefinedName = (char*)malloc(64);
+      if ( 6 != fscanf(fd, "%s %s %d %u %u %d", s_CIS.listRadioInterfaces[i].szUserDefinedName, s_CIS.listRadioInterfaces[i].szMAC, &(s_CIS.listRadioInterfaces[i].cardModel), &tmp, &(s_CIS.listRadioInterfaces[i].uSupportedRadioFlags), &tmp2) )
+      {
+         failed = 5;
+         log_softerror_and_alarm("CtrlInterfaces: Failed to load controller interfaces settings from file: %s (invalid ri data)", szFile);
+      }
+      if ( failed )
+      {
+         s_CIS.radioInterfacesCount = 0;
+         break;
+      }
+
+      if ( 1 != fscanf(fd, "%d", &s_CIS.listRadioInterfaces[i].iInternal) )
+      {
+         failed = 1;
+         s_CIS.radioInterfacesCount = 0;
+         break;
+      }
+
+      s_CIS.listRadioInterfaces[i].capabilities_flags = tmp;
+      s_CIS.listRadioInterfaces[i].iRawPowerLevel = tmp2;
+
+      int kSize = (int)strlen(s_CIS.listRadioInterfaces[i].szUserDefinedName);
+      for( int k=0; k<kSize; k++ )
+         if ( s_CIS.listRadioInterfaces[i].szUserDefinedName[k] == '~' )
+            s_CIS.listRadioInterfaces[i].szUserDefinedName[k] = ' ';
+
+      if ( 0 == s_CIS.listRadioInterfaces[i].szUserDefinedName[0] || (s_CIS.listRadioInterfaces[i].szUserDefinedName[0] == ' ' && 0 == s_CIS.listRadioInterfaces[i].szUserDefinedName[1]) )
+      {
+          s_CIS.listRadioInterfaces[i].szUserDefinedName[0] = 0;
+      }
+      char szFlags[128];
+      char szRadio[256];
+      str_get_radio_frame_flags_description(s_CIS.listRadioInterfaces[i].uSupportedRadioFlags, szRadio);
+      str_get_radio_capabilities_description(s_CIS.listRadioInterfaces[i].capabilities_flags, szFlags);
+      log_line("CtrlInterfaces: Loaded controller radio interface %d settings: MAC: [%s], name: [%s], card type: %s, flags: %s, supported radio flags: %s, raw tx power: %d",
+         i, s_CIS.listRadioInterfaces[i].szMAC, s_CIS.listRadioInterfaces[i].szUserDefinedName,
+         str_get_radio_card_model_string(s_CIS.listRadioInterfaces[i].cardModel),
+         szFlags, szRadio, s_CIS.listRadioInterfaces[i].iRawPowerLevel );
+   }
+   s_CIS.listMACTXPreferredCount = 0;
+   if ( 1 != fscanf(fd, "%*s %d", &s_CIS.listMACTXPreferredCount) )
+   {
+      failed = 6;
+      s_CIS.listMACTXPreferredCount = 0;
+      log_softerror_and_alarm("CtrlInterfaces: Failed to load controller radio interfaces settings from file: %s (invalid txp count)", szFile);
+   }
+
+   if ( ! failed )
+   for( int i=0; i<s_CIS.listMACTXPreferredCount; i++ )
+   {
+      if ( 1 != fscanf(fd, "%s", s_CIS.listMACTXPreferredOrdered[i]) )
+      {
+         failed = 7;
+         log_softerror_and_alarm("CtrlInterfaces: Failed to load controller radio interfaces settings from file: %s (invalid txp data)", szFile);
+      }
+      if ( failed )
+      {
+         s_CIS.listMACTXPreferredCount = 0;
+         break;
+      }
+   }
+
+   if ( failed )
+   {
+      log_softerror_and_alarm("CtrlInterfaces: Failed to load controller radio interfaces settings from file: %s (invalid config file, error code: %d)", szFile, failed);
+      fclose(fd);
+      return 0;
+   }
+   fclose(fd);
+   log_line("CtrlInterfaces: Loaded controller radio interfaces settings from file: %s", szFile);
+   log_line("CtrlInterfaces: Loaded controller radio interfaces settings for %d radio interfaces, %d preferred Tx cards.", s_CIS.radioInterfacesCount, s_CIS.listMACTXPreferredCount);
+   controllerRadioInterfacesLogInfo();
+   return 1;
+}
+
+int load_ControllerInterfacesSettings()
+{
+   if ( ! _loadControllerInputInterfaces() )
+   {
+      reset_ControllerInterfacesSettings();
+      save_ControllerInterfacesSettings();
+      return 0;
+   }
+   if ( ! _loadControllerRadioInterfaces() )
+   {
+      reset_ControllerInterfacesSettings();
+      save_ControllerInterfacesSettings();
+      return 0;
+   }
    return 1;
 }
 
@@ -394,7 +451,7 @@ void controllerRadioInterfacesLogInfo()
       radio_hw_info_t* pRadioInfo = hardware_get_radio_info(i);
       if ( NULL == pRadioInfo )
       {
-         log_softerror_and_alarm("Failed to get radio hardware info for radio interface %d.", i+1);
+         log_softerror_and_alarm("CtrlInterfaces: Failed to get radio hardware info for radio interface %d.", i+1);
          continue;
       }
       t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pRadioInfo->szMAC);
@@ -407,17 +464,23 @@ void controllerRadioInterfacesLogInfo()
       if ( ! controllerIsCardTXOnly(pRadioInfo->szMAC) )
          strcat(szBuff, "[RX/TX]");
 
+      int iPreferredTxPriority = controllerIsCardTXPreferred(pRadioInfo->szMAC);
+
       char szBands[128];
+      char szRadio[256];
       str_get_supported_bands_string(pRadioInfo->supportedBands, szBands);
-      
       if ( NULL != pCardInfo )
-         log_line("* RadioInterface %d: %s, %s MAC:%s phy#%d, %s %s, %s, raw_tx_power: %d", i+1, str_get_radio_card_model_string(pCardInfo->cardModel), pRadioInfo->szName, pRadioInfo->szMAC, pRadioInfo->phy_index, (controllerIsCardDisabled(pRadioInfo->szMAC)?"[DISABLED]":"[ENABLED]"), szBuff, szBands, pCardInfo->iRawPowerLevel);
+      {
+         str_get_radio_frame_flags_description(pCardInfo->uSupportedRadioFlags, szRadio);
+         log_line("CtrlInterfaces: * RadioInterface %d: card type: %s, %s MAC:%s phy#%d, %s %s, %s, raw_tx_power: %d, preferred for Tx: %d", i+1, str_get_radio_card_model_string(pCardInfo->cardModel), pRadioInfo->szName, pRadioInfo->szMAC, pRadioInfo->phy_index, (controllerIsCardDisabled(pRadioInfo->szMAC)?"[DISABLED]":"[ENABLED]"), szBuff, szBands, pCardInfo->iRawPowerLevel, iPreferredTxPriority);
+         log_line("CtrlInterfaces: * RadioInterface %d supported radio flags: %s", i+1, szRadio);
+      }
       else
-         log_line("* RadioInterface %d: %s, %s MAC:%s phy#%d, %s %s, %s", i+1, "Unknown Type", pRadioInfo->szName, pRadioInfo->szMAC, pRadioInfo->phy_index, (controllerIsCardDisabled(pRadioInfo->szMAC)?"[DISABLED]":"[ENABLED]"), szBuff, szBands);
+         log_line("CtrlInterfaces: * RadioInterface %d: card type: %s, %s MAC:%s phy#%d, %s %s, %s, preferred for Tx: %d", i+1, "Unknown Type", pRadioInfo->szName, pRadioInfo->szMAC, pRadioInfo->phy_index, (controllerIsCardDisabled(pRadioInfo->szMAC)?"[DISABLED]":"[ENABLED]"), szBuff, szBands, iPreferredTxPriority);
       u32 uFlags = controllerGetCardFlags(pRadioInfo->szMAC);
       szBuff[0] = 0;
       str_get_radio_capabilities_description(uFlags, szBuff);
-      log_line("      Controller set flags: %s", szBuff);
+      log_line("CtrlInterfaces:       Controller set flags: %s", szBuff);
    }
    log_line("=================================================================");
 }
@@ -532,8 +595,10 @@ int controllerIsCardTXPreferred(const char* szMAC)
    if ( (NULL == szMAC) || (0 == szMAC[0]) )
       return 0;
    for( int i=0; i<s_CIS.listMACTXPreferredCount; i++ )
+   {
       if ( 0 == strcmp(szMAC, s_CIS.listMACTXPreferredOrdered[i]) )
          return i+1;
+   }
    return 0;
 }
 
@@ -546,12 +611,20 @@ void controllerSetCardTXPreferred(const char* szMAC)
 {
    if ( (NULL == szMAC) || (0 == szMAC[0]) )
       return;
-
+   int iIndexControllerCard = _controller_interfaces_get_card_index(szMAC);
+   if ( iIndexControllerCard < 0 )
+   {
+      log_softerror_and_alarm("CtrlInterfaces: Can't find MAC in the list of current cards.", szMAC);
+      controllerRadioInterfacesLogInfo();
+      return;
+   }
    // Is already on top of the list?
    int iCurrentPriority = controllerIsCardTXPreferred(szMAC);
    if ( 1 == iCurrentPriority )
+   {
+      log_line("CtrlInterfaces: Radio interface %s (card type: %s) is already on top of preferred Tx  list. Do nothing.", szMAC, str_get_radio_card_model_string(s_CIS.listRadioInterfaces[iIndexControllerCard].cardModel));
       return;
-
+   }
    // Is already in the list? Move it to first position
    if ( iCurrentPriority > 0 )
    {
@@ -562,6 +635,7 @@ void controllerSetCardTXPreferred(const char* szMAC)
          strcpy(s_CIS.listMACTXPreferredOrdered[i], s_CIS.listMACTXPreferredOrdered[i-1]);
 
       strcpy(s_CIS.listMACTXPreferredOrdered[0], szTmp);
+      log_line("CtrlInterfaces: Moved radio interface %s (card type: %s) to top of preferred Tx list.", s_CIS.listRadioInterfaces[iIndexControllerCard].szMAC, str_get_radio_card_model_string(s_CIS.listRadioInterfaces[iIndexControllerCard].cardModel));
       save_ControllerInterfacesSettings();
       return;
    }
@@ -569,7 +643,7 @@ void controllerSetCardTXPreferred(const char* szMAC)
    if ( s_CIS.listMACTXPreferredCount >= CONTROLLER_INTERFACES_MAX_LIST_SIZE )
       return;
 
-   log_line("Adding radio interface %s to preffered TX list on top.", szMAC);
+   log_line("CtrlInterfaces: Adding radio interface %s (card type: %s) to preferred Tx list on top.", szMAC, str_get_radio_card_model_string(s_CIS.listRadioInterfaces[iIndexControllerCard].cardModel));
 
    for( int i=s_CIS.listMACTXPreferredCount-1; i>0; i--)
       strcpy(s_CIS.listMACTXPreferredOrdered[i], s_CIS.listMACTXPreferredOrdered[i-1]);
@@ -585,15 +659,24 @@ void controllerRemoveCardTXPreferred(const char* szMAC)
    if ( (NULL == szMAC) || (0 == szMAC[0]) )
       return;
    int iCurrentPriority = controllerIsCardTXPreferred(szMAC);
+   int iIndexControllerCard = _controller_interfaces_get_card_index(szMAC);
    if ( iCurrentPriority <= 0 )
+   {
+      if ( iIndexControllerCard < 0 )
+         log_line("CtrlInterfaces: Radio card %s (unknown card) is not currently a preferred Tx card.", szMAC);
+      else
+         log_line("CtrlInterfaces: Radio card %s (card type: %s) is not currently a preferred Tx card.", s_CIS.listRadioInterfaces[iIndexControllerCard].szMAC, str_get_radio_card_model_string(s_CIS.listRadioInterfaces[iIndexControllerCard].cardModel));
       return;
-
+   }
    for( int i=iCurrentPriority-1; i<s_CIS.listMACTXPreferredCount-1; i++ )
       strcpy(s_CIS.listMACTXPreferredOrdered[i], s_CIS.listMACTXPreferredOrdered[i+1]);
 
    s_CIS.listMACTXPreferredCount--;
    
-   log_line("Removed radio interface %s from preffered TX list.", szMAC);
+   if ( iIndexControllerCard < 0 )
+      log_line("CtrlInterfaces: Removed radio interface %s (unknown card) from preferred Tx list.", szMAC);
+   else
+      log_line("CtrlInterfaces: Removed radio interface %s (card type: %s) from preferred Tx list.", s_CIS.listRadioInterfaces[iIndexControllerCard].szMAC, str_get_radio_card_model_string(s_CIS.listRadioInterfaces[iIndexControllerCard].cardModel));
    save_ControllerInterfacesSettings();
 }
 
@@ -677,7 +760,7 @@ void controllerGetCardUserDefinedNameOrShortType(radio_hw_info_t* pRadioHWInfo, 
    if ( NULL != pCardInfo )
    {
       const char* szCardModel = str_get_radio_card_model_string_short(pCardInfo->cardModel);
-      if ( NULL != szCardModel && 0 != szCardModel[0] )
+      if ( (NULL != szCardModel) && (0 != szCardModel[0]) )
       {
          strcpy(szOutput, szCardModel);
          return;
@@ -1144,11 +1227,11 @@ int controllerComputeRXTXCards(Model* pModel, int iSearchFreq, int* pFrequencies
 }
 */
 
-
-
 void controllerInterfacesEnumJoysticks()
 {
+   log_line("ControllerInterfacesSettings: Enumerating joysticks interfaces...");
    bool bNewInterfacesDetected = false;
+   bool bInterfacesRemoved = false;
 
    hardware_enum_joystick_interfaces();
    for( int i=0; i<hardware_get_joystick_interfaces_count(); i++ )
@@ -1168,10 +1251,18 @@ void controllerInterfacesEnumJoysticks()
             continue;
          if ( pJoystick->countButtons != s_CIS.inputInterfaces[j].countButtons )
             continue;
-         bFound = true;
          s_CIS.inputInterfaces[j].currentHardwareIndex = i;
+         #if defined (HW_PLATFORM_RADXA)
+         for( int k=0; k<MAX_JOYSTICK_AXES; k++ )
+         {
+            s_CIS.inputInterfaces[j].axesMinValue[k] = -32780;
+            s_CIS.inputInterfaces[j].axesMaxValue[k] = 32780;
+         }
+         #endif
+         bFound = true;
+         break;
       }
-      if ( ! bFound && s_CIS.inputInterfacesCount < CONTROLLER_MAX_INPUT_INTERFACES-1 )
+      if ( (! bFound) && (s_CIS.inputInterfacesCount < CONTROLLER_MAX_INPUT_INTERFACES-1) )
       {
          bNewInterfacesDetected = true;
          strcpy(s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].szInterfaceName, pJoystick->szName);
@@ -1179,6 +1270,9 @@ void controllerInterfacesEnumJoysticks()
          s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].countAxes = pJoystick->countAxes;
          s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].countButtons = pJoystick->countButtons;
          s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].bCalibrated = false;
+         #if defined (HW_PLATFORM_RADXA)
+         s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].bCalibrated = true;
+         #endif
          s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].currentHardwareIndex = i;
          for( int k=0; k<MAX_JOYSTICK_AXES; k++ )
          {
@@ -1186,6 +1280,10 @@ void controllerInterfacesEnumJoysticks()
             s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesCenterValue[k] = 0;
             s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesMinValue[k] = -99;
             s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesMaxValue[k] = 99;
+            #if defined (HW_PLATFORM_RADXA)
+            s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesMinValue[k] = -32780;
+            s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesMaxValue[k] = 32780;
+            #endif
          }
          for( int k=0; k<MAX_JOYSTICK_BUTTONS; k++ )
          {
@@ -1197,13 +1295,50 @@ void controllerInterfacesEnumJoysticks()
       }
    }
 
-   if ( bNewInterfacesDetected )
+   // Remove missing ones 
+   for( int j=0; j<s_CIS.inputInterfacesCount; j++ )
+   {
+      bool bHardwareFound = false;
+
+      for( int i=0; i<hardware_get_joystick_interfaces_count(); i++ )
+      {
+         hw_joystick_info_t* pJoystick = hardware_get_joystick_info(i);
+         if ( NULL == pJoystick )
+            continue;
+
+         if ( 0 != strcmp(pJoystick->szName, s_CIS.inputInterfaces[j].szInterfaceName) )
+            continue;
+         if ( pJoystick->uId != s_CIS.inputInterfaces[j].uId )
+            continue;
+         if ( pJoystick->countAxes != s_CIS.inputInterfaces[j].countAxes )
+            continue;
+         if ( pJoystick->countButtons != s_CIS.inputInterfaces[j].countButtons )
+            continue;
+         s_CIS.inputInterfaces[j].currentHardwareIndex = i;
+         bHardwareFound = true;
+         break;
+      }
+
+      if ( ! bHardwareFound )
+      {
+         bInterfacesRemoved = true;
+         for( int i=j; i<s_CIS.inputInterfacesCount-1; i++ )
+         {
+            memcpy( &s_CIS.inputInterfaces[i], &s_CIS.inputInterfaces[i+1], sizeof(t_ControllerInputInterface));
+         }
+         s_CIS.inputInterfacesCount--;
+      }
+   }
+
+   log_line("ControllerInterfacesSettings: Finished enumerating joysticks interfaces. New found? %s, removed any? %s", bNewInterfacesDetected?"yes":"no", bInterfacesRemoved?"yes":"no");
+
+   if ( bNewInterfacesDetected || bInterfacesRemoved )
       save_ControllerInterfacesSettings();
 }
 
 t_ControllerInputInterface* controllerInterfacesGetAt(int index)
 {
-   if ( index < 0 || index >= hardware_get_joystick_interfaces_count() )
+   if ( (index < 0) || (index >= hardware_get_joystick_interfaces_count()) )
       return NULL;
    
    hw_joystick_info_t* pJoystick = hardware_get_joystick_info(index);

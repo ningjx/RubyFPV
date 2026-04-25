@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -90,12 +90,14 @@ void MenuItemSlider::setCurrentValue(int val)
    if ( m_ValueCurrent > m_ValueMax )
       m_ValueCurrent = m_ValueMax;
 
+   /*
    if ( ! m_HalfStepsEnabled )
    if ( m_Step > 1 )
    {
       if ( ((m_ValueCurrent-m_ValueMin) % m_Step) != 0 )
          m_ValueCurrent = m_ValueMin + m_Step * ((int)((m_ValueCurrent - m_ValueMin)/m_Step));
    }
+   */
 }
 
 void MenuItemSlider::setMaxValue(int val)

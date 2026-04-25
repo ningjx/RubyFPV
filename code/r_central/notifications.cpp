@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -156,14 +156,14 @@ void notification_add_model_deleted()
 
 void notification_add_recording_start()
 {
-   Popup* p = new Popup(true, "Video Recording Started", 3);
+   Popup* p = new Popup(true, L("Video recording started"), 3);
    p->setIconId(g_idIconCamera, get_Color_IconNormal());
    popups_add_topmost(p);
 }
 
 void notification_add_recording_end()
 {
-   Popup* p = new Popup(true, "Video Recording Stopped. Processing video file...", 4);
+   Popup* p = new Popup(true, "Video recording stopped", 4);
    p->setIconId(g_idIconCamera, get_Color_IconNormal());
    popups_add_topmost(p);
 }

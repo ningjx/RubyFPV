@@ -21,8 +21,6 @@ class MenuSystemDevStats: public Menu
       int m_IndexDevStatsVehicle;
       int m_IndexDevStatsVehicleTx;
       int m_IndexDevFullRXStats;
-      int m_IndexDevVehicleVideoStreamStats;
-      int m_IndexDevVehicleVideoGraphs;
       int m_IndexDevVehicleVideoBitrateHistory;
       int m_IndexShowControllerAdaptiveInfoStats;
 };

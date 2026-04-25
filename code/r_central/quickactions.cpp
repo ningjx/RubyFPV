@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -28,6 +28,8 @@
     ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+    Code contribution by: Jessica Severin
 */
 
 #include "../base/base.h"
@@ -95,11 +97,11 @@ void executeQuickActionTakePicture()
 
 void executeQuickActionRecord()
 {
-   if ( get_current_timestamp_ms() < s_uTimeLastQuickActionPress + 500 )
+   if ( get_current_timestamp_ms() < s_uTimeLastQuickActionPress + 600 )
       return;
    s_uTimeLastQuickActionPress = get_current_timestamp_ms();
 
-   if ( g_bVideoRecordingStarted )
+   if ( g_bIsVideoRecording )
    {
       ruby_stop_recording();
    }
@@ -114,44 +116,6 @@ void executeQuickActionRecord()
       else
          ruby_start_recording();
    }
-}
-
-void executeQuickActionSwitchVideoProfile()
-{
-   if ( g_pCurrentModel->is_spectator )
-   {
-      warnings_add(0, "Can't execute video profile switch while in spectator mode.");
-      return;
-   }
-
-   t_packet_header PH;
-   radio_packet_init(&PH, PACKET_COMPONENT_LOCAL_CONTROL, PACKET_TYPE_LOCAL_CONTROL_FORCE_VIDEO_PROFILE, STREAM_ID_DATA);
-   PH.vehicle_id_src = PACKET_COMPONENT_RUBY;
-
-   s_uLastQuickActionSwitchVideoProfile++;
-   if ( s_uLastQuickActionSwitchVideoProfile > 2 )
-      s_uLastQuickActionSwitchVideoProfile = 0;
-
-   if ( 0 == s_uLastQuickActionSwitchVideoProfile )
-   {
-      PH.vehicle_id_dest = 0xFF;
-      warnings_add(0, "Dev: Switch to Auto Video Link Quality.");
-   }
-   if ( 1 == s_uLastQuickActionSwitchVideoProfile )
-   {
-      PH.vehicle_id_dest = VIDEO_PROFILE_MQ;
-      warnings_add(0, "Dev: Switch to Med Video Link Quality.");
-   }
-   if ( 2 == s_uLastQuickActionSwitchVideoProfile )
-   {
-      PH.vehicle_id_dest = VIDEO_PROFILE_LQ;
-      warnings_add(0, "Dev: Switch to Low Video Link Quality.");
-   }
-   PH.total_length = sizeof(t_packet_header);
-
-   u8 buffer[1024];
-   memcpy(buffer, (u8*)&PH, sizeof(t_packet_header));
-   send_packet_to_router(buffer, PH.total_length);
 }
 
 void executeQuickActionCycleOSD()
@@ -465,3 +429,74 @@ void executeQuickActionSwitchPITMode()
    //handle_commands_send_single_oneway_command_to_vehicle(g_pCurrentModel->uVehicleId, 2, COMMAND_ID_SET_PIT_AUTO_TX_POWERS_FLAGS, uCommandParam, NULL, 0, 0);
    handle_commands_send_to_vehicle(COMMAND_ID_SET_PIT_AUTO_TX_POWERS_FLAGS, uCommandParam, NULL, 0);
 }
+
+
+
+void executeQuickActionToggleRCEnabled()
+{
+   if ( (NULL != g_pCurrentModel) && g_pCurrentModel->is_spectator )
+   {
+      warnings_add(0, L("Can't enable RC while in spectator mode."));
+      return;
+   }
+   if ( ! quickActionCheckVehicle("enable/disable the RC link output") )
+      return;
+
+   rc_parameters_t params;
+   memcpy(&params, &g_pCurrentModel->rc_params, sizeof(rc_parameters_t));
+
+   if ( params.uRCFlags & RC_FLAGS_OUTPUT_ENABLED )
+      params.uRCFlags &= (~RC_FLAGS_OUTPUT_ENABLED);
+   else
+      params.uRCFlags |= RC_FLAGS_OUTPUT_ENABLED;
+   handle_commands_abandon_command();
+   handle_commands_send_to_vehicle(COMMAND_ID_SET_RC_PARAMS, 0, (u8*)&params, sizeof(rc_parameters_t));
+}
+
+
+void executeQuickActionCameraProfileSwitch()
+{
+   if ( g_pCurrentModel->is_spectator )
+   {
+      warnings_add(0, L("Can't switch camera profile for spectator vehicles."));
+      return;
+   }
+   if ( handle_commands_is_command_in_progress() )
+   {
+      return;
+   }
+
+   int iProfileOrg = g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].iCurrentProfile;
+   int iProfile = iProfileOrg;
+   camera_profile_parameters_t* pProfile1 = &(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].profiles[iProfile]);
+   iProfile++;
+   if ( iProfile >= MODEL_CAMERA_PROFILES-1 )
+      iProfile = 0;
+
+   camera_profile_parameters_t* pProfile2 = &(g_pCurrentModel->camera_params[g_pCurrentModel->iCurrentCamera].profiles[iProfile]);
+
+   //char szBuff[64];
+   //sprintf(szBuff, "Switching to camera profile %s", model_getCameraProfileName(iProfile));
+   //warnings_add(g_pCurrentModel->uVehicleId, szBuff);
+
+   g_pCurrentModel->log_camera_profiles_differences(pProfile1, pProfile2, iProfileOrg, iProfile);
+
+   handle_commands_send_to_vehicle(COMMAND_ID_SET_CAMERA_PROFILE, iProfile, NULL, 0);
+   return;
+}
+
+
+void executeQuickActionOSDSize()
+{
+   if ( ! quickActionCheckVehicle("change OSD size") )
+      return;
+
+   Preferences* pP = get_Preferences();
+   pP->iScaleOSD++;
+   if ( pP->iScaleOSD > 3 )
+      pP->iScaleOSD = -1;
+   save_Preferences();
+   osd_apply_preferences();
+   return;
+}
+
