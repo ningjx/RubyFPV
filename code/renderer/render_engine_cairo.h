@@ -82,5 +82,8 @@ class RenderEngineCairo: public RenderEngine
       u32 m_CurrentIconId;
       int m_iCountIcons;
 
+      // Context复用优化相关变量
+      u32 m_uLastBufferId;           // 上次使用的缓冲区ID
+      bool m_bContextReuseEnabled;   // Context复用开关
 
 };

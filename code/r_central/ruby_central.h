@@ -48,6 +48,10 @@ void ruby_signal_alive();
 
 void ruby_pause_watchdog(const char* szReason);
 void ruby_resume_watchdog(const char* szReason);
+
+// === 渲染调度函数（第二阶段优化）===
+void request_render();              // 请求渲染（可能延迟）
+void request_render_immediate();    // 强制立即渲染
 void ruby_resume_watchdog_force(const char* szReason);
 
 void synchronize_shared_mems();

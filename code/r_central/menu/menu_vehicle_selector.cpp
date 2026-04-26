@@ -122,7 +122,7 @@ void MenuVehicleSelector::onReturnFromChild(int iChildMenuId, int returnValue)
       if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->uVehicleId == pModel->uVehicleId) )
       {
          log_line("[Menu] VehicleSelector: Pressed command to delete model: current model.");
-         render_all(get_current_timestamp_ms(), true, false);
+         request_render_immediate();
          pairing_stop();
 
          ruby_set_active_model_id(0);
@@ -190,10 +190,10 @@ void MenuVehicleSelector::onSelectItem()
       log_line("[MenuVehicleSelector] Switching to VID: %u (mode: %s)", pModel->uVehicleId, pModel->is_spectator?"spectator mode":"control mode");
       menu_discard_all_except(this);
       warnings_remove_all();
-      render_all(get_current_timestamp_ms(), true);
+      request_render_immediate();
       Popup* p = new Popup(L("Switching vehicle..."), 0.3,0.64, 0.26, 0.2);
       popups_add_topmost(p);
-      render_all(get_current_timestamp_ms(), true);
+      request_render_immediate();
 
       pairing_stop();
       log_line("[MenuVehicleSelector] Stopped current pairing.");

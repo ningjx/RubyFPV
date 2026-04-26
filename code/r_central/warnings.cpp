@@ -327,7 +327,8 @@ void warnings_add_error_null_model(int code)
    Popup* p = new Popup(szBuff, 0.34, 0.68, 5);
    p->setIconId(g_idIconError, get_Color_IconError());
    popups_add(p);
-   render_all(g_TimeNow);
+   // === 使用渲染调度器（第二阶段优化）===
+   request_render_immediate();  // 告警需要立即渲染
 }
 
 void warnings_add_radio_reinitialized()

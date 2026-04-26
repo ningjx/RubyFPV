@@ -1350,7 +1350,7 @@ void MenuVehicleCamera::uploadCalibrationFile(int iType, const char* szCalibrati
             sprintf(szLine, "%d%%", (iSegment*100)/iCountSegments);
             p->addLine(szLine);
             uTimeLastRender = g_TimeNow;
-            render_all(g_TimeNow);
+            request_render_immediate();
          }
          if ( handle_commands_get_last_command_id_response_received() == uCommandId )
             break;

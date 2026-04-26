@@ -714,11 +714,13 @@ void MenuSearch::startSearch()
    s_uVideoReceivedOnFreqKhz = 0;
 
    link_watch_remove_popups();
-   render_all(get_current_timestamp_ms(), true);
+   // === 使用渲染调度器（第二阶段优化）===
+   request_render_immediate();  // 搜索状态需要立即渲染
 
    createSearchPopup();
 
-   render_all(get_current_timestamp_ms(), true);
+   // === 使用渲染调度器（第二阶段优化）===
+   request_render_immediate();  // 搜索状态需要立即渲染
    pairing_stop();
 
    if ( ! m_bDidConnectToAVehicle )
@@ -740,7 +742,8 @@ void MenuSearch::startSearch()
    reset_vehicle_runtime_info(&g_SearchVehicleRuntimeInfo);
    
    log_line("MenuSearch: Finished start search function");
-   render_all(get_current_timestamp_ms(), true);
+   // === 使用渲染调度器（第二阶段优化）===
+   request_render_immediate();  // 搜索状态需要立即渲染
    log_line("MenuSearch: Exit start search function");
 
    m_CurrentSearchFrequencyKhz = 0;
@@ -1439,9 +1442,9 @@ void MenuSearch::onSelectItem()
       ruby_pause_watchdog("search on a freq");
       createSearchPopup();
       g_bSearching = true;
-      render_all(get_current_timestamp_ms(), true);
+      request_render_immediate();
       pairing_stop();
-      render_all(get_current_timestamp_ms(), true);
+      request_render_immediate();
 
       if ( ! m_bDidConnectToAVehicle )
          m_bMustSwitchBack = true;
@@ -1485,7 +1488,7 @@ void MenuSearch::onSelectItem()
       }
       createSearchPopup();
 
-      render_all(get_current_timestamp_ms(), true);
+      request_render_immediate();
 
       g_bSearching = true;
       g_bSearchFoundVehicle = false;

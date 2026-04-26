@@ -96,7 +96,12 @@ RenderEngineCairo::RenderEngineCairo()
    m_iCountIcons = 0;
    m_CurrentImageId = 0;
    m_CurrentIconId = 0;
-   log_line("[RenderEngineCairo] Render init done.");
+
+   // Context复用优化初始化
+   m_uLastBufferId = 0xFFFFFFFF;  // 初始化为无效值
+   m_bContextReuseEnabled = true; // 默认启用复用
+
+   log_line("[RenderEngineCairo] Render init done. Context reuse enabled.");
 }
 
 
@@ -140,19 +145,38 @@ void RenderEngineCairo::startFrame()
    
    type_drm_buffer* pOutputBufferInfo = ruby_drm_core_get_back_draw_buffer();
    
-   memset(pOutputBufferInfo->pData, m_uClearBufferByte, pOutputBufferInfo->uSize);
+   // === Context复用优化 ===
+   bool bBufferSwitched = (pOutputBufferInfo->uBufferId != m_uLastBufferId);
    
-   if ( NULL != m_pCairoCtx )
-      cairo_destroy(m_pCairoCtx);
-   m_pCairoCtx = NULL; 
+   if ( m_bContextReuseEnabled && !bBufferSwitched && NULL != m_pCairoCtx )
+   {
+      // 缓冲区未切换，复用现有context
+      // 重置Cairo状态（变换矩阵、裁剪区域等）
+      cairo_identity_matrix(m_pCairoCtx);
+      cairo_reset_clip(m_pCairoCtx);
+      // 重置源
+      cairo_set_source_rgba(m_pCairoCtx, 0, 0, 0, 0);
+   }
+   else
+   {
+      // 缓冲区切换或首次创建，需要重建context
+      if ( NULL != m_pCairoCtx )
+         cairo_destroy(m_pCairoCtx);
+      m_pCairoCtx = NULL; 
 
-   if ( pOutputBufferInfo->uBufferId == m_uRenderDrawSurfacesIds[0] )
-   if ( NULL != m_pMainCairoSurface[0] )
-      m_pCairoCtx = cairo_create(m_pMainCairoSurface[0]);
+      if ( pOutputBufferInfo->uBufferId == m_uRenderDrawSurfacesIds[0] )
+      if ( NULL != m_pMainCairoSurface[0] )
+         m_pCairoCtx = cairo_create(m_pMainCairoSurface[0]);
 
-   if ( pOutputBufferInfo->uBufferId == m_uRenderDrawSurfacesIds[1] )
-   if ( NULL != m_pMainCairoSurface[1] )
-      m_pCairoCtx = cairo_create(m_pMainCairoSurface[1]);
+      if ( pOutputBufferInfo->uBufferId == m_uRenderDrawSurfacesIds[1] )
+      if ( NULL != m_pMainCairoSurface[1] )
+         m_pCairoCtx = cairo_create(m_pMainCairoSurface[1]);
+      
+      m_uLastBufferId = pOutputBufferInfo->uBufferId;
+   }
+   
+   // 保持原有全屏清除逻辑（后续阶段优化）
+   memset(pOutputBufferInfo->pData, m_uClearBufferByte, pOutputBufferInfo->uSize);
 
    if ( NULL == m_pCairoCtx )
       return;
@@ -166,9 +190,15 @@ void RenderEngineCairo::endFrame()
       return;
    }
 
-   if ( NULL != m_pCairoCtx )
-      cairo_destroy(m_pCairoCtx);
-   m_pCairoCtx = NULL; 
+   // === Context复用优化 ===
+   if ( !m_bContextReuseEnabled )
+   {
+      // 复用禁用时，销毁context（保持原有逻辑）
+      if ( NULL != m_pCairoCtx )
+         cairo_destroy(m_pCairoCtx);
+      m_pCairoCtx = NULL; 
+   }
+   // 复用启用时，不销毁context，保留给下一帧使用
 
    if ( NULL != m_pCairoTempCtx )
       cairo_destroy(m_pCairoTempCtx);

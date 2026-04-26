@@ -586,7 +586,7 @@ void MenuStorage::movePictures(bool bDelete)
    else
       m_pPopupProgress->setTitle("Copying screenshots. Please wait...");
 
-   render_all(get_current_timestamp_ms());
+   request_render_immediate();
 
    buildFilesListPictures();
 
@@ -601,7 +601,7 @@ void MenuStorage::movePictures(bool bDelete)
       g_TimeNowMicros = get_current_timestamp_micros();
       ruby_signal_alive();
       ruby_processing_loop(true);
-      render_all(get_current_timestamp_ms());
+      request_render_immediate();
 
       strcpy(szSrcFile, FOLDER_MEDIA);
       strcat(szSrcFile, m_szPicturesFiles[i]);
@@ -640,7 +640,7 @@ bool MenuStorage::moveVideos(bool bDelete)
       sprintf(szInfo, "Copying videos to USB memory stick [%s]. Please wait...", hardware_get_mounted_usb_name());
 
    m_pPopupProgress->setTitle(szInfo);
-   render_all(get_current_timestamp_ms());
+   request_render_immediate();
 
    buildFilesListVideo();
    bool bHadErrors = false;
@@ -659,7 +659,7 @@ bool MenuStorage::moveVideos(bool bDelete)
       g_TimeNowMicros = get_current_timestamp_micros();
       ruby_signal_alive();
       ruby_processing_loop(true);
-      render_all(get_current_timestamp_ms());
+      request_render_immediate();
 
       snprintf(szFile, sizeof(szFile)/sizeof(szFile[0]), "%s%s", FOLDER_MEDIA, m_szVideoInfoFiles[i]);
       fd = fopen(szFile, "r");
@@ -736,7 +736,7 @@ bool MenuStorage::moveVideos(bool bDelete)
          g_TimeNow = get_current_timestamp_ms();
          ruby_signal_alive();
          ruby_processing_loop(true);
-         render_all(get_current_timestamp_ms());
+         request_render_immediate();
       }
 
       // Wait for processing process to finish
@@ -746,7 +746,7 @@ bool MenuStorage::moveVideos(bool bDelete)
          g_TimeNow = get_current_timestamp_ms();
          ruby_signal_alive();
          ruby_processing_loop(true);
-         render_all(get_current_timestamp_ms());
+         request_render_immediate();
          if ( hw_process_exists("ruby_video_proc") )
             log_line("Waiting for video processing to finish...");
          else
@@ -787,7 +787,7 @@ bool MenuStorage::moveVideos(bool bDelete)
       g_TimeNowMicros = get_current_timestamp_micros();
       ruby_signal_alive();
       ruby_processing_loop(true);
-      render_all(get_current_timestamp_ms());
+      request_render_immediate();
 
       hardware_sleep_ms(200);
 
@@ -833,7 +833,7 @@ bool MenuStorage::flowCopyMoveFiles(bool bDeleteToo)
 
    ruby_signal_alive();
    ruby_processing_loop(true);
-   render_all(g_TimeNow);
+   request_render_immediate();
    ruby_signal_alive();
 
    sprintf(szCommand, "mkdir -p %s", FOLDER_USB_MOUNT);
@@ -848,7 +848,7 @@ bool MenuStorage::flowCopyMoveFiles(bool bDeleteToo)
    {
       ruby_signal_alive();
       ruby_processing_loop(true);
-      render_all(g_TimeNow);
+      request_render_immediate();
       ruby_signal_alive();
       if ( 0 == iMountRes )
          m_pPopupProgress->setTitle("No USB memory stick available.");
@@ -862,7 +862,7 @@ bool MenuStorage::flowCopyMoveFiles(bool bDeleteToo)
 
       ruby_signal_alive();
       ruby_processing_loop(true);
-      render_all(g_TimeNow);
+      request_render_immediate();
       ruby_signal_alive();
 
       if ( 1 != iMountRes )
@@ -875,7 +875,7 @@ bool MenuStorage::flowCopyMoveFiles(bool bDeleteToo)
    }
    ruby_signal_alive();
    ruby_processing_loop(true);
-   render_all(g_TimeNow);
+   request_render_immediate();
    ruby_signal_alive();
 
    movePictures(bDeleteToo);

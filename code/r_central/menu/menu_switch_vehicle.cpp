@@ -132,10 +132,10 @@ void MenuSwitchVehicle::onSelectItem()
       }
 
       menu_discard_all();
-      render_all(get_current_timestamp_ms(), true);
+      request_render_immediate();
       Popup* p = new Popup("Switching vehicles...",0.3,0.64, 0.26, 0.2);
       popups_add_topmost(p);
-      render_all(get_current_timestamp_ms(), true);
+      request_render_immediate();
          
       pairing_stop();
       setCurrentModel(pModel->uVehicleId);

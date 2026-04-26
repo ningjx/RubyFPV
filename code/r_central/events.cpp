@@ -191,7 +191,8 @@ void onMainVehicleChanged(bool bRemovePreviousVehicleState)
    
    warnings_on_changed_vehicle();
 
-   render_all(g_TimeNow);
+   // === 使用渲染调度器（第二阶段优化）===
+   request_render_immediate();  // 事件需要立即渲染
 
    log_line("[Events] Handled event Main Vehicle Changed. Done.");
 }

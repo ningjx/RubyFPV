@@ -218,7 +218,7 @@ void MenuSystemDevLogs::exportAllLogs()
    popups_add_topmost(p);
    ruby_processing_loop(true);
    g_TimeNow = get_current_timestamp_ms();
-   render_all(g_TimeNow);
+   request_render_immediate();
    ruby_signal_alive();
       
    hw_execute_bash_command("mkdir -p tmp/exportcontrollerlogs", NULL);

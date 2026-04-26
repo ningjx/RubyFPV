@@ -212,7 +212,7 @@ void MenuVehicles::onReturnFromChild(int iChildMenuId, int returnValue)
    // Delete all
    if ( (1 == returnValue) && (1 == iChildMenuId/1000) )
    {
-      render_all(get_current_timestamp_ms(), true, false);
+      request_render_immediate();
       pairing_stop();
 
       ruby_set_active_model_id(0);

@@ -162,6 +162,12 @@ static u32 s_uTimeFreezeOSD = 0;
 
 static u32 s_uTimeToSwitchLogLevel = 0;
 
+// === 渲染调度器变量（第二阶段优化）===
+static u32 s_lastRenderSchedulerTime = 0;
+static u32 s_minRenderInterval = 16;  // 约60fps (16ms)
+static bool s_renderRequested = false;
+static bool s_forceImmediateRender = false;
+
 Popup popupNoModel("No vehicle defined or linked to!", 0.2, 0.45, 5);
 Popup popupStartup("System starting. Please wait.", 0.05, 0.16, 0);
 
@@ -232,6 +238,43 @@ char* _ruby_central_get_star_seq_string(int iSeqId)
      strcpy(s_szRubyCentralStartSeqText, "START_SEQ_FAILED");
    
    return s_szRubyCentralStartSeqText;
+}
+
+// === 渲染调度函数实现（第二阶段优化）===
+
+void request_render()
+{
+   s_renderRequested = true;
+   s_forceImmediateRender = false;
+}
+
+void request_render_immediate()
+{
+   s_renderRequested = true;
+   s_forceImmediateRender = true;
+}
+
+static bool should_render()
+{
+   if ( !s_renderRequested )
+      return false;
+   
+   if ( s_forceImmediateRender )
+      return true;
+   
+   u32 now = get_current_timestamp_ms();
+   if ( now < s_lastRenderSchedulerTime + s_minRenderInterval )
+      return false;
+   
+   return true;
+}
+
+static void execute_scheduled_render()
+{
+   render_all(g_TimeNow, false, false);
+   s_lastRenderSchedulerTime = get_current_timestamp_ms();
+   s_renderRequested = false;
+   s_forceImmediateRender = false;
 }
 
 
@@ -2449,14 +2492,23 @@ void main_loop_r_central()
 
    compute_cpu_state();
 
+   // === 使用渲染调度器（第二阶段优化）===
    int dt = 1000/15;
    if ( 0 != g_pControllerSettings->iRenderFPS )
       dt = 1000/g_pControllerSettings->iRenderFPS;
+   
+   // 自动请求渲染（基于FPS设置）
    if ( g_TimeNow >= s_uTimeLastRender+dt )
+   {
+      request_render();
+   }
+   
+   // 执行调度渲染
+   if ( should_render() )
    {
       ruby_signal_alive();
       s_uTimeLastRender = g_TimeNow;
-      render_all(g_TimeNow, false, false);
+      execute_scheduled_render();
       if ( NULL != g_pProcessStatsCentral )
          g_pProcessStatsCentral->lastActiveTime = g_TimeNow;
 

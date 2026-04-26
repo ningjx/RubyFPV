@@ -1643,9 +1643,9 @@ bool handle_last_command_result()
             {
                log_line("[Commands] Radio link capabilities changed. Reinitializing radio links and router...");
                pairing_stop();
-               render_all(g_TimeNow);
+               request_render_immediate();
                hardware_sleep_ms(100);
-               render_all(g_TimeNow);
+               request_render_immediate();
                pairing_start_normal();
                log_line("[Commands] Finished repairing due to radio links capabilities changed.");
                menu_refresh_all_menus();

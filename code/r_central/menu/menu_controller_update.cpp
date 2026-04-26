@@ -133,7 +133,8 @@ void MenuControllerUpdate::onReturnFromChild(int iChildMenuId, int returnValue)
       menu_discard_all();
       popups_remove_all();
       ruby_processing_loop(true);
-      render_all(g_TimeNow);
+      // === 使用渲染调度器（第二阶段优化）===
+      request_render_immediate();  // 更新进度需要立即渲染
       ruby_signal_alive();
 
       onEventReboot();
@@ -192,7 +193,8 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
    popups_add_topmost(p);
 
    ruby_processing_loop(true);
-   render_all(g_TimeNow);
+   // === 使用渲染调度器（第二阶段优化）===
+   request_render_immediate();  // 更新进度需要立即渲染
    ruby_signal_alive();
 
    int iMountRes = 1;
@@ -203,7 +205,8 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
       popups_remove(p);
       ruby_signal_alive();
       ruby_processing_loop(true);
-      render_all(g_TimeNow);
+      // === 使用渲染调度器（第二阶段优化）===
+      request_render_immediate();  // 更新进度需要立即渲染
       ruby_signal_alive();
 
       if ( 0 == iMountRes )
@@ -217,7 +220,8 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
       }
       ruby_signal_alive();
       ruby_processing_loop(true);
-      render_all(g_TimeNow);
+      // === 使用渲染调度器（第二阶段优化）===
+      request_render_immediate();  // 更新进度需要立即渲染
       ruby_signal_alive();
       if ( 1 != iMountRes )
          return;
@@ -324,7 +328,7 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
          log_line("Set update popup title for run %d: (%s)", iRepeatCount, szTitle);
          p->setTitle(szTitle);
          ruby_processing_loop(true);
-         render_all_with_menus(g_TimeNow, false);
+         request_render_immediate();
          ruby_signal_alive();
          hardware_sleep_ms(50);
          if ( bFoundProcess )
@@ -457,14 +461,16 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
 
    hardware_unmount_usb();
    ruby_processing_loop(true);
-   render_all(g_TimeNow);
+   // === 使用渲染调度器（第二阶段优化）===
+   request_render_immediate();  // 更新进度需要立即渲染
    ruby_signal_alive();
    g_bUpdateInProgress = false;
    ruby_resume_watchdog("finished controller update procedure");
 
    popups_remove(p);
    ruby_processing_loop(true);
-   render_all(g_TimeNow);
+   // === 使用渲染调度器（第二阶段优化）===
+   request_render_immediate();  // 更新进度需要立即渲染
    ruby_signal_alive();
    hw_execute_bash_command("sync", NULL);
 
@@ -475,7 +481,7 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
       pMC->m_yPos = 0.3;
       add_menu_to_stack(pMC);
       ruby_processing_loop(true);
-      render_all(g_TimeNow);
+      request_render_immediate();
       ruby_signal_alive();
       log_line("Exit from main update procedure (1).");
       return;
@@ -512,7 +518,8 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
       pMC->m_yPos = 0.3;
       add_menu_to_stack(pMC);
       ruby_processing_loop(true);
-      render_all(g_TimeNow);
+      // === 使用渲染调度器（第二阶段优化）===
+      request_render_immediate();  // 更新进度需要立即渲染
       ruby_signal_alive();
       log_line("Exit from main update procedure (2).");
       return;
@@ -540,7 +547,8 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
 
    add_menu_to_stack(pMC);
    ruby_processing_loop(true);
-   render_all(g_TimeNow);
+   // === 使用渲染调度器（第二阶段优化）===
+   request_render_immediate();  // 更新进度需要立即渲染
    ruby_signal_alive();
    log_line("Exit from main update procedure (normal exit).");
 }

@@ -201,7 +201,7 @@ void MenuControllerNetwork::onSelectItem()
       {
          ruby_processing_loop(true);
          g_TimeNow = get_current_timestamp_ms();
-         render_all(g_TimeNow);
+         request_render_immediate();
          ruby_signal_alive();
          hardware_sleep_ms(200);
       }
