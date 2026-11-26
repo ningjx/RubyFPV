@@ -30,6 +30,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "../../frame_scheduler.h"
 #include "../menu.h"
 #include "../menu_objects.h"
 #include "menu_controller_radio_interface_sik.h"
@@ -135,11 +136,7 @@ void MenuControllerRadioInterfaceSiK::showProgressInfo()
    m_pPopupProgress = new Popup("Updating SiK Radio Configuration. Please wait...",0.3,0.4, 0.5, 15);
    popups_add_topmost(m_pPopupProgress);
 
-   g_pRenderEngine->startFrame();
-   render_background_and_paddings(false);
-   popups_render();
-   popups_render_topmost();
-   g_pRenderEngine->endFrame();
+   ui_present_progress(ProgressOverlay::Popups);
 
 }
 

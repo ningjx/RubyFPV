@@ -1,0 +1,6 @@
+/build/
+/ruby_*
+/test_*
+/*.so.*
+/plugins/**/*.o
+/plugins/**/*.so.*

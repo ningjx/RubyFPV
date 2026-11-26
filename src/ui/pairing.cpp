@@ -30,6 +30,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "../session/session.h"
 #include "../core/base.h"
 #include "../core/config.h"
 #include "../settings/ctrl_interfaces.h"
@@ -82,29 +83,25 @@ bool _pairing_start()
    }
 
 
-   controller_launch_router(g_bSearching, g_iSearchFirmwareType);
-   controller_launch_rx_telemetry();
-   controller_launch_tx_rc();
+   SessionRequest request;
+   request.mode = g_bSearching ? SessionMode::Search : SessionMode::Paired;
+   request.vehicle = g_pCurrentModel ? g_pCurrentModel->uVehicleId : 0;
+   request.frequency = g_iSearchFrequency;
+   request.firmware = g_iSearchFirmwareType;
+   request.airRate = g_iSearchSiKAirDataRate;
+   request.ecc = g_iSearchSiKECC;
+   request.lbt = g_iSearchSiKLBT;
+   request.mcstr = g_iSearchSiKMCSTR;
+   if (!request_session(request)) {
+      log_softerror_and_alarm("Session supervisor could not start or attach the requested session");
+      return false;
+   }
 
    handle_commands_start_on_pairing();
+   s_isRXStarted = true;
    start_pipes_to_router();
 
-   /*
-   if ( (! g_bSearching) && (NULL != g_pCurrentModel) )
-   if ( g_pCurrentModel->getVehicleFirmwareType() == MODEL_FIRMWARE_TYPE_OPENIPC )
-   {
-      if ( access("/usr/bin/gst-launch-1.0", R_OK) == -1 )
-      {
-         //warnings_add("You are missing base components required to pair with OpenIPC cameras. Please do a full install of the Ruby firmware on the controller. Version 8.0 or newer.");
-         Menu* pm = new Menu(MENU_ID_SIMPLE_MESSAGE,"Missing components",NULL);
-         pm->m_xPos = 0.32; pm->m_yPos = 0.4;
-         pm->m_Width = 0.36;
-         pm->addTopLine("You are missing base components required to pair with OpenIPC cameras.");
-         pm->addTopLine("Please do a full install of the Ruby firmware on the controller. Version 8.0 or newer.");
-         add_menu_to_stack(pm); 
-      }
-   }
-   */
+
    
    if ( NULL != g_pCurrentModel )
    {
@@ -113,12 +110,11 @@ bool _pairing_start()
       char szPath[256];
       strcpy(szPath, FOLDER_LOGS);
       strcat(szPath, szFile);
-      FILE* fd = fopen(szPath, "wb");
+      FILE* fd = fopen(szPath, "ab");
       if ( NULL != fd )
          fclose(fd);
    }
  
-   s_isRXStarted = true;
    s_isVideoReceiving = false;
    s_uPairingStartTime = g_TimeNow;
    
@@ -224,30 +220,17 @@ bool pairing_stop()
 
    handle_commands_stop_on_pairing();
 
-   ruby_signal_alive();
-   controller_stop_tx_rc();
-
-   ruby_signal_alive();
-   controller_stop_router();
-
-   ruby_signal_alive();
-   controller_stop_rx_telemetry();
-
-   ruby_signal_alive();
-   controller_wait_for_stop_all();
-
-   ruby_signal_alive();
-   onEventPairingStopped();
-
    stop_pipes_to_router();
-   handle_commands_stop_on_pairing();
+   ruby_signal_alive();
+   bool stopped = request_session(SessionRequest{});
+   if (!stopped) log_softerror_and_alarm("Session supervisor could not confirm disconnection");
+   onEventPairingStopped();
 
    ruby_signal_alive();
 
    s_isRXStarted = false;
    s_isVideoReceiving = false;
 
-   ruby_clear_all_ipc_channels();
 
    g_bIsRouterReady = false;
    g_RouterIsReadyTimestamp = 0;
@@ -255,7 +238,16 @@ bool pairing_stop()
    log_line("------------------------------------------");
    log_line("Stopped pairing processes successfully.");
    log_line("------------------------------------------");
-   return true;
+   return stopped;
+}
+
+void pairing_detach_ui()
+{
+   if (!s_isRXStarted) return;
+   stop_pipes_to_router();
+   handle_commands_stop_on_pairing();
+   _pairing_close_shared_mem();
+   s_isRXStarted = false;
 }
 
 void pairing_on_router_ready()

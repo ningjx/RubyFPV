@@ -58,8 +58,6 @@ void do_first_boot_pre_initialization(bool bIgnoreDrivers)
    printf("\nRuby: Doing first time ever initialization on Radxa. Please wait...\n");
    fflush(stdout);
 
-   hw_execute_bash_command("systemctl disable glances", NULL);
-
    if ( ! bIgnoreDrivers )
       hardware_install_drivers(1);
    hw_execute_bash_command_raw("echo 'performance' | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor", NULL);
@@ -88,24 +86,7 @@ void do_first_boot_pre_initialization(bool bIgnoreDrivers)
 }
 
 
-void do_first_boot_initialization_radxa()
-{
-   log_line("Doing first time boot setup for Radxa platform...");
 
-   hw_execute_bash_command("sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0", NULL);
-   hw_execute_bash_command("sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0", NULL);
-   hw_execute_bash_command("sudo sysctl -p", NULL);
-   hw_execute_bash_command("PATH=\"/usr/sbin:/usr/local/sbin:$PATH\"", NULL);
-
-   hw_execute_bash_command("rm -rf /usr/bin/pulseaudio", NULL);
-
-   hw_execute_bash_command("sudo systemctl stop systemd-timesyncd", NULL);
-   hw_execute_bash_command("sudo systemctl disable systemd-timesyncd", NULL);
-
-   hw_execute_bash_command("/etc/init.d/avahi-daemon stop", NULL);
-   hw_execute_bash_command("rm -rf /etc/init.d/avahi-daemon", NULL);
-   hw_execute_bash_command("rm -rf /usr/sbin/avahi-daemon", NULL);
-}
 
 
 void do_first_boot_initialization()
@@ -123,7 +104,6 @@ void do_first_boot_initialization()
    snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "chmod 777 %s*", FOLDER_CONFIG);
    hw_execute_bash_command(szComm, NULL);
 
-   do_first_boot_initialization_radxa();
 
    first_boot_create_default_model();
 

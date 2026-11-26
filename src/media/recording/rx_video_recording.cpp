@@ -30,6 +30,9 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "../byte_queue.h"
+#include <atomic>
+#include <mutex>
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
@@ -69,14 +72,12 @@
 #include "../../radio/station/ruby_rt_station.h"
 #include "rx_video_recording_data.h"
 
-bool s_bIsRecording = false;
-bool s_bRequestedStopRecording = false;
+std::atomic<bool> s_bIsRecording{false};
+std::atomic<bool> s_bRequestedStopRecording{false};
 bool s_bIsRecordingToRAM = false;
 u32 s_uRecordingLastStartStopTime = 0;
 
 pthread_t s_pThreadVideoRecording;
-int s_iPipeRecordingThreadWrite = 0;
-int s_iPipeRecordingThreadRead = 0;
 u32 s_TimeStartRecording = MAX_U32;
 char s_szFileRecordingOutput[MAX_FILE_PATH_SIZE];
 int s_iFileVideoRecordingOutput = -1;
@@ -86,13 +87,12 @@ int s_iRecordingHeight = 0;
 int s_iRecordingFPS = 0;
 int s_iRecordingType = 0;
 
-u8 s_uTempRecordingBuffer[64000];
-int s_iTempRecordingBufferFilledInBytes = 0;
+static ByteQueue<2 * 1024 * 1024> recordingQueue;
+static std::mutex recordingMutex;
 
 u32 s_uRecordingStreamCurrentParsedToken = 0x11111111;
-u32 s_uRecordingStreamPrevParsedToken = 0x11111111;
 bool s_bRecordingFoundStartOfFirstNAL = false;
-bool s_bRecordingThreadReadyForData = false;
+std::atomic<bool> s_bRecordingThreadReadyForData{false};
 
 void _recording_send_status_to_central(u8 uStatus, u8 uErrorLevel, const char* szError)
 {
@@ -279,16 +279,14 @@ void* _thread_video_recording(void *argument)
    s_iFileVideoRecordingOutput = open(s_szFileRecordingOutput, iOpenFlags);
    if ( -1 == s_iFileVideoRecordingOutput )
    {
-      close(s_iPipeRecordingThreadRead);
-      s_iPipeRecordingThreadRead = -1;
-      close(s_iPipeRecordingThreadWrite);
-      s_iPipeRecordingThreadWrite = -1;
+
+
 
       _recording_cleanp_temp_recording_data();
       _recording_send_status_to_central(0xFF, 2, "Recording error. Failed to create recording file.");
       _recording_send_status_to_central(0, 0, NULL);
-      s_bIsRecording = false;
       s_bRequestedStopRecording = false;
+      s_bIsRecording = false;
 
       log_line("[VideoRecording-Th] Exit due to error creating recording file [%s]", s_szFileRecordingOutput);
       return NULL;
@@ -308,10 +306,8 @@ void* _thread_video_recording(void *argument)
    s_TimeStartRecording = 0;
    s_uRecordingFileSize = 0;
    s_uRecordingStreamCurrentParsedToken = 0x11111111;
-   s_uRecordingStreamPrevParsedToken = 0x11111111;
    s_bRecordingFoundStartOfFirstNAL = false;
 
-   fd_set fdSet;
    u8 uRecBuffer[64000];
    u32 uTimeLastVideoMemoryFreeCheck = get_current_timestamp_ms();
    u32 uTimeLastInfoFileWrite = 0;
@@ -320,7 +316,7 @@ void* _thread_video_recording(void *argument)
 
    log_line("[VideoRecording-Th] Started waiting for data...");
 
-   while ( (! g_bQuit) && (! s_bRequestedStopRecording) )
+   while (true)
    {
       u32 uTimeNow = get_current_timestamp_ms();
       if ( s_bIsRecordingToRAM )
@@ -353,63 +349,39 @@ void* _thread_video_recording(void *argument)
 
       rx_video_recording_periodic_data_loop();
 
-      FD_ZERO(&fdSet);
-      FD_SET(s_iPipeRecordingThreadRead, &fdSet);
-
-      struct timeval timeInput;
-      timeInput.tv_sec = 0;
-      timeInput.tv_usec = 40*1000; // 40 miliseconds timeout
-
-      int iSelectResult = select(s_iPipeRecordingThreadRead+1, &fdSet, NULL, NULL, &timeInput);
-      if ( s_bRequestedStopRecording )
+      size_t count;
       {
-         log_line("[VideoRecording-Th] Received request to stop recording");
-         break;
+         std::lock_guard<std::mutex> lock(recordingMutex);
+         count = std::min(sizeof(uRecBuffer), recordingQueue.contiguous());
+         if (!count && (g_bQuit || s_bRequestedStopRecording)) break;
+         memcpy(uRecBuffer, recordingQueue.front(), count);
+         recordingQueue.consume(count);
       }
-      if ( g_bQuit )
-      {
-         log_line("[VideoRecording-Th] Received request to stop recording due to quit.");
-         break;
-      }
-      if ( iSelectResult < 0 )
-      {
-         log_line("[VideoRecording-Th] Thread select failed. Exit recording thread.");
-         break;
-      }
-      if ( iSelectResult == 0 )
-         continue;
-
-
-      int iRead = read(s_iPipeRecordingThreadRead, uRecBuffer, sizeof(uRecBuffer)/sizeof(uRecBuffer[0]));
-      if ( iRead < 0 )
-      {
-         log_line("[VideoRecording-Th] Read recording pipe failed. Exit recording thread.");
-         break;
-      }
-      if ( iRead == 0 )
-      {
-         hardware_sleep_ms(10);
+      if (!count) {
+         hardware_sleep_ms(5);
          continue;
       }
-
-      if ( bFirstWrite )
-         log_line("[VideoRecording-Th] Start receiving data to write to file (%d bytes). Start writing to recording file...", iRead);
-      bFirstWrite = false;
-      int iRes = write(s_iFileVideoRecordingOutput, uRecBuffer, iRead);
-      if ( iRes == iRead )
-         continue;
-
-      // Error writing to recording file
-      log_softerror_and_alarm("[VideoRecording-Th] Recording thread failed to write %d bytes to recording file, result: %d , error: %d (%s)", iRead, iRes, errno, strerror(errno));
+      if (bFirstWrite) {
+         bFirstWrite = false;
+         s_TimeStartRecording = get_current_timestamp_ms();
+      }
+      size_t written = 0;
+      while (written < count) {
+         ssize_t n = write(s_iFileVideoRecordingOutput, uRecBuffer + written, count - written);
+         if (n < 0 && errno == EINTR) continue;
+         if (n <= 0) break;
+         written += n;
+      }
+      s_uRecordingFileSize += written;
+      if (written != count) {
+         _recording_send_status_to_central(0xFF, 1, "Recording stopped: storage write failed.");
+         break;
+      }
    }
    s_bRecordingThreadReadyForData = false;
    log_line("[VideoRecording-Th] Finishing recording...");
 
-   close( s_iPipeRecordingThreadWrite );
-   s_iPipeRecordingThreadWrite = -1;
 
-   close( s_iPipeRecordingThreadRead );
-   s_iPipeRecordingThreadRead = -1;
 
    close(s_iFileVideoRecordingOutput);
    s_iFileVideoRecordingOutput = -1;
@@ -425,8 +397,8 @@ void* _thread_video_recording(void *argument)
       _recording_send_status_to_central(0xFF, 0, "No recording created. Recording too short.");
       _recording_send_status_to_central(0, 0, NULL);
 
-      s_bIsRecording = false;
       s_bRequestedStopRecording = false;
+      s_bIsRecording = false;
       log_line("[VideoRecording-Th] Exit recording thread.");
       return NULL;
    }
@@ -442,8 +414,8 @@ void* _thread_video_recording(void *argument)
       _recording_send_status_to_central(0xFF, 0, "No recording created. Recording too short.");
       _recording_send_status_to_central(0, 0, NULL);
 
-      s_bIsRecording = false;
       s_bRequestedStopRecording = false;
+      s_bIsRecording = false;
       log_line("[VideoRecording-Th] Exit recording thread.");
       return NULL;
    }
@@ -454,8 +426,8 @@ void* _thread_video_recording(void *argument)
       _recording_send_status_to_central(0xFF, 2, "Failed to save recording info.");
       _recording_send_status_to_central(0, 0, NULL);
 
-      s_bIsRecording = false;
       s_bRequestedStopRecording = false;
+      s_bIsRecording = false;
       log_line("[VideoRecording-Th] Exit recording thread.");
       return NULL;
    }
@@ -519,8 +491,8 @@ void* _thread_video_recording(void *argument)
 
    _recording_send_status_to_central(0, 0, NULL);
    _recording_cleanp_temp_recording_data();
-   s_bIsRecording = false;
    s_bRequestedStopRecording = false;
+   s_bIsRecording = false;
    return NULL;
 }
 
@@ -529,12 +501,11 @@ void rx_video_recording_init()
    log_line("[VideoRecording] Init start...");
 
    s_szFileRecordingOutput[0] = 0;
-   s_bIsRecording = false;
    s_bRequestedStopRecording = false;
+   s_bIsRecording = false;
    s_uRecordingFileSize = 0;
    s_iFileVideoRecordingOutput = -1;
    s_uRecordingStreamCurrentParsedToken = 0x11111111;
-   s_uRecordingStreamPrevParsedToken = 0x11111111;
    s_bRecordingFoundStartOfFirstNAL = false;
    s_bRecordingThreadReadyForData = false;
 
@@ -582,7 +553,7 @@ void rx_video_recording_start()
 
    log_line("[VideoRecording] Received request to start recording video.");
 
-   s_iTempRecordingBufferFilledInBytes = 0;
+   { std::lock_guard<std::mutex> lock(recordingMutex); recordingQueue.clear(); }
    s_iRecordingWidth = 1280;
    s_iRecordingHeight = 720;
    s_iRecordingFPS = 0;
@@ -606,68 +577,13 @@ void rx_video_recording_start()
       log_softerror_and_alarm("[VideoRecording] Can't find processor rx video stream info for VID: %u", g_pCurrentModel->uVehicleId);
       _recording_send_status_to_central(0xFF, 2, "Internal recording error. Error code: 1");
       _recording_send_status_to_central(0, 0, NULL);
-      s_bIsRecording = false;
       s_bRequestedStopRecording = false;
+      s_bIsRecording = false;
       return;
    }
 
    s_bIsRecording = true;
    s_bRequestedStopRecording = false;
-
-   int iRetries = 100;
-   while ( iRetries > 0 )
-   {
-      iRetries--;
-      s_iPipeRecordingThreadRead = open(FIFO_RUBY_STATION_VIDEO_STREAM_RECORDING, O_CREAT | O_RDONLY | O_NONBLOCK);
-      if ( s_iPipeRecordingThreadRead > 0 )
-         break;
-      log_line("[VideoRecording] Failed to open video recording pipe read endpoint: %s, error code (%d): [%s]",
-            FIFO_RUBY_STATION_VIDEO_STREAM_RECORDING, errno, strerror(errno));
-      hardware_sleep_ms(5);
-   }
-
-   if ( s_iPipeRecordingThreadRead <= 0 )
-   {
-      log_softerror_and_alarm("[VideoRecording] Failed to open video recording pipe read endpoint: %s", FIFO_RUBY_STATION_VIDEO_STREAM_RECORDING);
-      _recording_send_status_to_central(0xFF, 2, "Internal recording error. Error code: 2");
-      _recording_send_status_to_central(0, 0, NULL);
-      s_bIsRecording = false;
-      s_bRequestedStopRecording = false;
-      return;
-   }
-
-   log_line("[VideoRecording] Opened video recording pipe read endpoint: %s", FIFO_RUBY_STATION_VIDEO_STREAM_RECORDING);
-
-   iRetries = 100;
-   while ( iRetries > 0 )
-   {
-      iRetries--;
-      s_iPipeRecordingThreadWrite = open(FIFO_RUBY_STATION_VIDEO_STREAM_RECORDING, O_CREAT | O_WRONLY | O_NONBLOCK);
-      if ( s_iPipeRecordingThreadWrite > 0 )
-         break;
-      log_line("[VideoRecording] Failed to open video recording pipe write endpoint: %s, error code (%d): [%s]",
-         FIFO_RUBY_STATION_VIDEO_STREAM_RECORDING, errno, strerror(errno));
-      hardware_sleep_ms(5);
-   }
-
-   if ( s_iPipeRecordingThreadRead <= 0 )
-   {
-      log_softerror_and_alarm("[VideoRecording] Failed to open video recording pipe write endpoint: %s", FIFO_RUBY_STATION_VIDEO_STREAM_RECORDING);
-      close(s_iPipeRecordingThreadRead);
-      s_iPipeRecordingThreadRead = -1;
-      _recording_send_status_to_central(0xFF, 2, "Internal recording error. Error code: 3");
-      _recording_send_status_to_central(0, 0, NULL);
-      s_bIsRecording = false;
-      s_bRequestedStopRecording = false;
-      return;
-   }
-
-   log_line("[VideoRecording] Opened video recording pipe write endpoint: %s", FIFO_RUBY_STATION_VIDEO_STREAM_RECORDING);
-   log_line("[VideoRecording] Video recording pipe write flags: %s", str_get_pipe_flags(fcntl(s_iPipeRecordingThreadWrite, F_GETFL)));
-   log_line("[VideoRecording] Video recording FIFO write default size: %d bytes", fcntl(s_iPipeRecordingThreadWrite, F_GETPIPE_SZ));
-
-   fcntl(s_iPipeRecordingThreadWrite, F_SETPIPE_SZ, 512000*4);
-   log_line("[VideoRecording] Video recording FIFO write new size: %d bytes", fcntl(s_iPipeRecordingThreadWrite, F_GETPIPE_SZ));
 
    pthread_attr_t attr;
    ControllerSettings* pCS = get_ControllerSettings();
@@ -682,12 +598,10 @@ void rx_video_recording_start()
       _recording_send_status_to_central(0xFF, 2, "Internal recording error. Error code: 4");
       _recording_send_status_to_central(0, 0, NULL);
       pthread_attr_destroy(&attr);
-      close(s_iPipeRecordingThreadRead);
-      s_iPipeRecordingThreadRead = -1;
-      close(s_iPipeRecordingThreadWrite);
-      s_iPipeRecordingThreadWrite = -1;
-      s_bIsRecording = false;
+
+
       s_bRequestedStopRecording = false;
+      s_bIsRecording = false;
       return;
    }
    pthread_attr_destroy(&attr);
@@ -728,45 +642,27 @@ u32  rx_video_recording_get_last_start_stop_time()
 
 void rx_video_recording_on_new_data(u8* pData, int iLength)
 {
-   if ( (! s_bIsRecording) || s_bRequestedStopRecording || (-1 == s_iFileVideoRecordingOutput) || (NULL == pData) || (iLength <= 0) || (s_iPipeRecordingThreadWrite <= 0) || (! s_bRecordingThreadReadyForData) )
-      return;
-
-   while ( ! s_bRecordingFoundStartOfFirstNAL )
+   if (!s_bRecordingThreadReadyForData || !pData || iLength <= 0) return;
+   bool accepted;
    {
-      s_uRecordingStreamPrevParsedToken = (s_uRecordingStreamPrevParsedToken << 8) | (s_uRecordingStreamCurrentParsedToken & 0xFF);
-      s_uRecordingStreamCurrentParsedToken = (s_uRecordingStreamCurrentParsedToken << 8) | (*pData);
-      pData++;
-      iLength--;
-      if ( s_uRecordingStreamCurrentParsedToken == 0x00000001 )
-      {
-         log_line("[VideoRecording] Found start of first NAL at position %u (bytes) in recording stream.", s_uRecordingFileSize);
-         s_bRecordingFoundStartOfFirstNAL = true;
-         s_TimeStartRecording = get_current_timestamp_ms();
-         s_uRecordingFileSize = 4;
-         u8 uHeader[5];
-         uHeader[0] = 0; uHeader[1] = 0; uHeader[2] = 0; uHeader[3] = 0x01;
-         int iRes = write(s_iPipeRecordingThreadWrite, uHeader, 4);
-         if ( iRes != 4 )
-            log_softerror_and_alarm("[VideoRecording] Failed to write initial NAL header to recording file (%s), result: %d, error: %d (%s)", s_szFileRecordingOutput, iRes, errno, strerror(errno));
-         break;
+      std::lock_guard<std::mutex> lock(recordingMutex);
+      if (!s_bIsRecording || s_bRequestedStopRecording || !s_bRecordingThreadReadyForData) return;
+      while (!s_bRecordingFoundStartOfFirstNAL && iLength > 0) {
+         s_uRecordingStreamCurrentParsedToken = (s_uRecordingStreamCurrentParsedToken << 8) | *pData++;
+         --iLength;
+         if (s_uRecordingStreamCurrentParsedToken == 1) {
+            const u8 header[] = {0, 0, 0, 1};
+            recordingQueue.append(header, sizeof(header));
+            s_bRecordingFoundStartOfFirstNAL = true;
+         }
       }
+      if (!iLength) return;
+      accepted = recordingQueue.append(pData, iLength);
+      if (!accepted) s_bRequestedStopRecording = true;
    }
-   if ( iLength <= 0 )
-      return;
+   if (!accepted)
+      _recording_send_status_to_central(0xFF, 1, "Recording stopped: storage could not keep up.");
 
-   s_uRecordingFileSize += iLength;
-
-   if ( s_iTempRecordingBufferFilledInBytes + iLength > (int)sizeof(s_uTempRecordingBuffer)/(int)sizeof(s_uTempRecordingBuffer[0]) )
-   {
-      int iRes = write(s_iPipeRecordingThreadWrite, s_uTempRecordingBuffer, s_iTempRecordingBufferFilledInBytes);
-      if ( iRes != s_iTempRecordingBufferFilledInBytes )
-         log_softerror_and_alarm("[VideoRecording] Failed to write to recorder pipe %d bytes. Ret code: %d, Error code: %d, err string: (%s)",
-            s_iTempRecordingBufferFilledInBytes, iRes, errno, strerror(errno));
-      s_iTempRecordingBufferFilledInBytes = 0;
-   }
-
-   memcpy(&(s_uTempRecordingBuffer[s_iTempRecordingBufferFilledInBytes]), pData, iLength);
-   s_iTempRecordingBufferFilledInBytes += iLength;
 }
 
 void rx_video_recording_periodic_loop()

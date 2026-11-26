@@ -30,6 +30,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "../frame_scheduler.h"
 #include "../render_commands.h"
 #include "../../settings/utils_controller.h"
 #include "../../settings/utils_vehicle.h"
@@ -439,11 +440,7 @@ void MenuRadioConfig::showProgressInfo()
    m_pPopupProgress = new Popup("Updating Radio Configuration. Please wait...",0.3,0.4, 0.5, 15);
    popups_add_topmost(m_pPopupProgress);
 
-   g_pRenderEngine->startFrame();
-   render_background_and_paddings(false);
-   popups_render();
-   popups_render_topmost();
-   g_pRenderEngine->endFrame();
+   ui_present_progress(ProgressOverlay::Popups);
 }
 
 void MenuRadioConfig::hideProgressInfo()

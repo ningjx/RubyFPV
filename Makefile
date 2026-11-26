@@ -34,14 +34,20 @@ $(OBJ)/%.o: %.c
 
 include mk/modules.mk
 include mk/programs.mk
+include mk/check.mk
+include mk/image.mk
 
 .PHONY: ruby_plugins
 ruby_plugins:
 	$(MAKE) -C plugins/osd
 
 clean:
-	$(RM) -r build/obj
-	$(RM) ruby_central ruby_start ruby_i2c ruby_logger ruby_initdhcp ruby_sik_config ruby_alive ruby_video_proc ruby_dbg ruby_update ruby_update_worker ruby_controller ruby_rx_telemetry ruby_tx_rc ruby_rt_station ruby_player_radxa test_cairo test_log test_gpio test_audio2 test_socket_in test_socket_out test_udp_to_pipe test_udp_to_udp test_pipe_to_udp test_radio_to_udp test_udp_to_radio test_rtpudp_read test_port_rx test_port_tx test_link test_joystick
+	$(RM) -r build/obj build/host-tests build/test_model_store
+	$(RM) $(STATION_PROGRAMS) $(STATION_OSD_PLUGINS) my_plugin.so.1.0.1
+	$(RM) test_cairo test_log test_gpio test_audio2 test_socket_in test_socket_out test_udp_to_pipe \
+	    test_udp_to_udp test_pipe_to_udp test_radio_to_udp test_udp_to_radio test_rtpudp_read \
+	    test_port_rx test_port_tx test_link test_joystick
+	$(MAKE) -C plugins/osd clean
 
 cleanstation: clean
 

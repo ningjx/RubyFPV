@@ -76,6 +76,7 @@ int ruby_drm_core_wait_for_display_connected();
 
 int ruby_drm_core_init(int iPlaneIndex, uint32_t uFormat, int iWidth, int iHeight, int iRefreshRate);
 int ruby_drm_core_uninit();
+int ruby_drm_release_ui_plane();
 int ruby_drm_core_get_fd();
 
 type_drm_display_attributes* ruby_drm_get_main_display_info();

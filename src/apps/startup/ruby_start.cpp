@@ -1386,10 +1386,6 @@ int main(int argc, char *argv[])
        if ( NULL == strstr(szOutput, "performance") )
           hardware_set_default_radxa_cpu_freq();
 
-       hw_execute_bash_command("systemctl disable systemd-journald.service 2>&1 1>/dev/null", NULL);
-       hw_execute_bash_command("systemctl mask systemd-journald.service 2>&1 1>/dev/null", NULL);
-       hw_execute_bash_command("systemctl disable rknpu2.service 2>&1 1>/dev/null", NULL);
-       hw_execute_bash_command("systemctl mask rknpu2.service 2>&1 1>/dev/null", NULL);
 
        bool allDisabled = true;
        for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )

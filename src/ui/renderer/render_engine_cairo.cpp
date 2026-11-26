@@ -158,14 +158,15 @@ void RenderEngineCairo::startFrame()
       return;
 }
 
-void RenderEngineCairo::endFrame()
+bool RenderEngineCairo::endFrame()
 {
    if ( ! m_bStartedFrame )
    {
       log_softerror_and_alarm("[RenderEngineCairo] Tried to double end a render frame.");
-      return;
+      return false;
    }
 
+   bool valid = m_pCairoCtx && cairo_status(m_pCairoCtx) == CAIRO_STATUS_SUCCESS;
    if ( NULL != m_pCairoCtx )
       cairo_destroy(m_pCairoCtx);
    m_pCairoCtx = NULL; 
@@ -174,8 +175,9 @@ void RenderEngineCairo::endFrame()
       cairo_destroy(m_pCairoTempCtx);
    m_pCairoTempCtx = NULL;
 
-   ruby_drm_swap_mainback_buffers();
+   bool displayed = valid && ruby_drm_swap_mainback_buffers() == 0;
    RenderEngine::endFrame();
+   return displayed;
 }
 
 

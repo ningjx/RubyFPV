@@ -30,6 +30,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "frame_scheduler.h"
 #include "../core/base.h"
 #include "../core/config.h"
 #include "../platform/radxa_zero3w/hardware.h"
@@ -262,8 +263,7 @@ bool media_take_screenshot(bool bIncludeOSD)
 
    if ( ! bIncludeOSD )
    {
-      g_pRenderEngine->startFrame();
-      g_pRenderEngine->endFrame();
+      ui_clear_frame();
       hardware_sleep_ms(25);
    }
 

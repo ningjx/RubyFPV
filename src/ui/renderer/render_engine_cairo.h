@@ -23,7 +23,7 @@ class RenderEngineCairo: public RenderEngine
      virtual void changeImageHue(u32 uImageId, u8 r, u8 g, u8 b);
      
      virtual void startFrame();
-     virtual void endFrame();
+     virtual bool endFrame();
      virtual void rotate180();
 
      virtual void drawImage(float xPos, float yPos, float fWidth, float fHeight, u32 uImageId);

@@ -30,6 +30,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "../fifo_output.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
@@ -83,9 +84,8 @@ bool s_bRxVideoOutputStreamerMustReinitialize = false;
 bool s_bRxVideoOutputUsePipe = true;
 bool s_bRxVideoOutputUseSM = false;
 
-int s_fPipeVideoOutToStreamer = -1;
-u8* s_pPipeVideoOutputBuffer = NULL;
-int s_iPipeVideoOutputPos = 0;
+static FifoOutput preview(FIFO_RUBY_STATION_VIDEO_STREAM_DISPLAY);
+static FifoOutput ethernet(FIFO_RUBY_STATION_VIDEO_STREAM_ETH);
 
 shared_mem_process_stats* s_pSMProcessStatsMPPPlayer = NULL;
 sem_t* s_pSemaphoreSMData = NULL;
@@ -93,15 +93,12 @@ u8* s_pSMVideoStreamerWrite = NULL;
 u32 s_uSMVideoStreamWritePosition = 0;
 bool s_bEnableVideoStreamerOutput = false;
 bool s_bDidSentAnyDataToVideoStreamerSM = false;
-bool s_bDidSentAnyDataToVideoStreamerPipe = false;
 u8 s_uCurrentReceivedVideoStreamType = 0;
 ParserH264 s_ParserH264StreamOutput;
 ParserH264 s_ParserH264VideoOutput;
 
 u32 s_uLastIOErrorAlarmFlagsVideoStreamer = 0;
 u32 s_uLastIOErrorAlarmFlagsUSBPlayer = 0;
-u32 s_uTimeLastOkVideoStreamerOutputToPipe = 0;
-u32 s_uTimeStartGettingVideoIOErrors = 0;
          
 typedef struct
 {
@@ -120,7 +117,6 @@ t_video_usb_output_info s_VideoUSBOutputInfo;
 typedef struct 
 {
    bool s_bForwardETHPipeEnabled;
-   int s_ForwardETHVideoPipeFile;
 
    bool s_bForwardIsETHForwardEnabled;
    int s_ForwardETHSocketVideo;
@@ -300,12 +296,7 @@ void rx_video_output_start_video_streamer()
 void rx_video_output_stop_video_streamer()
 {
    log_line("[VideoOutput] Stopping video streamer...");
-   if ( -1 != s_fPipeVideoOutToStreamer )
-   {
-      log_line("[VideoOutput] Closed video output pipe to streamer.");
-      close( s_fPipeVideoOutToStreamer );
-   }
-   s_fPipeVideoOutToStreamer = -1;
+   preview.reset();
 
    s_uTimeStartLocalVideoPlayer = 0;
    if ( NULL != s_pSMProcessStatsMPPPlayer )
@@ -443,16 +434,7 @@ void _processor_rx_video_forward_open_eth_pipe()
    sprintf(szComm, "nice -n -5 cat %s | nice -n -5 gst-launch-1.0 fdsrc ! h264parse ! rtph264pay pt=96 config-interval=3 ! udpsink port=%d host=127.0.0.1 > /dev/null 2>&1 &", FIFO_RUBY_STATION_VIDEO_STREAM_ETH, g_pControllerSettings->nVideoForwardETHPort);
    hw_execute_bash_command(szComm, NULL);
 
-   log_line("[VideoOutput] Opening video output pipe write endpoint for ETH forward RTS: %s", FIFO_RUBY_STATION_VIDEO_STREAM_ETH);
-   s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile = open(FIFO_RUBY_STATION_VIDEO_STREAM_ETH, O_WRONLY);
-   if ( s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile < 0 )
-   {
-      log_error_and_alarm("[VideoOutput] Failed to open video output pipe write endpoint for ETH forward RTS: %s",FIFO_RUBY_STATION_VIDEO_STREAM_ETH);
-      return;
-   }
-   log_line("[VideoOutput] Opened video output pipe write endpoint for ETH forward RTS: %s", FIFO_RUBY_STATION_VIDEO_STREAM_ETH);
-   log_line("[VideoOutput] Video output pipe to ETH flags: %s", str_get_pipe_flags(fcntl(s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile, F_GETFL)));
-   s_VideoETHOutputInfo.s_bForwardETHPipeEnabled = true;
+   ethernet.reset();
 }
 
 void _processor_rx_video_forward_create_eth_socket()
@@ -500,48 +482,7 @@ void _rx_video_output_open_pipe_to_streamer()
 
    _rx_video_output_check_start_streamer();
 
-   if ( NULL == s_pPipeVideoOutputBuffer )
-   {
-      s_pPipeVideoOutputBuffer = (u8*)malloc(250000);
-      if ( NULL == s_pPipeVideoOutputBuffer )
-         log_softerror_and_alarm("[VideoOutput] Failed to create buffer for stream pipe output");
-      s_iPipeVideoOutputPos = 0;
-   }
 
-   if ( -1 != s_fPipeVideoOutToStreamer )
-   {
-      log_line("[VideoOutput] Pipe for video output to streamer already opened.");
-      return;
-   }
-
-   int iRetries = 200;
-   while ( iRetries > 0 )
-   {
-      iRetries--;
-      //s_fPipeVideoOutToStreamer = open(FIFO_RUBY_STATION_VIDEO_STREAM_DISPLAY, O_CREAT | O_WRONLY | O_NONBLOCK);
-      s_fPipeVideoOutToStreamer = open(FIFO_RUBY_STATION_VIDEO_STREAM_DISPLAY, O_CREAT | O_WRONLY);
-      if ( s_fPipeVideoOutToStreamer < 0 )
-      {
-         log_error_and_alarm("[VideoOutput] Failed to open video output pipe to streamer write endpoint: %s, error code (%d): [%s]",
-            FIFO_RUBY_STATION_VIDEO_STREAM_DISPLAY, errno, strerror(errno));
-         if ( iRetries == 0 )
-            return;
-         else
-            hardware_sleep_ms(10);
-      }
-   }
-   log_line("[VideoOutput] Opened video output pipe to streamer write endpoint: %s", FIFO_RUBY_STATION_VIDEO_STREAM_DISPLAY);
-   log_line("[VideoOutput] Video output pipe to streamer flags: %s", str_get_pipe_flags(fcntl(s_fPipeVideoOutToStreamer, F_GETFL)));
-
-   //if ( RUBY_PIPES_EXTRA_FLAGS & O_NONBLOCK )
-   //if ( 0 != fcntl(s_fPipeVideoOutToStreamer, F_SETFL, O_NONBLOCK) )
-   //   log_softerror_and_alarm("[IPC] Failed to set nonblock flag on PIC channel %s write endpoint.", FIFO_RUBY_STATION_VIDEO_STREAM_DISPLAY);
-   //log_line("[VideoOutput] Video streamer FIFO write endpoint pipe new flags: %s", str_get_pipe_flags(fcntl(s_fPipeVideoOutToStreamer, F_GETFL)));
-  
-   log_line("[VideoOutput] Video streamer pipe FIFO default size: %d bytes", fcntl(s_fPipeVideoOutToStreamer, F_GETPIPE_SZ));
-   fcntl(s_fPipeVideoOutToStreamer, F_SETPIPE_SZ, 250000);
-   log_line("[VideoOutput] Video streamer FIFO new size: %d bytes", fcntl(s_fPipeVideoOutToStreamer, F_GETPIPE_SZ));
-   s_bDidSentAnyDataToVideoStreamerPipe = false;
 }
 
 void rx_video_output_init()
@@ -573,10 +514,9 @@ void rx_video_output_init()
    else
       log_softerror_and_alarm("[VideoOutput] No video streamer output method defined.");
    
-   s_fPipeVideoOutToStreamer = -1;
+   preview.reset();
    s_iLocalVideoPlayerUDPSocket = -1;
    s_uLastVideoFrameTime= MAX_U32;
-   s_bDidSentAnyDataToVideoStreamerPipe = false;
    s_bDidSentAnyDataToVideoStreamerSM = false;
    
    s_ParserH264StreamOutput.init();
@@ -641,7 +581,7 @@ void rx_video_output_init()
    }
    s_VideoETHOutputInfo.s_bForwardETHPipeEnabled = false;
    s_VideoETHOutputInfo.s_bForwardIsETHForwardEnabled = false;
-   s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile = -1;
+   ethernet.reset();
    s_VideoETHOutputInfo.s_ForwardETHSocketVideo = -1;
    s_VideoETHOutputInfo.s_nBufferETHPos = 0;
    s_VideoETHOutputInfo.s_BufferETHPacketSize = 1024;
@@ -683,8 +623,6 @@ void rx_video_output_init()
 
    s_uLastIOErrorAlarmFlagsVideoStreamer = 0;
    s_uLastIOErrorAlarmFlagsUSBPlayer = 0;
-   s_uTimeLastOkVideoStreamerOutputToPipe = 0;
-   s_uTimeStartGettingVideoIOErrors = 0;
 
    log_line("[VideoOutput] Init start complete.");
 }
@@ -730,29 +668,17 @@ void rx_video_output_uninit()
    if ( -1 != s_VideoETHOutputInfo.s_ForwardETHSocketVideo )
       close(s_VideoETHOutputInfo.s_ForwardETHSocketVideo);
    s_VideoETHOutputInfo.s_ForwardETHSocketVideo = -1;
-
-   if ( -1 != s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile )
-      close(s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile);
-   s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile = -1;
+   ethernet.reset();
 
    if ( s_VideoETHOutputInfo.s_bForwardETHPipeEnabled )
       hw_stop_process("gst-launch-1.0");
    s_VideoETHOutputInfo.s_bForwardIsETHForwardEnabled = false;
    s_VideoETHOutputInfo.s_bForwardETHPipeEnabled = false;
 
-   if ( -1 != s_fPipeVideoOutToStreamer )
-   {
-      log_line("[VideoOutput] Closed video output pipe to streamer.");
-      close( s_fPipeVideoOutToStreamer );
-   }
-   s_fPipeVideoOutToStreamer = -1;
-   s_bDidSentAnyDataToVideoStreamerPipe = false;
+   preview.reset();
    s_bDidSentAnyDataToVideoStreamerSM = false;
 
-   if ( NULL != s_pPipeVideoOutputBuffer )
-      free(s_pPipeVideoOutputBuffer);
-   s_pPipeVideoOutputBuffer = NULL;
-   s_iPipeVideoOutputPos = 0;
+   preview.discard();
 
    if ( -1 != s_VideoUSBOutputInfo.socketUSBOutput )
       close(s_VideoUSBOutputInfo.socketUSBOutput);
@@ -801,7 +727,6 @@ void rx_video_output_enable_streamer_output()
 
    s_bEnableVideoStreamerOutput = true;
    s_bDidSentAnyDataToVideoStreamerSM = false;
-   s_bDidSentAnyDataToVideoStreamerPipe = false;
 
    if ( s_bRxVideoOutputUsePipe )
       _rx_video_output_open_pipe_to_streamer();
@@ -812,13 +737,7 @@ void rx_video_output_disable_streamer_output()
    log_line("[VideoOutput] Disable video output to streamer.");
    s_bEnableVideoStreamerOutput = false;
 
-   if ( -1 != s_fPipeVideoOutToStreamer )
-   {
-      close( s_fPipeVideoOutToStreamer );
-      log_line("[VideoOutput] Closed video output to pipe to streamer.");
-   }
-   s_fPipeVideoOutToStreamer = -1;
-   s_bDidSentAnyDataToVideoStreamerPipe = false;
+   preview.reset();
    s_bDidSentAnyDataToVideoStreamerSM = false;
 }
 
@@ -953,104 +872,23 @@ void _rx_video_output_to_sharedmem(u8* pBuffer, u32 uLength, bool bWaitFullFrame
    }
 }
 
-void _rx_video_output_to_video_streamer_pipe(u8* pBuffer, int iLength, bool bWaitFullFrame, bool bIsEndOfNALFrame)
+static bool is_recovery_point(const u8* data, int length, u32 flags, bool hevc)
 {
-   if ( (NULL == pBuffer) || (iLength == 0) )
-      return;
-   if ( (-1 == s_fPipeVideoOutToStreamer) || s_bRxVideoOutputStreamerMustReinitialize )
-      return;
+   if ((flags & VIDEO_STATUS_FLAGS2_IS_NAL_START) && (flags & VIDEO_STATUS_FLAGS2_IS_NAL_I)) return true;
+   int i = 0;
+   while (i < length && data[i] == 0) ++i;
+   if (i < 2 || i + 1 >= length || data[i] != 1) return false;
+   int type = hevc ? (data[i + 1] >> 1) & 63 : data[i + 1] & 31;
+   return hevc ? ((type >= 16 && type <= 21) || (type >= 32 && type <= 34))
+               : (type == 5 || type == 7 || type == 8);
+}
 
-   s_uTimeLastOutputDataToLocalVideoPlayer = g_TimeNow;
-   if ( ! s_bDidSentAnyDataToVideoStreamerPipe )
-   {
-      log_line("[VideoOutput] Send first data to video output pipe for local video streamer");
-      s_bDidSentAnyDataToVideoStreamerPipe = true;
-   }
-   
-   int iRes = 0;
-   int iExpectedWriteResult = iLength;
-   if ( (NULL == s_pPipeVideoOutputBuffer) || (! bWaitFullFrame) )
-   {
-      g_pProcessStats->uInBlockingOperation = 1;
-      iRes = write(s_fPipeVideoOutToStreamer, pBuffer, iLength);
-      g_pProcessStats->uInBlockingOperation = 0;
-   }
-   else
-   {
-      iExpectedWriteResult = 0;
-      if ( iLength + s_iPipeVideoOutputPos < 250000 )
-      {
-         memcpy(&(s_pPipeVideoOutputBuffer[s_iPipeVideoOutputPos]), pBuffer, iLength);
-         s_iPipeVideoOutputPos += iLength;
-      }
-      if ( (! bWaitFullFrame) || (bWaitFullFrame && bIsEndOfNALFrame) )
-      {
-         iExpectedWriteResult = s_iPipeVideoOutputPos;
-         g_pProcessStats->uInBlockingOperation = 1;
-         iRes = write(s_fPipeVideoOutToStreamer, s_pPipeVideoOutputBuffer, s_iPipeVideoOutputPos);
-         g_pProcessStats->uInBlockingOperation = 0;
-         s_iPipeVideoOutputPos = 0;
-      }
-   }
-
-   if ( iRes == iExpectedWriteResult )
-   {
-      s_uOutputBitrateToLocalVideoStreamerPipe += iRes*8;
-      s_uTimeStartGettingVideoIOErrors = 0;
-      if ( 0 != s_uLastIOErrorAlarmFlagsVideoStreamer )
-      {
-         s_uTimeLastOkVideoStreamerOutputToPipe = g_TimeNow;
-         s_uLastIOErrorAlarmFlagsVideoStreamer = 0;
-         send_alarm_to_central(ALARM_ID_CONTROLLER_IO_ERROR, 0,0);
-      }
-      //fsync(s_fPipeVideoOutToStreamer);
-      return;
-   }
-
-   // Error outputing video to player
-
-   log_softerror_and_alarm("[VideoOutput] Failed to write to streamer pipe (%d bytes). Ret code: %d, Error code: %d, err string: (%s)",
-     iExpectedWriteResult, iRes, errno, strerror(errno));
-   u32 uFlags = 0;
-
-   if ( iRes >= 0 )
-      uFlags = ALARM_FLAG_IO_ERROR_VIDEO_PLAYER_OUTPUT_TRUNCATED;
-   else
-   {
-      if ( EAGAIN == errno )
-         uFlags = ALARM_FLAG_IO_ERROR_VIDEO_PLAYER_OUTPUT_WOULD_BLOCK;
-      else
-         uFlags = ALARM_FLAG_IO_ERROR_VIDEO_PLAYER_OUTPUT;
-   }
-
-   u32 uTimeLastVideoChanged = 0;
-   for( int i=0; i<MAX_VIDEO_PROCESSORS; i++ )
-   {
-      if ( NULL == g_pVideoProcessorRxList[i] )
-         break;
-      uTimeLastVideoChanged = g_pVideoProcessorRxList[i]->getLastTimeVideoStreamChanged();
-      break;
-   }
-
-   s_uLastIOErrorAlarmFlagsVideoStreamer = uFlags;
-
-   if ( g_TimeNow > s_uTimeStartGettingVideoIOErrors + 1000 )
-   {
-      if ( g_TimeNow > uTimeLastVideoChanged + 3000 )
-         send_alarm_to_central(ALARM_ID_CONTROLLER_IO_ERROR, uFlags, 0);
-
-      if ( (0 != s_uTimeLastOkVideoStreamerOutputToPipe) && (g_TimeNow > s_uTimeLastOkVideoStreamerOutputToPipe + 3000) )
-      {
-         log_line("[VideoOutput] Error outputing video data to video streamer. Reinitialize video streamer...");
-         rx_video_output_signal_restart_streamer();
-         log_line("[VideoOutput] Signaled restart of streamer");
-      }
-      if ( 0 == s_uTimeLastOkVideoStreamerOutputToPipe && g_TimeNow > g_TimeStart + 5000 )
-      {
-         log_line("[VideoOutput] Error outputing any video data to video streamer. Reinitialize video streamer...");
-         rx_video_output_signal_restart_streamer();
-         log_line("[VideoOutput] Signaled restart of streamer");
-      }
+static void drain_preview()
+{
+   size_t bytes = preview.drain(g_TimeNow);
+   if (bytes) {
+      s_uTimeLastOutputDataToLocalVideoPlayer = g_TimeNow;
+      s_uOutputBitrateToLocalVideoStreamerPipe += bytes * 8;
    }
 }
 
@@ -1058,7 +896,7 @@ void _rx_video_output_to_local_video_player_udp(u8* pData, int iLength)
 {
    s_uOutputBitrateToLocalVideoPlayerUDP += iLength*8;
    
-   sendto(s_iLocalVideoPlayerUDPSocket, pData, iLength, 0, (struct sockaddr *)&s_LocalVideoPlayuerUDPSocketAddr, sizeof(s_LocalVideoPlayuerUDPSocketAddr) );
+   sendto(s_iLocalVideoPlayerUDPSocket, pData, iLength, MSG_DONTWAIT, (struct sockaddr *)&s_LocalVideoPlayuerUDPSocketAddr, sizeof(s_LocalVideoPlayuerUDPSocketAddr) );
    /*
    struct iovec iov;
    struct msghdr msghdr;
@@ -1088,8 +926,8 @@ void _rx_video_output_to_eth(u8* pData, int iLength)
        if ( s_VideoETHOutputInfo.s_nBufferETHPos >= s_VideoETHOutputInfo.s_BufferETHPacketSize )
        {
           int res = sendto(s_VideoETHOutputInfo.s_ForwardETHSocketVideo, s_VideoETHOutputInfo.s_BufferETH, s_VideoETHOutputInfo.s_nBufferETHPos,
-                        0, (struct sockaddr *)&s_VideoETHOutputInfo.s_ForwardETHSockAddr, sizeof(s_VideoETHOutputInfo.s_ForwardETHSockAddr) );
-          if ( res < 0 )
+                        MSG_DONTWAIT, (struct sockaddr *)&s_VideoETHOutputInfo.s_ForwardETHSockAddr, sizeof(s_VideoETHOutputInfo.s_ForwardETHSockAddr) );
+          if ( res < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != ENOBUFS )
           {
              log_line("[VideoOutput] Failed to send to ETH Port %d bytes, [fd=%d]", iLength, s_VideoETHOutputInfo.s_ForwardETHSocketVideo);
              close(s_VideoETHOutputInfo.s_ForwardETHSocketVideo);
@@ -1117,8 +955,8 @@ void _rx_video_output_to_usb(u8* pData, int iLength)
       if ( s_VideoUSBOutputInfo.usbBufferPos >= s_VideoUSBOutputInfo.usbBlockSize )
       {
          int res = sendto(s_VideoUSBOutputInfo.socketUSBOutput, s_VideoUSBOutputInfo.usbBuffer, s_VideoUSBOutputInfo.usbBlockSize,
-               0, (struct sockaddr *)&s_VideoUSBOutputInfo.sockAddrUSBDevice, sizeof(s_VideoUSBOutputInfo.sockAddrUSBDevice) );
-         if ( res < 0 )
+               MSG_DONTWAIT, (struct sockaddr *)&s_VideoUSBOutputInfo.sockAddrUSBDevice, sizeof(s_VideoUSBOutputInfo.sockAddrUSBDevice) );
+         if ( res < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != ENOBUFS )
          {
            log_line("[VideoOutput] Failed to send to USB socket");
            if ( -1 != s_VideoUSBOutputInfo.socketUSBOutput )
@@ -1142,12 +980,12 @@ void rx_video_output_discard_cached_data()
       s_uSMVideoStreamWritePosition = s_pSMVideoStreamerWrite[0];
    }
 
-   s_iPipeVideoOutputPos = 0;
+   preview.discard();
 }
 
 void rx_video_output_video_data(u32 uVehicleId, t_packet_header_video_segment* pPHVS, int width, int height, u8* pBuffer, int video_data_length, int packet_length, bool bWaitFullFrame)
 {
-   if ( g_bSearching )
+   if (g_bSearching || !pBuffer || !pPHVS || video_data_length <= 0)
       return;
 
    u8 uVideoStreamType = (pPHVS->uVideoStreamIndexAndType >> 4) & 0x0F;
@@ -1203,6 +1041,23 @@ void rx_video_output_video_data(u32 uVehicleId, t_packet_header_video_segment* p
       _rx_video_output_parse_h264_stream(uVehicleId, pBuffer, video_data_length);
 
 
+   bool recovery = is_recovery_point(pBuffer, video_data_length, pPHVS->uVideoStatusFlags2, uVideoStreamType == VIDEO_TYPE_H265);
+   if ( -1 != s_iLocalVideoPlayerUDPSocket )
+      _rx_video_output_to_local_video_player_udp(pBuffer, video_data_length);
+
+   if (s_VideoETHOutputInfo.s_bForwardETHPipeEnabled) {
+      ethernet.append(pBuffer, video_data_length, true, recovery);
+      ethernet.drain(g_TimeNow);
+   }
+
+   rx_video_recording_on_new_data(pBuffer, video_data_length);
+
+   if ( s_VideoETHOutputInfo.s_bForwardIsETHForwardEnabled && (-1 != s_VideoETHOutputInfo.s_ForwardETHSocketVideo ) )
+      _rx_video_output_to_eth(pBuffer, video_data_length);
+
+   if ( s_VideoUSBOutputInfo.bVideoUSBTethering && 0 != s_VideoUSBOutputInfo.szIPUSBVideo[0] )
+      _rx_video_output_to_usb(pBuffer, video_data_length);
+
    // Check for video resolution changes or codec changes
    static int s_iRxVideoForwardLastWidth = 0;
    static int s_iRxVideoForwardLastHeight = 0;
@@ -1244,22 +1099,12 @@ void rx_video_output_video_data(u32 uVehicleId, t_packet_header_video_segment* p
    if ( s_bEnableVideoStreamerOutput && s_bRxVideoOutputUseSM )
       _rx_video_output_to_sharedmem(pBuffer, (u32)video_data_length, bWaitFullFrame, (pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_NAL_END)?true:false);
 
-   if ( (-1 != s_fPipeVideoOutToStreamer) && s_bEnableVideoStreamerOutput && s_bRxVideoOutputUsePipe )
-      _rx_video_output_to_video_streamer_pipe(pBuffer, video_data_length, bWaitFullFrame, (pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_NAL_END)?true:false);
+   if (s_bEnableVideoStreamerOutput && s_bRxVideoOutputUsePipe && !s_bRxVideoOutputStreamerMustReinitialize) {
+      bool release = !bWaitFullFrame || (pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_NAL_END);
+      preview.append(pBuffer, video_data_length, release, recovery);
+      drain_preview();
+   }
 
-   if ( -1 != s_iLocalVideoPlayerUDPSocket )
-      _rx_video_output_to_local_video_player_udp(pBuffer, video_data_length);
-
-   if ( s_VideoETHOutputInfo.s_bForwardETHPipeEnabled && (-1 != s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile) )
-      write(s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile, pBuffer, video_data_length);
-
-   rx_video_recording_on_new_data(pBuffer, video_data_length);
-
-   if ( s_VideoETHOutputInfo.s_bForwardIsETHForwardEnabled && (-1 != s_VideoETHOutputInfo.s_ForwardETHSocketVideo ) )
-      _rx_video_output_to_eth(pBuffer, video_data_length);
-
-   if ( s_VideoUSBOutputInfo.bVideoUSBTethering && 0 != s_VideoUSBOutputInfo.szIPUSBVideo[0] )
-      _rx_video_output_to_usb(pBuffer, video_data_length);
 }
 
 
@@ -1282,9 +1127,7 @@ void rx_video_output_on_controller_settings_changed()
       if ( -1 != s_VideoETHOutputInfo.s_ForwardETHSocketVideo )
          close(s_VideoETHOutputInfo.s_ForwardETHSocketVideo);
       s_VideoETHOutputInfo.s_ForwardETHSocketVideo = -1;
-      if ( -1 != s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile )
-         close(s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile);
-      s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile = -1;
+      ethernet.reset();
 
       s_VideoETHOutputInfo.s_bForwardETHPipeEnabled = false;
       s_VideoETHOutputInfo.s_bForwardIsETHForwardEnabled = false;
@@ -1292,9 +1135,7 @@ void rx_video_output_on_controller_settings_changed()
    }
    else if ( g_pControllerSettings->nVideoForwardETHType == 1 )
    {
-      if ( -1 != s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile )
-         close(s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile);
-      s_VideoETHOutputInfo.s_ForwardETHVideoPipeFile = -1;
+      ethernet.reset();
       if ( s_VideoETHOutputInfo.s_bForwardETHPipeEnabled )
          hw_stop_process("gst-launch-1.0");
       s_VideoETHOutputInfo.s_bForwardETHPipeEnabled = false;
@@ -1395,6 +1236,36 @@ void _rx_video_output_watchdog_mpp_player()
 
 void rx_video_output_periodic_loop()
 {
+   if (s_bEnableVideoStreamerOutput && s_bRxVideoOutputUsePipe) drain_preview();
+   if (s_VideoETHOutputInfo.s_bForwardETHPipeEnabled) ethernet.drain(g_TimeNow);
+   static u32 lastReport = 0;
+   static uint64_t lastPreviewDrops = 0, lastEthernetDrops = 0;
+   if (g_TimeNow - lastReport >= 1000) {
+      lastReport = g_TimeNow;
+      uint64_t previewDrops = preview.dropped(), ethernetDrops = ethernet.dropped();
+      if (previewDrops != lastPreviewDrops || ethernetDrops != lastEthernetDrops)
+         log_line("[VideoOutput] Dropped bytes since last sample: preview %llu, Ethernet FIFO %llu",
+            (unsigned long long)(previewDrops - lastPreviewDrops), (unsigned long long)(ethernetDrops - lastEthernetDrops));
+      // Backpressure is local to preview. A dead reader is restarted only while new input arrives.
+      static u32 lastRecovery = 0;
+      if (previewDrops != lastPreviewDrops && s_bEnableVideoStreamerOutput && !s_bRxVideoOutputStreamerMustReinitialize &&
+          g_TimeNow - s_uTimeLastOutputDataToLocalVideoPlayer >= 3000 && g_TimeNow - s_uTimeStartLocalVideoPlayer >= 3000 &&
+          g_TimeNow - lastRecovery >= 3000) {
+         lastRecovery = g_TimeNow;
+         rx_video_output_signal_restart_streamer();
+      }
+      if (previewDrops != lastPreviewDrops && !s_uLastIOErrorAlarmFlagsVideoStreamer) {
+         s_uLastIOErrorAlarmFlagsVideoStreamer = ALARM_FLAG_IO_ERROR_VIDEO_PLAYER_OUTPUT_WOULD_BLOCK;
+         send_alarm_to_central(ALARM_ID_CONTROLLER_IO_ERROR, s_uLastIOErrorAlarmFlagsVideoStreamer, 0);
+      } else if (previewDrops == lastPreviewDrops && s_uLastIOErrorAlarmFlagsVideoStreamer &&
+                 g_TimeNow - s_uTimeLastOutputDataToLocalVideoPlayer < 1000) {
+         s_uLastIOErrorAlarmFlagsVideoStreamer = 0;
+         send_alarm_to_central(ALARM_ID_CONTROLLER_IO_ERROR, 0, 0);
+      }
+      lastPreviewDrops = previewDrops;
+      lastEthernetDrops = ethernetDrops;
+   }
+
    rx_video_recording_periodic_loop();
 
    _rx_video_output_watchdog_mpp_player();
@@ -1472,7 +1343,7 @@ void rx_video_output_periodic_loop()
    static u32 s_uTimeLastGeneratedVideoStreamerAlarm = 0;
    int iSemVal = 0;
 
-   if ( (s_iPIDVideoStreamer > 1) && (s_fPipeVideoOutToStreamer > 0) )
+   if ( (s_iPIDVideoStreamer > 1) && s_bRxVideoOutputUsePipe )
    if ( g_TimeNow > s_uLastTimeCheckedVideoStreamAlarm + 500 )
    {
       s_uLastTimeCheckedVideoStreamAlarm = g_TimeNow;

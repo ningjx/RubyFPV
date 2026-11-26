@@ -32,7 +32,7 @@
 
 #include "../core/base.h"
 #include "radiopackets_short.h"
-#include "../radio/link/radiolink.h"
+#include "../radio/config_radio.h"
 
 u8 s_uRadioPacketsShortIndexes[MAX_RADIO_INTERFACES];
 

@@ -27,6 +27,7 @@ void ruby_clear_all_ipc_channels();
 int ruby_open_ipc_channel_write_endpoint(int nChannelType);
 int ruby_open_ipc_channel_read_endpoint(int nChannelType);
 
+int ruby_detach_ipc_channel(int id);
 int ruby_close_ipc_channel(int iChannelUniqueId);
 
 

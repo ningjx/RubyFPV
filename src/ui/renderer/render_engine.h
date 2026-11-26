@@ -100,7 +100,7 @@ class RenderEngine
      virtual void changeImageHue(u32 uImageId, u8 r, u8 g, u8 b);
 
      virtual void startFrame();
-     virtual void endFrame();
+     virtual bool endFrame();
      virtual bool isFrameStarted();
 
      virtual void rotate180();

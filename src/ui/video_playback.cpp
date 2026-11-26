@@ -348,7 +348,6 @@ void video_playback_render()
 
    char szBuff[1024];
 
-   g_pRenderEngine->startFrame();
 
    double cColor[] = {0,0,0,0.7};
    g_pRenderEngine->setColors(cColor, 0.9);
@@ -415,5 +414,4 @@ void video_playback_render()
    if ( (s_iMSPOSDCols != 0) && (s_iMSPOSDRows != 0) )
       osd_render_msposd_buffer(s_iMSPOSDFCType, s_iMSPOSDFontType, s_iMSPOSDCols, s_iMSPOSDRows, s_uMSPOSDDisplayBuffer);
 
-   g_pRenderEngine->endFrame();
 }

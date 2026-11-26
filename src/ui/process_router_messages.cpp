@@ -30,6 +30,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <atomic>
 #include "../core/alarms.h"
 #include "../platform/radxa_zero3w/hardware.h"
 #include "../platform/radxa_zero3w/hardware_procs.h"
@@ -68,6 +69,7 @@
 
 pthread_t s_pThreadIPC;
 pthread_mutex_t s_pThreadIPCMutex;
+static std::atomic<bool> s_stopReader{false};
 bool s_bThreadInitOk = false;
 u8 s_pMessagesFromRouter[MAX_ROUTER_MESSAGES][MAX_PACKET_TOTAL_SIZE];
 int s_MessagesFromRouterSize[MAX_ROUTER_MESSAGES];
@@ -78,7 +80,7 @@ u32 s_uTimeLastRouterIPCFullAlarm = 0;
 
 int s_fIPCToRouter = -1;
 int s_fIPCFromRouter = -1;
-bool s_bIPCRouterHasReadErrors = false;
+std::atomic<bool> s_bIPCRouterHasReadErrors{false};
 
 u8 s_BufferPipeFromRouter[MAX_PACKET_TOTAL_SIZE];
 u8 s_BufferTmpOutputRouterMessage[MAX_PACKET_TOTAL_SIZE];
@@ -93,6 +95,7 @@ void start_pipes_to_router()
 {
    log_line("[Router COMM] Start pipes to router.");
 
+   s_stopReader.store(false);
    s_bThreadInitOk = false;
    s_bIPCRouterHasReadErrors = false;
 
@@ -126,6 +129,7 @@ void start_pipes_to_router()
    else
       hw_init_worker_thread_attrs(&attr, (g_pControllerSettings->iCoresAdjustment?CORE_AFFINITY_CENTRAL_UI:-1), -1, SCHED_OTHER, 0, "central IPC");
     
+   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
    s_iCountMessagesFromRouter = 0;
    if ( 0 != pthread_mutex_init(&s_pThreadIPCMutex, NULL) )
       log_softerror_and_alarm("[Router COMM] Failed to init mutex for router IPC");
@@ -137,6 +141,7 @@ void start_pipes_to_router()
    else
    {
       s_bThreadInitOk = true;
+      send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROLLER_ROUTER_READY, 0);
       log_line("[Router COMM] Created IPC receiving thread.");
    }
    pthread_attr_destroy(&attr);
@@ -148,14 +153,15 @@ void stop_pipes_to_router()
    
    if ( s_bThreadInitOk )
    {
-      pthread_cancel(s_pThreadIPC);
+      s_stopReader.store(true);
+      pthread_join(s_pThreadIPC, nullptr);
       pthread_mutex_destroy(&s_pThreadIPCMutex);
       log_line("[Router COMM] Stopped IPC receiving thread and mutex.");
    }
    s_bThreadInitOk = false;
 
-   ruby_close_ipc_channel(s_fIPCFromRouter);
-   ruby_close_ipc_channel(s_fIPCToRouter);
+   ruby_detach_ipc_channel(s_fIPCFromRouter);
+   ruby_detach_ipc_channel(s_fIPCToRouter);
    s_fIPCToRouter = -1;
    s_fIPCFromRouter = -1;
    s_bIPCRouterHasReadErrors = false;
@@ -768,6 +774,7 @@ int _process_received_message_from_router(u8* pPacketBuffer)
    {
       log_line("Received message that router is ready, in working state.");
       
+      if (g_bIsRouterReady) return 0;
       pairing_on_router_ready();
       notification_remove_start_pairing();
       g_bIsRouterReady = true;
@@ -1851,7 +1858,7 @@ void * _router_ipc_thread_func(void *ignored_argument)
       hw_set_current_thread_raw_priority("central IPC", pCS->iThreadPriorityCentral);
    hw_log_current_thread_attributes("central IPC");
    u32 uWaitTimeMs = 5;
-   while ( true )
+   while ( !s_stopReader.load() )
    {
       u8* pResult = NULL;
       if ( -1 != s_fIPCFromRouter )
@@ -1933,4 +1940,5 @@ void * _router_ipc_thread_func(void *ignored_argument)
       pthread_mutex_unlock(&s_pThreadIPCMutex);
    }
    log_line("[Router COMM] Stopped IPC receiving thread.");
+   return nullptr;
 }

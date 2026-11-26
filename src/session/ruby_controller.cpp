@@ -30,6 +30,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "session.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/resource.h>
@@ -107,12 +108,22 @@ int main(int argc, char *argv[])
    if ( pCS->iPrioritiesAdjustment && (pCS->iThreadPriorityCentral > 100) )
       sprintf(szPrefix, "nice -n %d", pCS->iThreadPriorityCentral - 120);    
 
-   hw_execute_ruby_process(szPrefix, "ruby_central", NULL, NULL);
+   int listener = open_session_listener();
+   if (listener < 0) {
+      log_error_and_alarm("Could not open ground session listener: %s", strerror(errno));
+      return 1;
+   }
+   // A supervisor restart may inherit orphaned workers with unknown search parameters.
+   // UI restarts keep this supervisor and its session state alive.
+   bool resumed = apply_session(SessionRequest{}) && resume_saved_session();
+   hw_execute_ruby_process(szPrefix, "ruby_central", resumed ? "-nointro" : nullptr, NULL);
    
    log_line("Executed central process.");
    
-   for( int i=0; i<5; i++ )
-      hardware_sleep_ms(800);
+   for (int i = 0; i < 40 && !g_bQuit; ++i) {
+      serve_session_request(listener, apply_session, current_session());
+      hardware_sleep_ms(100);
+   }
    
    char szComm[MAX_FILE_PATH_SIZE];
    u32 uSleepIntervalMs = 500;
@@ -152,6 +163,7 @@ int main(int argc, char *argv[])
 
       hardware_sleep_ms(uSleepIntervalMs);
 
+      serve_session_request(listener, apply_session, current_session());
       counter++;
       if ( (counter % 4) != 0 )
       {
@@ -246,9 +258,6 @@ int main(int argc, char *argv[])
 
       if ( bMustRestart )
       {
-         for( int i=0; i<1000; i++ )
-            hardware_sleep_ms(500);
-           
          log_line_watchdog("Restarting ruby_central process...");
 
          hw_stop_process("ruby_central");
@@ -258,17 +267,6 @@ int main(int argc, char *argv[])
          sprintf(szComm, "touch %s%s", FOLDER_CONFIG, FILE_TEMP_CONTROLLER_CENTRAL_CRASHED);
          hw_execute_bash_command(szComm, NULL);
    
-         hardware_sleep_ms(200);
-
-         hw_execute_bash_command("./ruby_central -reinit &", NULL);
-         for( int i=0; i<3; i++ )
-            hardware_sleep_ms(800);
-   
-         while ( hw_process_exists("ruby_central") )
-         {
-            log_line("Ruby reinit still in progress...");
-            hardware_sleep_ms(200);
-         }
          hardware_sleep_ms(200);
 
          char szPrefix[256];
@@ -281,6 +279,9 @@ int main(int argc, char *argv[])
          log_line_watchdog("Restarting ruby_central process done.");
       } 
    }
+
+   close(listener);
+   apply_session(SessionRequest{});
 
    if ( NULL != pSemaphoreRestart )
       sem_close(pSemaphoreRestart);

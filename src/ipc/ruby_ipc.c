@@ -444,7 +444,7 @@ int ruby_open_ipc_channel_read_endpoint(int nChannelType)
    return s_iRubyIPCChannelsUniqueIds[s_iRubyIPCChannelsCount-1];
 }
 
-int ruby_close_ipc_channel(int iChannelUniqueId)
+static int release_ipc_channel(int iChannelUniqueId, int removeQueue)
 {
    int fdToClose = 0;
    int iChannelIndex = -1;
@@ -473,7 +473,7 @@ int ruby_close_ipc_channel(int iChannelUniqueId)
    #endif
 
    #ifdef RUBY_USES_MSGQUEUES
-   msgctl(fdToClose,IPC_RMID,NULL);
+   if (removeQueue) msgctl(fdToClose,IPC_RMID,NULL);
    #endif
 
 
@@ -494,6 +494,10 @@ int ruby_close_ipc_channel(int iChannelUniqueId)
    _ruby_ipc_log_channels();
    return 1;
 }
+
+int ruby_close_ipc_channel(int id) { return release_ipc_channel(id, 1); }
+int ruby_detach_ipc_channel(int id) { return release_ipc_channel(id, 0); }
+
 
 int ruby_ipc_channel_send_message(int iChannelUniqueId, u8* pMessage, int iLength)
 {

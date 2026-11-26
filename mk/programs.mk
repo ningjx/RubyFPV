@@ -3,11 +3,11 @@ all: station
 station: ruby_start ruby_utils ruby_i2c ruby_controller ruby_central ruby_rt_station ruby_tx_rc \
     ruby_rx_telemetry ruby_player_radxa
 
-ruby_central: $(OBJ)/src/ui/ruby_central.o $(MODULE_BASE) $(MODULE_MODELS) $(MODULE_COMMON) \
-    $(MODULE_BASE2) $(CENTRAL_MENU_ITEMS_ALL) $(CENTRAL_MENU_ALL1) $(CENTRAL_RENDER_CODE) \
-    $(CENTRAL_MENU_ALL2) $(CENTRAL_MENU_ALL3) $(CENTRAL_MENU_ALL4) $(CENTRAL_MENU_ALL5) \
-    $(CENTRAL_MENU_ALL6) $(CENTRAL_MENU_RC)  $(CENTRAL_MENU_RADIO) $(CENTRAL_POPUP_ALL) \
-    $(CENTRAL_RENDER_ALL) $(CENTRAL_OSD_ALL) $(CENTRAL_OLED_ALL) $(CENTRAL_ALL) $(CENTRAL_RADIO) \
+ruby_central: $(OBJ)/src/ui/update/vehicle_update.o \
+    $(OBJ)/src/session/session_socket.o $(OBJ)/src/ui/frame_scheduler.o \
+    $(OBJ)/src/ui/ruby_central.o $(MODULE_BASE) $(MODULE_MODELS) $(MODULE_COMMON) $(MODULE_BASE2) \
+    $(UI_MENUS_ALL) $(CENTRAL_RENDER_CODE) $(CENTRAL_POPUP_ALL) $(CENTRAL_RENDER_ALL) \
+    $(CENTRAL_OSD_ALL) $(CENTRAL_OLED_ALL) $(CENTRAL_ALL) $(CENTRAL_RADIO) \
     $(OBJ)/src/ipc/shared_mem_controller_only.o $(OBJ)/src/platform/radxa_zero3w/hdmi.o \
     $(OBJ)/src/storage/favorites.o $(OBJ)/src/settings/plugins_settings.o \
     $(OBJ)/src/settings/core_plugins_settings.o $(OBJ)/src/platform/radxa_zero3w/hardware_files.o \
@@ -74,7 +74,9 @@ ruby_update_worker: $(OBJ)/src/apps/tools/ruby_update_worker.o $(MODULE_BASE) $(
     $(MODULE_MODELS) $(MODULE_COMMON)
 	$(CXX) $(_CPPFLAGS_NOSDL) -o $@ $^ $(_LDFLAGS_NOSDL)
 
-ruby_controller: $(OBJ)/src/session/ruby_controller.o $(MODULE_BASE) $(MODULE_BASE2) \
+ruby_controller: $(OBJ)/src/platform/radxa_zero3w/wiringPiI2C_radxa.o \
+    $(OBJ)/src/platform/radxa_zero3w/hardware_audio.o $(OBJ)/src/session/session_socket.o $(OBJ)/src/session/processes.o $(OBJ)/src/session/saved_session.o \
+    $(OBJ)/src/session/ruby_controller.o $(MODULE_BASE) $(MODULE_BASE2) \
     $(MODULE_COMMON) $(MODULE_RADIO) $(MODULE_MODELS) $(MODULE_STATION)
 	$(CXX) $(_CPPFLAGS) -o $@ $^ $(_LDFLAGS)
 
@@ -90,7 +92,7 @@ ruby_tx_rc: $(OBJ)/src/apps/link_services/ruby_tx_rc.o $(MODULE_BASE) $(MODULE_B
     $(OBJ)/src/platform/radxa_zero3w/wiringPiI2C_radxa.o
 	$(CXX) $(_CPPFLAGS) -o $@ $^ $(_LDFLAGS)
 
-ruby_rt_station: $(OBJ)/src/radio/station/ruby_rt_station.o $(MODULE_BASE) $(MODULE_BASE2) \
+ruby_rt_station: $(OBJ)/src/media/fifo_output.o $(OBJ)/src/radio/station/ruby_rt_station.o $(MODULE_BASE) $(MODULE_BASE2) \
     $(MODULE_COMMON) $(MODULE_RADIO) $(MODULE_MODELS) $(MODULE_STATION) \
     $(OBJ)/src/radio/station/packets_utils.o $(OBJ)/src/radio/station/process_local_packets.o \
     $(OBJ)/src/radio/station/process_radio_in_packets.o \

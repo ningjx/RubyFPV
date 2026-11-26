@@ -756,30 +756,17 @@ int ruby_drm_core_init(int iPlaneIndex, uint32_t uFormat, int iWidth, int iHeigh
    return 0;
 }
 
-int ruby_drm_core_uninit()
+static int release_display(int restore_mode)
 {
-   log_line("[DRMCore] Uninit");
-
-   int iRet = drmModeSetCrtc(s_fdDRM, s_DRMRuntimeState.pOriginalCRTc->crtc_id, s_DRMRuntimeState.pOriginalCRTc->buffer_id, s_DRMRuntimeState.pOriginalCRTc->x, s_DRMRuntimeState.pOriginalCRTc->y,
-      &s_DRMRuntimeState.objInfoConnector.uObjId, 1, &s_DRMRuntimeState.pOriginalCRTc->mode);
-   if ( iRet < 0 )
-   {
-      log_softerror_and_alarm("[DRMCore] Failed to restore old mode.");
+   if (!s_iDRMCoreInitialized) return 0;
+   if (restore_mode && s_DRMRuntimeState.pOriginalCRTc) {
+      drmModeCrtc* original = s_DRMRuntimeState.pOriginalCRTc;
+      if (drmModeSetCrtc(s_fdDRM, original->crtc_id, original->buffer_id, original->x, original->y,
+             &s_DRMRuntimeState.objInfoConnector.uObjId, 1, &original->mode) < 0)
+         log_softerror_and_alarm("[DRMCore] Failed to restore old mode.");
    }
-
-  // int64_t iZPos = _ruby_drm_get_object_property_value(s_DRMRuntimeState.objInfoPlane.pProperties, "zpos");
- /*
- ret = modeset_atomic_prepare_commit(fd, output_list, output_list->video_request, &output_list->video_plane, buf->fb, buf->width, buf->height, zpos);
- if (ret < 0) {
-  fprintf(stderr, "prepare atomic commit failed for plane %d, %m\n", output_list->video_plane.id);
-  return;
- }
- ret = drmModeAtomicCommit(fd, output_list->video_request, DRM_MODE_ATOMIC_ALLOW_MODESET, NULL);
- if (ret < 0) 
-  fprintf(stderr, "modeset atomic commit failed for plane %d, %m\n", output_list->video_plane.id);
-*/
-//////////
-
+   if (s_DRMRuntimeState.pAtomicRequest) drmModeAtomicFree(s_DRMRuntimeState.pAtomicRequest);
+   s_DRMRuntimeState.pAtomicRequest = NULL;
    _ruby_drm_free_object_properties(&s_DRMRuntimeState.objInfoPlane);
    _ruby_drm_free_object_properties(&s_DRMRuntimeState.objInfoCRTc);
    _ruby_drm_free_object_properties(&s_DRMRuntimeState.objInfoConnector);
@@ -814,6 +801,10 @@ int ruby_drm_core_uninit()
    return 0;
 }
 
+int ruby_drm_core_uninit() { return release_display(1); }
+int ruby_drm_release_ui_plane() { return release_display(0); }
+
+
 int ruby_drm_core_get_fd()
 {
    return s_fdDRM;
@@ -845,13 +836,14 @@ uint32_t ruby_drm_core_get_back_draw_buffer_id()
 
 int ruby_drm_swap_mainback_buffers()
 {
-   s_DRMRuntimeState.iActiveOnScreenDrawBuffer = 1 - s_DRMRuntimeState.iActiveOnScreenDrawBuffer;
+   int next = 1 - s_DRMRuntimeState.iActiveOnScreenDrawBuffer;
    
    drmModeAtomicSetCursor(s_DRMRuntimeState.pAtomicRequest, 0);
 
-   ruby_drm_set_object_property(&s_DRMRuntimeState.objInfoPlane, "FB_ID", s_DRMRuntimeState.drawBuffers[s_DRMRuntimeState.iActiveOnScreenDrawBuffer].uBufferId );
+   ruby_drm_set_object_property(&s_DRMRuntimeState.objInfoPlane, "FB_ID", s_DRMRuntimeState.drawBuffers[next].uBufferId );
 
    int iRet = drmModeAtomicCommit(s_fdDRM, s_DRMRuntimeState.pAtomicRequest, DRM_MODE_ATOMIC_ALLOW_MODESET, NULL);
+   if (iRet == 0) s_DRMRuntimeState.iActiveOnScreenDrawBuffer = next;
    return iRet;
 
    //if ( (0 == s_iDRMTargetPlaneIndex) || (-1 == s_iDRMTargetPlaneIndex) )

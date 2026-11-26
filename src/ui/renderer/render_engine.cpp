@@ -663,13 +663,14 @@ void RenderEngine::startFrame()
    m_iRenderDepth++;
 }
 
-void RenderEngine::endFrame()
+bool RenderEngine::endFrame()
 {
    if ( ! m_bStartedFrame )
-      return;
+      return false;
 
    m_bStartedFrame = false;
    m_iRenderDepth--;
+   return true;
 }
 
 bool RenderEngine::isFrameStarted()

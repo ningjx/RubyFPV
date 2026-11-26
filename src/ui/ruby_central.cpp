@@ -30,6 +30,8 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "../session/session.h"
+#include "frame_scheduler.h"
 #include <stdio.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -134,9 +136,6 @@ bool g_bMarkedHDMIReinit = false;
 bool g_bIsReinit = false;
 bool s_bShowMira = false;
 
-static int s_iRubyFPS = 0;
-static int s_iFPSCount = 0;
-static u32 s_uFPSLastTimeCheck = 0;
 
 static int s_iCountRequestsPauseWatchdog = 0;
 
@@ -144,7 +143,6 @@ static u32 s_uMicroTimeMenuRender = 0;
 static u32 s_uMicroTimePopupRender = 0;
 static u32 s_uMicroTimeOSDRender = 0;
 
-static u32 s_uTimeLastRender = 0;
 static u32 s_uTimeLastRenderDuration = 0;
 
 static u32 s_TimeLastMenuInput = 0;
@@ -649,23 +647,9 @@ void render_background_and_paddings(bool bForceBackground)
    }
 }
 
-void render_all_with_menus(u32 timeNow, bool bRenderMenus, bool bForceBackground, bool bDoInputLoop)
+static void draw_ui_scene(bool bRenderMenus, bool bForceBackground)
 {
    Preferences* p = get_Preferences();
-
-   if ( g_pControllerSettings->iFreezeOSD && s_bFreezeOSD )
-      return;
-
-   if ( g_bIsVideoPlaying )
-   {
-      video_playback_render();
-      return;
-   }
-
-   u32 uTimeStart = get_current_timestamp_ms();
-
-   g_pRenderEngine->startFrame();
-   
    render_background_and_paddings(bForceBackground);
    
    if ( (!g_bSearching) || g_bSearchFoundVehicle )
@@ -789,7 +773,7 @@ void render_all_with_menus(u32 timeNow, bool bRenderMenus, bool bForceBackground
 
       xPos += 0.02*osd_getScaleOSD();
       yPos += 0.003;
-      sprintf(szBuff, "UI FPS: %d", s_iRubyFPS);
+      sprintf(szBuff, "UI FPS: %d", (int)ui_frame_clock().fps);
       xPos += osd_show_value(xPos, yPos, szBuff, g_idFontOSD );
 
       xPos += 0.02*osd_getScaleOSD();
@@ -805,7 +789,7 @@ void render_all_with_menus(u32 timeNow, bool bRenderMenus, bool bForceBackground
       xPos += osd_show_value(xPos, yPos, szBuff, g_idFontOSD );
 
       xPos += 0.02*osd_getScaleOSD();
-      sprintf(szBuff, "OSD: %d ms/sec", (int)(s_uMicroTimeOSDRender*s_iRubyFPS/1000.0));
+      sprintf(szBuff, "OSD: %d ms/sec", (int)(s_uMicroTimeOSDRender*(int)ui_frame_clock().fps/1000.0));
       osd_show_value(xPos, yPos, szBuff, g_idFontOSD );
 
       g_pRenderEngine->setAlphaBlendingEnabled(bAlphaEnabled);
@@ -831,19 +815,29 @@ void render_all_with_menus(u32 timeNow, bool bRenderMenus, bool bForceBackground
 
    if ( NULL != p && p->iOSDFlipVertical )
       g_pRenderEngine->rotate180();
+}
 
-   g_pRenderEngine->endFrame();
+void render_all_with_menus(u32 timeNow, bool bRenderMenus, bool bForceBackground, bool bDoInputLoop)
+{
+
+   if ( g_pControllerSettings->iFreezeOSD && s_bFreezeOSD )
+      return;
+
+   if ( g_bIsVideoPlaying )
+   {
+      ui_present_frame(video_playback_render);
+      return;
+   }
+
+   u32 uTimeStart = get_current_timestamp_ms();
+
+   ui_present_frame([=] { draw_ui_scene(bRenderMenus, bForceBackground); });
+
 
    g_TimeNow = get_current_timestamp_ms();
    s_uTimeLastRenderDuration = g_TimeNow - uTimeStart;
 
-   s_iFPSCount++;
-   if ( g_TimeNow >= s_uFPSLastTimeCheck + 1000 )
-   {
-      s_iRubyFPS = (s_iFPSCount * (g_TimeNow - s_uFPSLastTimeCheck))/1000;
-      s_iFPSCount = 0;
-      s_uFPSLastTimeCheck = g_TimeNow;
-   }
+
 }
 
 void render_all(u32 timeNow, bool bForceBackground, bool bDoInputLoop)
@@ -2046,12 +2040,14 @@ void start_loop()
       r_check_processes_filesystem();
 
       log_line("Current local model: %X, VID: %u, first pairing done: %d, controller models: %d, spectator models: %d",
-         g_pCurrentModel, g_pCurrentModel->uVehicleId, (int)g_bFirstModelPairingDone, getControllerModelsCount(), getControllerModelsSpectatorCount());
+         g_pCurrentModel, g_pCurrentModel ? g_pCurrentModel->uVehicleId : 0, (int)g_bFirstModelPairingDone, getControllerModelsCount(), getControllerModelsSpectatorCount());
       log_line("Current active vehicle id on controller: %u", g_uActiveControllerModelVID);
 
-      if ( (NULL == g_pCurrentModel) ||
+      SessionRequest active;
+      bool resumeSearch = read_session(active) && active.mode == SessionMode::Search;
+      if ( !resumeSearch && ((NULL == g_pCurrentModel) ||
            (g_bFirstModelPairingDone && (0 == getControllerModelsCount()) && (0 == getControllerModelsSpectatorCount())) ||
-           (g_bFirstModelPairingDone && (0 == g_uActiveControllerModelVID) ) )
+           (g_bFirstModelPairingDone && (0 == g_uActiveControllerModelVID) ) ) )
       {
          ruby_resume_watchdog("start up sequence completed with no model");
          s_StartSequence = START_SEQ_COMPLETED;
@@ -2064,12 +2060,18 @@ void start_loop()
          popupStartup.resetTimer();
          return;
       }
-      onMainVehicleChanged(true);
+      if (g_pCurrentModel) onMainVehicleChanged(true);
 
       if ( 0 < hardware_get_radio_interfaces_count() )
       {
-         pairing_start_normal();
-         popupStartup.addLine(L("Started looking for vehicles."));
+         bool connected;
+         if (resumeSearch && active.airRate >= 0)
+            connected = pairing_start_search_sik_mode(active.frequency, active.airRate, active.ecc, active.lbt, active.mcstr);
+         else if (resumeSearch)
+            connected = pairing_start_search_mode(active.frequency, active.firmware);
+         else
+            connected = pairing_start_normal();
+         popupStartup.addLine(connected ? L("Started looking for vehicles.") : L("Could not start pairing."));
       }
       g_pProcessStatsTelemetry = shared_mem_process_stats_open_read(SHARED_MEM_WATCHDOG_TELEMETRY_RX);
       if ( NULL == g_pProcessStatsTelemetry )
@@ -2409,19 +2411,15 @@ void main_loop_r_central()
 
    compute_cpu_state();
 
-   int dt = 1000/15;
-   if ( 0 != g_pControllerSettings->iRenderFPS )
-      dt = 1000/g_pControllerSettings->iRenderFPS;
-   if ( g_TimeNow >= s_uTimeLastRender+dt )
+   if (ui_frame_clock().due(g_TimeNow, g_pControllerSettings->iRenderFPS))
    {
       ruby_signal_alive();
-      s_uTimeLastRender = g_TimeNow;
       render_all(g_TimeNow, false, false);
       if ( NULL != g_pProcessStatsCentral )
          g_pProcessStatsCentral->lastActiveTime = g_TimeNow;
 
       if ( g_bIsReinit )
-      if ( s_iFPSCount > 5 )
+      if ( ui_frame_clock().submitted > 5 )
          g_bQuit = true;
    }
 
@@ -2725,7 +2723,6 @@ int main(int argc, char *argv[])
    hardware_serial_init_ports();
 
    clear_shared_mems();   
-   ruby_clear_all_ipc_channels();
 
    g_pProcessStatsCentral = shared_mem_process_stats_open_write(SHARED_MEM_WATCHDOG_CENTRAL);
    if ( NULL == g_pProcessStatsCentral )
@@ -2928,8 +2925,7 @@ void ruby_shutdown_ui()
 
    keyboard_uninit();
    link_watch_uninit();
-   if ( ! g_bIsReinit )
-      pairing_stop();
+   pairing_detach_ui();
 
    while ( s_bThreadCPUStateRunning )
    {
@@ -2962,7 +2958,7 @@ void ruby_shutdown_ui()
 
    render_free_engine();
 
-   ruby_drm_core_uninit();
+   ruby_drm_release_ui_plane();
 
    log_line("Finished shutdown UI.");
 }

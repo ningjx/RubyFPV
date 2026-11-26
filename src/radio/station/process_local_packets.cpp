@@ -630,6 +630,12 @@ void process_local_control_packet(u8* pPacketBuffer)
 
    t_packet_header* pPH = (t_packet_header*)pPacketBuffer;
 
+   // A newly attached UI may have missed the router's initial ready notification.
+   if (pPH->packet_type == PACKET_TYPE_LOCAL_CONTROLLER_ROUTER_READY) {
+      send_message_to_central(PACKET_TYPE_LOCAL_CONTROLLER_ROUTER_READY, 0, false);
+      return;
+   }
+
    if ( pPH->packet_type == PACKET_TYPE_TEST_RADIO_LINK )
    {
       pPacketBuffer += sizeof(t_packet_header);
