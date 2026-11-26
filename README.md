@@ -1,3 +1,11 @@
+# RubyFPV · Radxa Zero 3W 地面端
+
+本分支面向 Radxa Zero 3W（RK3566，ARM64）。地面端沿用 Ruby 的配对、视频接收、遥测、遥控和远端参数设置，搭配已有 SSC338Q 机载固件使用。仓库内保留远端板型和相机标识，供协议解码、模型文件和配置菜单使用。
+
+在具备开发环境的 Radxa Linux 镜像上，从仓库根目录执行 `make -j4`。默认目标与 `make station` 都生成完整地面端，包括 `ruby_start`、`ruby_central` 和 `ruby_player_radxa`。构建需要 C/C++ 工具链、pkg-config、Rockchip MPP、libdrm、Cairo、SDL2、libpcap、libgpiod（1.x API）和 I²C 开发库。`make tests` 单独构建链路诊断工具。
+
+系统镜像和板上验收步骤见[专用版本路线图](docs/radxa-zero-3w-ssc338q-roadmap.md)。以下为上游 RubyFPV 项目介绍。
+
 # RubyFPV: Open Source Digital FPV Radio System
 Ruby is a full open source solution (hardware and software) for robust end to end digital radio links, designed specifically for controlling and managing UAVs/drones/planes/cars and other remote vehicles
 

@@ -176,14 +176,6 @@ void MenuPreferencesUI::addItems()
       else
          m_pItemsSelect[10] = new MenuItemSelect(L("OSD font"), L("Changes the OSD font."));  
 
-      #if defined (HW_PLATFORM_RASPBERRY)
-      m_pItemsSelect[10]->addSelection("Font 1 Bold");
-      m_pItemsSelect[10]->addSelection("Font 1 Outlined");
-      m_pItemsSelect[10]->addSelection("Font 2");
-      m_pItemsSelect[10]->addSelection("Font 3 Bold");
-      m_pItemsSelect[10]->setIsEditable();
-      m_IndexOSDFont = addMenuItem(m_pItemsSelect[10]);
-      #else
       m_pItemsSelect[10]->addSelection("Font 1");
       m_pItemsSelect[10]->addSelection("Font 2");
       m_pItemsSelect[10]->setIsEditable();
@@ -197,7 +189,6 @@ void MenuPreferencesUI::addItems()
       m_pItemsSelect[5]->addSelection(L("Bold"));
       m_pItemsSelect[5]->setIsEditable();
       m_IndexOSDFontBold = addMenuItem(m_pItemsSelect[5]);
-      #endif
 
       if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MSP) )
       {
@@ -243,11 +234,6 @@ void MenuPreferencesUI::addItems()
       for( int i=0; i<getLanguagesCount(); i++ )
       {
          bool bEnabled = true;
-         #if defined (HW_PLATFORM_RASPBERRY)
-         // Disable non latin charsets (raster fonts)
-         if ( (i == 0) || (i == 4) || (i == 5) )
-            bEnabled = false;
-         #endif
          if ( i == 4 )
             bEnabled = false;
          m_pItemsSelect[18]->addSelection(L(getLanguageName(i)), bEnabled);

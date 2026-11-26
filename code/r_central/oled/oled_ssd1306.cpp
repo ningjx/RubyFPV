@@ -8,12 +8,7 @@
 #include "../../base/base.h"
 #include "../../base/hardware_i2c.h"
 
-#if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RASPBERRY)
-#include <wiringPiI2C.h>
-#endif
-#if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RADXA)
 #include "../../base/wiringPiI2C_radxa.h"
-#endif
 
 int i2c_fd = 0;
 static ssd1306_handle_t gs_handle;
@@ -34,19 +29,6 @@ int ssd1306_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
     if (len == 0)
         return 0;
 
-#if defined (HW_PLATFORM_RASPBERRY)
-    if (len == 1)
-    {
-        return wiringPiI2CWriteReg8(i2c_fd, reg, *buf);
-    }
-    for (int i = 0; i < len; i++)
-    {
-        wiringPiI2CWriteReg8(i2c_fd, reg, buf[i]);
-    }
-    return 0;
-
-#endif
-#if defined (HW_PLATFORM_RADXA)
     if (len == 1)
     {
        return wiringPiI2CWriteReg8(i2c_fd, reg, *buf);
@@ -55,7 +37,6 @@ int ssd1306_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
     {
        return wiringPiI2CWriteBlockData(i2c_fd, reg, len, buf);
     }
-#endif
 }
 
 void ssd1306_delay_ms(uint32_t ms)

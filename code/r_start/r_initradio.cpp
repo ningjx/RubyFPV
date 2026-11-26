@@ -37,13 +37,10 @@
 #include "../base/hardware_radio_txpower.h"
 #include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
-#if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
 #include "../base/ctrl_interfaces.h"
 #include "../base/ctrl_settings.h"
-#endif
 #include "../common/string_utils.h"
 
-bool s_bIsStation = false;
 bool configure_radios_succeeded = false;
 int giDataRateMbAtheros = 0;
 
@@ -77,11 +74,8 @@ int init_Radios()
    }
    
    u32 uDelayMS = DEFAULT_DELAY_WIFI_CHANGE;
-   s_bIsStation = hardware_is_station();
 
-   #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
 
-   if ( s_bIsStation )
    {
       log_line("Configuring radios: we are station.");
       load_Preferences();
@@ -93,13 +87,7 @@ int init_Radios()
       if ( (uDelayMS < 1) || (uDelayMS > 200) )
          uDelayMS = DEFAULT_DELAY_WIFI_CHANGE;
    }
-   else
-   {
-      log_line("Configuring radios: we are vehicle.");
-      reset_ControllerInterfacesSettings();
-   }
 
-   #endif
 
    _set_radio_region();
 
@@ -149,7 +137,6 @@ int init_Radios()
       if ( hardware_radio_driver_is_rtl8812eu_card(pRadioHWInfo->iRadioDriver) )
          hardware_radio_set_txpower_raw_rtl8812eu(i, 10);
 
-      //if ( s_bIsStation && controllerIsCardDisabled(pRadioHWInfo->szMAC) )
       //{
       //   sprintf(szComm, "ifconfig %s down", pRadioHWInfo->szName );
       //   execute_bash_command(szComm, NULL);

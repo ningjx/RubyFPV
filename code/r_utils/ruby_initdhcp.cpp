@@ -45,11 +45,7 @@ void configureDHCP()
    int i=0;
 
    hw_execute_bash_command("export PATH=/usr/local/bin:${PATH}", NULL);
-   #if defined (HW_PLATFORM_RASPBERRY)
-   hw_execute_bash_command("ip link set dev eth0 up", NULL);
-   #else
    hw_execute_bash_command("ip link set eth0 up", NULL);
-   #endif
    log_line("Waiting for ETH up...");
    do
    {
@@ -73,15 +69,8 @@ void configureDHCP()
       log_line("Detected an ethernet connection.");
       char szType[128];
 
-      if ( hardware_is_vehicle() )
-         strcpy(szType, "VEHICLE");
-      else
-         strcpy(szType, "STATION");
+      strcpy(szType, "STATION");
 
-      #ifdef HW_PLATFORM_RASPBERRY
-      sprintf(szBuff, "nice pump -i eth0 --no-ntp -h Ruby%s 2>&1 1>/dev/null", szType);
-      hw_execute_bash_command(szBuff, NULL);
-      #endif
       //ETHCLIENTIP=`ip addr show eth0 | grep -Po 'inet \K[\d.]+'`            
       //echo "Ethernet IP: $ETHCLIENTIP"
       //ping -n -q -c 1 1.1.1.1 
@@ -113,12 +102,7 @@ void _check_set_fixed_ip()
 
    char szBuff[256];
    szBuff[0] = 0;
-   #ifdef HW_PLATFORM_RASPBERRY
-   sprintf(szBuff, "ifconfig %s %d.%d.%d.%d up &", pszETH, (pCS->uFixedIP >> 24 ) & 0xFF, (pCS->uFixedIP >> 16 ) & 0xFF, (pCS->uFixedIP >> 8 ) & 0xFF, pCS->uFixedIP & 0xFF );
-   #endif
-   #ifdef HW_PLATFORM_RADXA
    sprintf(szBuff, "ip addr add %d.%d.%d.%d/24 dev %s", (pCS->uFixedIP >> 24 ) & 0xFF, (pCS->uFixedIP >> 16 ) & 0xFF, (pCS->uFixedIP >> 8 ) & 0xFF, pCS->uFixedIP & 0xFF, pszETH );
-   #endif
    if ( 0 != szBuff[0] )
       hw_execute_bash_command(szBuff, NULL);
    log_line("Setting a fixed IP done.");
@@ -155,19 +139,7 @@ int main(int argc, char *argv[])
    hw_execute_bash_command_raw("ls /sys/class/net/", szOutput);
    log_line("Network devices found: [%s]", szOutput);
 
-   bool bIsStation = hardware_is_station();
-
-   u32 board_type = 0;
-   char szBoardId[256];
-   char szFile[128];
-   strcpy(szFile, FOLDER_RUBY_TEMP);
-   strcat(szFile, FILE_CONFIG_BOARD_TYPE);
-   FILE* fd = fopen(szFile, "r");
-   if ( NULL != fd )
-   {
-      fscanf(fd, "%u %s", &board_type, szBoardId);
-      fclose(fd);
-   }
+   u32 board_type = hardware_getBoardType();
    log_line("Board type: %d -> %s", board_type, str_get_hardware_board_name(board_type));
 
    bool bHasETH = ((hardware_has_eth() != NULL)?true:false);
@@ -184,19 +156,13 @@ int main(int argc, char *argv[])
       }
 
       log_line("DHCP is disabled with /boot/nodhcp option.");
-      if ( bIsStation )
-         _check_set_fixed_ip();
+      _check_set_fixed_ip();
       log_line("Done DHCP/ETH Configuration.");
       return 0;
    }
 
-   #if defined HW_PLATFORM_RADXA
    _check_set_fixed_ip();
-   #endif
 
-   #if defined HW_PLATFORM_RASPBERRY
-   configureDHCP();
-   #endif
    
    hw_execute_bash_command_raw("ls /sys/class/net/", szOutput);
    log_line("Network devices found: [%s]", szOutput);

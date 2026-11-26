@@ -204,7 +204,6 @@ void rx_video_output_start_video_streamer()
       strcat(szStreamerParams, szTmp);
    }
 
-   #if defined (HW_PLATFORM_RADXA)
    char szCodec[32];
    szCodec[0] = 0;
    Model* pModel = NULL;
@@ -233,7 +232,6 @@ void rx_video_output_start_video_streamer()
       strcat(szStreamerParams, "-p ");
    else
       strcat(szStreamerParams, "-sm");
-   #endif
 
    if ( 0 != szStreamerParams[0] )
       strcat(szStreamerParams, " ");
@@ -242,14 +240,6 @@ void rx_video_output_start_video_streamer()
    szStreamerPrefixes[0] = 0;
    if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityVideo > 100) )
       sprintf(szStreamerPrefixes, "nice -n %d", g_pControllerSettings->iThreadPriorityVideo - 120);
-   #ifdef HW_CAPABILITY_IONICE
-   if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->ioNiceRxVideo > 0) )
-   {
-      sprintf(szStreamerPrefixes, "ionice -c 1 -n %d", g_pControllerSettings->ioNiceRxVideo);
-      if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityVideo > 100) )
-         sprintf(szStreamerPrefixes, "ionice -c 1 -n %d nice -n %d", g_pControllerSettings->ioNiceRxVideo, g_pControllerSettings->iThreadPriorityVideo-120);
-   }
-   #endif
 
    log_line("[VideoOutput] Executing video streamer command: %s %s %s &", szStreamerPrefixes, s_szOutputVideoStreamerFilename, szStreamerParams);
    hw_execute_ruby_process_wait(szStreamerPrefixes, s_szOutputVideoStreamerFilename, szStreamerParams, NULL, 0);
@@ -287,7 +277,6 @@ void rx_video_output_start_video_streamer()
       shared_mem_process_stats_close(SHARED_MEM_WATCHDOG_MPP_PLAYER, s_pSMProcessStatsMPPPlayer);
    s_pSMProcessStatsMPPPlayer = NULL;
 
-   #if defined(HW_PLATFORM_RADXA)
    uTimeStart = g_TimeNow;
    while ( g_TimeNow < uTimeStart + 2000 )
    {
@@ -303,7 +292,6 @@ void rx_video_output_start_video_streamer()
       hardware_sleep_ms(50);
       g_TimeNow = get_current_timestamp_ms();
    }
-   #endif
 
    s_uTimeStartLocalVideoPlayer = g_TimeNow;
    log_line("[VideoOutput] Video streamer start procedure finised and marked start time.");
@@ -452,11 +440,7 @@ void _processor_rx_video_forward_open_eth_pipe()
 {
    log_line("[VideoOutput] Creating ETH pipes for video forward...");
    char szComm[1024];
-   #ifdef HW_CAPABILITY_IONICE
-   sprintf(szComm, "ionice -c 1 -n 4 nice -n -5 cat %s | nice -n -5 gst-launch-1.0 fdsrc ! h264parse ! rtph264pay pt=96 config-interval=3 ! udpsink port=%d host=127.0.0.1 > /dev/null 2>&1 &", FIFO_RUBY_STATION_VIDEO_STREAM_ETH, g_pControllerSettings->nVideoForwardETHPort);
-   #else
    sprintf(szComm, "nice -n -5 cat %s | nice -n -5 gst-launch-1.0 fdsrc ! h264parse ! rtph264pay pt=96 config-interval=3 ! udpsink port=%d host=127.0.0.1 > /dev/null 2>&1 &", FIFO_RUBY_STATION_VIDEO_STREAM_ETH, g_pControllerSettings->nVideoForwardETHPort);
-   #endif
    hw_execute_bash_command(szComm, NULL);
 
    log_line("[VideoOutput] Opening video output pipe write endpoint for ETH forward RTS: %s", FIFO_RUBY_STATION_VIDEO_STREAM_ETH);
@@ -1413,9 +1397,7 @@ void rx_video_output_periodic_loop()
 {
    rx_video_recording_periodic_loop();
 
-   #if defined(HW_PLATFORM_RADXA)
    _rx_video_output_watchdog_mpp_player();
-   #endif
 
    if ( g_bDebugState )
    if ( g_TimeNow >= s_uLastTimeComputedOutputBitrate + 1000 )

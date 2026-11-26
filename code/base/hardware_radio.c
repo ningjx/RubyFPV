@@ -348,11 +348,7 @@ int _hardware_detect_card_model(const char* szProductId)
       {
          return CARD_MODEL_BONNET_LOW_POWER;
       }
-      #if defined HW_PLATFORM_OPENIPC_CAMERA
-      return CARD_MODEL_RTL8812AU_OIPC_USIGHT;
-      #else
       return CARD_MODEL_ALFA_AWUS036ACH;
-      #endif
    }     
 
    if ( NULL != strstr( szProductId, "cf3:9271" ) )
@@ -686,11 +682,7 @@ int hardware_find_usb_radio_interfaces_info()
    s_iEnumeratedUSBRadioInterfaces = 1;
    s_iFoundUSBRadioInterfaces = 0;
    s_iFoundUSBKnownRadioInterfaces = 0;
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-   log_line("[HW-R] Finding USB radio interfaces and devices for OpenIPC platform...");
-   #else
-   log_line("[HW-R] Finding USB radio interfaces and devices for linux/raspberry platform...");
-   #endif
+   log_line("[HW-R] Finding USB radio interfaces and devices on Radxa Zero 3W...");
 
    _hardware_find_bonnet();
 
@@ -809,15 +801,7 @@ int hardware_find_usb_radio_interfaces_info()
 
 int _hardware_enumerate_wifi_radios()
 {
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-   log_line("[HW-R] Enumerating wifi radios for OpenIPC platform...");
-   #elif defined (HW_PLATFORM_RASPBERRY )
-   log_line("[HW-R] Enumerating wifi radios for Raspberry platform...");
-   #elif defined (HW_PLATFORM_RADXA)
    log_line("[HW-R] Enumerating wifi radios for Radxa platform...");
-   #else
-   log_line("[HW-R] Enumerating wifi radios for generic Linux platform...");
-   #endif
 
    char szDriver[128];
    char szComm[256];
@@ -902,13 +886,8 @@ int _hardware_enumerate_wifi_radios()
    {
       szDriver[0] = 0;
 
-      #ifdef HW_PLATFORM_OPENIPC_CAMERA
-      sprintf(szComm, "ls -Al /sys/class/net/%s/device/ | grep driver", sRadioInfo[i].szName);
-      hw_execute_bash_command_raw(szComm, szDriver);
-      #else
       sprintf(szComm, "cat /sys/class/net/%s/device/uevent | nice grep DRIVER | sed 's/DRIVER=//'", sRadioInfo[i].szName);
       hw_execute_bash_command(szComm, szDriver);
-      #endif
       removeTrailingNewLines(szDriver);
 
       if ( NULL != strstr(szDriver, "such device") )
@@ -1251,25 +1230,6 @@ int hardware_load_driver_rtl8812au()
    removeTrailingNewLines(szPlatform);
    log_line("[Hardware] Loading driver RTL8812AU for platform: %s ...", szPlatform);
 
-   #if defined HW_PLATFORM_OPENIPC_CAMERA
-   hw_execute_bash_command("modprobe cfg80211", NULL);
-
-   char szFile[MAX_FILE_PATH_SIZE];
-   snprintf(szFile, sizeof(szFile)/sizeof(szFile[0]), "/lib/modules/%s/extra/88XXau.ko", szPlatform);
-   if ( access(szFile, R_OK) != -1 )
-   {
-      hw_execute_bash_command_raw("insmod /lib/modules/$(uname -r)/extra/88XXau.ko rtw_tx_pwr_idx_override=1 2>&1", NULL);
-      hardware_sleep_ms(50);
-      hw_execute_bash_command_raw("modprobe 88XXau rtw_tx_pwr_idx_override=1 2>&1", NULL);
-   }
-   else
-   {
-      hw_execute_bash_command_raw("insmod /lib/modules/$(uname -r)/extra/8812au.ko rtw_tx_pwr_idx_override=1 2>&1", NULL);
-      hardware_sleep_ms(50);
-      hw_execute_bash_command_raw("modprobe 8812au rtw_tx_pwr_idx_override=1 2>&1", NULL);
-   }
-   return 1;
-   #endif
 
    char szOutput[256];
    
@@ -1292,13 +1252,6 @@ int hardware_load_driver_rtl8812eu()
    removeTrailingNewLines(szPlatform);
    log_line("[Hardware] Loading driver RTL8812EU for platform: %s ...", szPlatform);
 
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hw_execute_bash_command("modprobe cfg80211", NULL);
-   hw_execute_bash_command_raw("insmod /lib/modules/$(uname -r)/extra/8812eu.ko rtw_tx_pwr_by_rate=0 rtw_tx_pwr_lmt_enable=0 2>&1", NULL);
-   hardware_sleep_ms(50);
-   hw_execute_bash_command_raw("modprobe 8812eu rtw_tx_pwr_by_rate=0 rtw_tx_pwr_lmt_enable=0 2>&1", NULL);
-   return 1;
-   #endif
 
    char szOutput[256];
 
@@ -1321,13 +1274,6 @@ int hardware_load_driver_rtl8733bu()
    removeTrailingNewLines(szPlatform);
    log_line("[Hardware] Loading driver RTL8733BU for platform: %s ...", szPlatform);
 
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hw_execute_bash_command("modprobe cfg80211", NULL);
-   hw_execute_bash_command_raw("insmod /lib/modules/$(uname -r)/extra/8733bu.ko rtw_tx_pwr_by_rate=0 rtw_tx_pwr_lmt_enable=0 2>&1", NULL);
-   hardware_sleep_ms(50);
-   hw_execute_bash_command_raw("modprobe 8733bu rtw_tx_pwr_by_rate=0 rtw_tx_pwr_lmt_enable=0 2>&1", NULL);
-   return 1;
-   #endif
 
    hw_execute_bash_command("sudo modprobe cfg80211", NULL);
    return 1;
@@ -1361,15 +1307,7 @@ int hardware_radio_load_radio_modules(int iEchoToConsole)
       return 0;    
    }
 
-   #if defined(HW_PLATFORM_RASPBERRY)
-   log_line("[HW-R] Adding radio modules on Raspberry for %d detected supported radio cards...", s_iFoundUSBKnownRadioInterfaces);
-   #endif
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   log_line("[HW-R] Adding radio modules on OpenIPC for %d detected supported radio cards...", s_iFoundUSBKnownRadioInterfaces);
-   #endif
-   #if defined(HW_PLATFORM_RADXA)
    log_line("[HW-R] Adding radio modules on Radxa for %d detected supported radio cards...", s_iFoundUSBKnownRadioInterfaces);
-   #endif
 
    if ( iEchoToConsole )
    {
@@ -1505,8 +1443,7 @@ int _hardware_try_install_rtl8812au(char* szSrcDriver)
    if ( access(szDriverFullPath, R_OK) == -1 )
    {
       log_softerror_and_alarm("[HW-R] Can't access driver file: [%s]", szDriverFullPath);
-      if ( ! hardware_is_running_on_runcam_vrx() )
-         return 0;
+      return 0;
 
       strcpy(szDriverFullPath, "/home/88XXau_wfb.ko");
       log_line("[HW-R] Driver file to use: [%s]", szDriverFullPath);
@@ -1549,9 +1486,6 @@ int _hardware_try_install_rtl8812au(char* szSrcDriver)
 
 int hardware_install_driver_rtl8812au(int iEchoToConsole)
 {
-   #if defined HW_PLATFORM_OPENIPC_CAMERA
-   return 1;
-   #endif
 
    char szPlatform[256];
    hw_execute_bash_command("uname -r", szPlatform);
@@ -1565,30 +1499,10 @@ int hardware_install_driver_rtl8812au(int iEchoToConsole)
 
    hw_execute_bash_command("sudo modprobe cfg80211", NULL);
 
-   #if defined HW_PLATFORM_RASPBERRY
-   char szDriverFile[128];
-   if ( NULL != strstr(szPlatform, "v7l+") )
-      strcpy(szDriverFile, "88XXau-pi+.ko");
-   else
-      strcpy(szDriverFile, "88XXau-pi.ko");
 
-   int iRes = _hardware_try_install_rtl8812au(szDriverFile);
-   if ( 1 == iRes )
-      return iRes;
-  
-   if ( NULL != strstr(szPlatform, "v7l+") )
-      strcpy(szDriverFile, "88XXau-pi.ko");
-   else
-      strcpy(szDriverFile, "88XXau-pi+.ko");
-   return _hardware_try_install_rtl8812au(szDriverFile);
-
-   #endif
-
-   #if defined HW_PLATFORM_RADXA
    char szDriverFile[128];
    strcpy(szDriverFile, "88XXau-radxa.ko");
    return _hardware_try_install_rtl8812au(szDriverFile);
-   #endif
 
    return 0;
 }
@@ -1614,8 +1528,7 @@ int _hardware_try_install_rtl8812eu(char* szSrcDriver)
    if ( access(szDriverFullPath, R_OK) == -1 )
    {
       log_softerror_and_alarm("[HW-R] Can't access driver file: [%s]", szDriverFullPath);
-      if ( ! hardware_is_running_on_runcam_vrx() )
-         return 0;
+      return 0;
 
       strcpy(szDriverFullPath, "/home/8812eu_radxa.ko");
       log_line("[HW-R] Driver file to use: [%s]", szDriverFullPath);
@@ -1660,9 +1573,6 @@ int _hardware_try_install_rtl8812eu(char* szSrcDriver)
 
 int hardware_install_driver_rtl8812eu(int iEchoToConsole)
 {
-   #if defined HW_PLATFORM_OPENIPC_CAMERA
-   return 1;
-   #endif
 
    char szPlatform[256];
    hw_execute_bash_command("uname -r", szPlatform);
@@ -1676,37 +1586,16 @@ int hardware_install_driver_rtl8812eu(int iEchoToConsole)
 
    hw_execute_bash_command("sudo modprobe cfg80211", NULL);
 
-   #if defined HW_PLATFORM_RASPBERRY
-   char szDriverFile[128];
-   if ( NULL != strstr(szPlatform, "v7l+") )
-      strcpy(szDriverFile, "8812eu-pi+.ko");
-   else
-      strcpy(szDriverFile, "8812eu-pi.ko");
-   int iRes = _hardware_try_install_rtl8812eu(szDriverFile);
-   if ( 1 == iRes )
-      return 1;
 
-   if ( NULL != strstr(szPlatform, "v7l+") )
-      strcpy(szDriverFile, "8812eu-pi.ko");
-   else
-      strcpy(szDriverFile, "8812eu-pi+.ko");
-   return _hardware_try_install_rtl8812eu(szDriverFile);
-   #endif
-
-   #if defined HW_PLATFORM_RADXA
    char szDriverFile[128];
    strcpy(szDriverFile, "8812eu-radxa.ko");
    return _hardware_try_install_rtl8812eu(szDriverFile);
-   #endif
 
    return 0;
 }
 
 int hardware_install_driver_rtl8733bu(int iEchoToConsole)
 {
-   #if defined HW_PLATFORM_OPENIPC_CAMERA
-   return 1;
-   #endif
 
    char szPlatform[256];
    hw_execute_bash_command("uname -r", szPlatform);
@@ -1733,9 +1622,6 @@ void hardware_install_drivers(int iEchoToConsole)
       printf("Ruby: Installing drivers for platform: %s ...\n", szPlatform);
       fflush(stdout);
    }
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   log_line("[HW-R] Drivers are already installed on OpenIPC.");
-   #else
    char szComm[256];
    hw_execute_bash_command("rmmod 88XXau 2>&1 1>/dev/null", NULL);
    hw_execute_bash_command("rmmod 88XXau_wfb 2>&1 1>/dev/null", NULL);
@@ -1763,7 +1649,6 @@ void hardware_install_drivers(int iEchoToConsole)
       printf("Ruby: Updating drives database took too long. Abandoning operation.\n");
       fflush(stdout);
    }
-   #endif
 
    if ( 0 == hardware_install_driver_rtl8812au(iEchoToConsole) )
    {
@@ -1819,7 +1704,6 @@ void hardware_install_drivers(int iEchoToConsole)
       }
    }
 
-   #if defined HW_PLATFORM_RADXA
 
    hw_execute_bash_command("lsusb", NULL);
    //hw_execute_bash_command("sudo modprobe -r aic8800_fdrv 2>&1 1>/dev/null", NULL);
@@ -1841,7 +1725,6 @@ void hardware_install_drivers(int iEchoToConsole)
    }
    hw_execute_bash_command("sync", NULL);
 
-   #endif
 
    log_line("[HW-R] Done installing drivers.");
    if ( iEchoToConsole )
@@ -1860,24 +1743,6 @@ int _configure_radio_interface_atheros(int iInterfaceIndex, radio_hw_info_t* pRa
    char szComm[128];
    char szOutput[2048];
 
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-
-   //sprintf(szComm, "iwconfig %s mode monitor", pRadioHWInfo->szName);
-   sprintf(szComm, "iw dev %s set type monitor", pRadioHWInfo->szName);
-   hw_execute_bash_command(szComm, NULL);
-   hardware_sleep_ms(uDelayMS);
-
-   sprintf(szComm, "iw dev %s set monitor fcsfail", pRadioHWInfo->szName);
-   hw_execute_bash_command(szComm, szOutput);
-   hardware_sleep_ms(uDelayMS);
-
-   //sprintf(szComm, "ifconfig %s up", pRadioHWInfo->szName );
-   sprintf(szComm, "ip link set dev %s up", pRadioHWInfo->szName );
-   hw_execute_bash_command(szComm, NULL);
-   hardware_sleep_ms(uDelayMS);
-
-   return 1;
-   #endif
 
    sprintf(szComm, "iw dev %s set monitor fcsfail", pRadioHWInfo->szName);
    hw_execute_bash_command(szComm, szOutput);
@@ -1925,23 +1790,6 @@ int _configure_radio_interface_realtek(int iInterfaceIndex, radio_hw_info_t* pRa
    char szComm[128];
    char szOutput[2048];
 
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-   
-   sprintf(szComm, "ip link set dev %s up", pRadioHWInfo->szName );
-   hw_execute_bash_command(szComm, NULL);
-   hardware_sleep_ms(uDelayMS);
-
-   sprintf(szComm, "iwconfig %s mode monitor", pRadioHWInfo->szName );
-   hw_execute_bash_command(szComm, NULL);
-   hardware_sleep_ms(uDelayMS);
-
-   sprintf(szComm, "iw dev %s set monitor fcsfail", pRadioHWInfo->szName);
-   hw_execute_bash_command(szComm, szOutput);
-   hardware_sleep_ms(uDelayMS);
-   
-   return 1;
-
-   #endif
 
    sprintf(szComm, "ip link set dev %s down", pRadioHWInfo->szName );
    hw_execute_bash_command(szComm, szOutput);

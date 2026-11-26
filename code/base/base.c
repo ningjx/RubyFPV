@@ -237,11 +237,6 @@ void _init_timestamp_for_process()
          }
          else
             log_line_forced_to_file("Failed to write boot timestamp to file [%s] for PID %d", szFile, getpid());
-         #ifdef HW_PLATFORM_RASPBERRY
-         system("sudo mount -o remount,rw /");
-         struct timespec to_sleep = { 0, (long int)(50*1000*1000) };
-         clock_nanosleep(RUBY_HW_CLOCK_ID, 0, &to_sleep, NULL);
-         #endif
          count++;
       }
       return;
@@ -568,15 +563,7 @@ void log_arguments(int argc, char *argv[])
    char szHWPlatform[32];
    strcpy(szHWPlatform, "N/A");
 
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   strcpy(szHWPlatform, "OPIPC");
-   #elif defined(HW_PLATFORM_LINUX_GENERIC)
-   strcpy(szHWPlatform, "Linux");
-   #elif defined(HW_PLATFORM_RASPBERRY)
-   strcpy(szHWPlatform, "PI");
-   #elif defined(HW_PLATFORM_RADXA)
    strcpy(szHWPlatform, "RadxaZero3");
-   #endif
    log_line_forced_to_file("Process version: %d.%d (b-%d) HW: %s", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR, SYSTEM_SW_BUILD_NUMBER, szHWPlatform);
    log_line_forced_to_file("Using logger service: %s", (s_logUseService!=0)?"yes":"no");
    if ( argc <= 0 )

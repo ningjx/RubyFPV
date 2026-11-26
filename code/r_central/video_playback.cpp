@@ -121,13 +121,8 @@ void video_playback_play_file(const char* szVideoInfoFile)
       send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_PAUSE_LOCAL_VIDEO_DISPLAY, 1);
       hardware_sleep_ms(200);
    }  
-   #ifdef HW_PLATFORM_RASPBERRY
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "./%s -file %s%s -fps %d", VIDEO_PLAYER_OFFLINE, FOLDER_MEDIA, szFile, iFPS);
-   #endif
 
-   #ifdef HW_PLATFORM_RADXA
    snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "./%s -file %s%s -fps %d", VIDEO_PLAYER_OFFLINE, FOLDER_MEDIA, szFile, iFPS);
-   #endif
 
    if ( g_pControllerSettings->iCoresAdjustment )
    {

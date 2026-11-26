@@ -124,20 +124,12 @@ void hardware_files_init()
 
 void hardware_mount_root()
 {
-   #ifdef HW_PLATFORM_RASPBERRY
-   hw_execute_bash_command("sudo mount -o remount,rw /", NULL);
-   #endif
 
-   #if defined(HW_PLATFORM_RADXA)
    hw_execute_bash_command("sudo mount -o remount,rw /", NULL);
-   #endif
 }
 
 void hardware_mount_boot()
 {
-   #ifdef HW_PLATFORM_RASPBERRY
-   hw_execute_bash_command("sudo mount -o remount,rw /boot", NULL);
-   #endif
 }
 
 int hardware_get_free_space_kb()
@@ -145,21 +137,8 @@ int hardware_get_free_space_kb()
    char szOutput[2048];
    szOutput[0] = 0;
 
-   #if defined(HW_PLATFORM_RASPBERRY)
-   if ( 1 != hw_execute_bash_command_raw("df . | grep root", szOutput) )
-      return -1;
-   #endif
-   #if defined(HW_PLATFORM_RADXA)
    if ( 1 != hw_execute_bash_command_raw("df / | grep dev/", szOutput) )
       return -1;
-   #endif
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   //if ( 1 != hw_execute_bash_command_raw("df . | grep overlay 2>/dev/null", szOutput) )
-   //   return -1;
-   //if ( strlen(szOutput) < 10 )
-   if ( 1 != hw_execute_bash_command_raw("df /tmp | grep tmpfs 2>/dev/null", szOutput) )
-      return -1;
-   #endif
 
    if ( strlen(szOutput) < 10 )
       return -1;

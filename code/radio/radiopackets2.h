@@ -37,17 +37,10 @@
 #include "local_packets.h"
 #include "radiopackets_short.h"
 
-#if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
 #define MAX_RXTX_BLOCKS_BUFFER 100
 #define MAX_TOTAL_PACKETS_IN_BLOCK 32
 #define MAX_DATA_PACKETS_IN_BLOCK 16
 #define MAX_FECS_PACKETS_IN_BLOCK 16
-#else
-#define MAX_RXTX_BLOCKS_BUFFER 70
-#define MAX_TOTAL_PACKETS_IN_BLOCK 32
-#define MAX_DATA_PACKETS_IN_BLOCK 16
-#define MAX_FECS_PACKETS_IN_BLOCK 16
-#endif
 
 #define MAX_PACKET_RADIO_HEADERS 100
 #define MAX_PACKET_PAYLOAD 1250

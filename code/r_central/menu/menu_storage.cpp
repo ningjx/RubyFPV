@@ -102,9 +102,7 @@ void MenuStorage::onShow()
    
    media_scan_files();
 
-   #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    sprintf(szComm, "df -m %s | tail -n 1", FOLDER_MEDIA);
-   #endif
 
    if ( 1 == hw_execute_bash_command_raw(szComm, szBuff) )
    {

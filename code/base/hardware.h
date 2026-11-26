@@ -93,7 +93,6 @@ typedef struct
 
 
 int init_hardware();
-int init_hardware_only_detection_pins();
 
 void hardware_reboot();
 
@@ -103,7 +102,6 @@ void hardware_swap_buttons(int swap);
 
 void hardware_detectBoardAndSystemType();
 void hardware_writeBoardAndSystemType();
-u32 hardware_detectBoardType();
 u32 hardware_getBoardType();
 int hardware_get_board_subtypes_count();
 u32 hardware_get_board_subtype_at_index(int iIndex);
@@ -148,8 +146,6 @@ void hardware_blockCurrentPressedKeys();
 
 int hardware_is_station();
 int hardware_is_vehicle();
-int hardware_is_running_on_openipc();
-int hardware_is_running_on_runcam_vrx();
 
 void hardware_led_red_set_on();
 void hardware_led_red_set_off();
@@ -162,16 +158,12 @@ void hardware_led_green_set_blinking_fast(u32 uPeriodToBlink);
 
 char* hardware_has_eth();
 
-void hardware_set_default_sigmastar_cpu_freq();
 void hardware_set_default_radxa_cpu_freq();
 int hardware_get_cpu_speed(); // in Mhz
 int hardware_get_gpu_speed(); // in Mhz
 
 int hardware_get_cpu_temp();
 
-void hardware_set_oipc_freq_boost(int iFreqCPUMhz, int iGPUBoost);
-void hardware_set_oipc_cpu_freq(int iFreqCPUMhz);
-void hardware_set_oipc_gpu_boost(int iGPUBoost);
 void hardware_balance_interupts();
 #ifdef __cplusplus
 }  

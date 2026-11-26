@@ -42,7 +42,6 @@
 #include "../utils/utils_controller.h"
 #include "../utils/utils_vehicle.h"
 
-#if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 
 u32 controller_utils_getControllerId()
 {
@@ -143,10 +142,6 @@ int controller_utils_export_all_to_usb()
    sprintf(szComm, "zip %s/importexport/%s %s/*", FOLDER_RUBY_TEMP, szOutFile, FOLDER_CONFIG);
    hw_execute_bash_command(szComm, NULL);
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   sprintf(szComm, "zip -r %s/importexport/%s /boot/config.txt", FOLDER_RUBY_TEMP, szOutFile);
-   hw_execute_bash_command(szComm, NULL);
-   #endif
 
    sprintf(szComm, "chmod 777 %s/importexport/%s", FOLDER_RUBY_TEMP, szOutFile);
    hw_execute_bash_command(szComm, NULL);
@@ -261,10 +256,6 @@ int controller_utils_import_all_from_usb(bool bImportAnyFound)
    sprintf(szComm, "unzip %s/importexport/%s", FOLDER_RUBY_TEMP, szInFile);
    hw_execute_bash_command(szComm, NULL);
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   hw_execute_bash_command("cp -rf boot/config.txt /boot/config.txt", NULL);
-   hw_execute_bash_command("rm -rf boot/config.txt", NULL);
-   #endif
 
    sprintf(szComm, "rm -rf %s/importexport/%s", FOLDER_RUBY_TEMP, szInFile);
    hw_execute_bash_command(szComm, NULL);
@@ -427,15 +418,3 @@ bool modelvideoLinkProfileIsOnlyVideoKeyframeChanged(type_video_link_profile* pO
       return true;
    return false;
 }
-
-#else
-u32 controller_utils_getControllerId() { return 0; }
-int controller_utils_export_all_to_usb() { return 0; }
-int controller_utils_import_all_from_usb(bool bImportAnyFound) { return 0; }
-bool controller_utils_usb_import_has_matching_controller_id_file() { return false; }
-bool controller_utils_usb_import_has_any_controller_id_file() { return false; }
-int controller_count_asignable_radio_interfaces_to_vehicle_radio_link(Model* pModel, int iVehicleRadioLinkId) { return 0; }
-void propagate_video_profile_changes_to_lower_profiles(Model* pModel, type_video_link_profile* pOrg, type_video_link_profile* pUpdated, type_video_link_profile* pAllProfiles){}
-int tx_powers_get_max_usable_power_mw_for_controller(){ return 0; }
-bool modelvideoLinkProfileIsOnlyVideoKeyframeChanged(type_video_link_profile* pOldProfile, type_video_link_profile* pNewProfile) { return false; }
-#endif

@@ -6,7 +6,6 @@
 #include "hardware_procs.h"
 #include <errno.h>
 #include <unistd.h>
-#if defined(HW_PLATFORM_RADXA)
 #include <linux/videodev2.h>
 #include <rockchip/rk_mpi.h>
 
@@ -16,7 +15,6 @@ extern "C" {
 #include <xf86drmMode.h>
 #include <drm_fourcc.h> 
 }
-#endif
 
 #define MAX_HDMI_RESOLUTIONS 30
 #define MAX_RESOLUTION_REFRESH_RATES_COUNT 10
@@ -92,50 +90,7 @@ int _hdmi_detect_current_mode()
 {
    log_line("[HDMI] Detecting current HDMI mode...");
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   char szBuff[1024];
-   int hgroup = 0;
-   int hmode = 0;
-   szBuff[0] = 0;
-   hw_execute_bash_command_silent("cat /boot/config.txt | grep hdmi_group | sed -r 's/[=]+//g' | sed -r 's/[hdmi_group]+//g'", szBuff);
-   if ( 0 != szBuff[0] )
-      sscanf(szBuff, "%d", &hgroup);
 
-   szBuff[0] = 0;   
-   hw_execute_bash_command_silent("cat /boot/config.txt | grep hdmi_mode | sed -r 's/[=]+//g' | sed -r 's/[hdmi_mode]+//g'", szBuff);
-   if ( 0 != szBuff[0] )
-      sscanf(szBuff, "%d", &hmode);
-
-   if ( (hgroup <= 0) || (hmode <= 0) )
-   {
-      log_softerror_and_alarm("[HDMI] Failed to detect current HDMI mode (g:%d, m:%d)", hgroup, hmode);
-      return -1;
-   }
-   if ( (hgroup != 1) && (hgroup != 2) )
-   {
-      log_softerror_and_alarm("[HDMI] Failed to detect current HDMI mode. (g:%d, m:%d)", hgroup, hmode);
-      return -1;
-   }
-
-   for( int i=0; i<s_nHDMI_ResolutionCount; i++ )
-   {
-      for( int k=0; k<s_nHDMI_ResolutionRefreshCount[i]; k++ )
-      {
-         if ( s_nHDMI_ResolutionGroup[i][k] == hgroup )
-         if ( s_nHDMI_ResolutionMode[i][k] == hmode )
-         {
-            s_nHDMI_CurrentResolutionIndex = i;
-            s_nHDMI_CurrentResolutionRefreshIndex = k;
-            log_line("[HDMI] Current HDMI mode: (g:%d, m:%d), width, height: %d x %d, refresh: %d Hz", hgroup, hmode, s_nHDMI_ResolutionWidth[s_nHDMI_CurrentResolutionIndex], s_nHDMI_ResolutionHeight[s_nHDMI_CurrentResolutionIndex], s_nHDMI_ResolutionRefresh[s_nHDMI_CurrentResolutionIndex][s_nHDMI_CurrentResolutionRefreshIndex]);
-            return 0;
-         }
-      }
-   }
-   log_softerror_and_alarm("[HDMI] Failed to detect current HDMI mode. (g:%d, m:%d)", hgroup, hmode);
-   return -1;
-   #endif
-
-   #if defined (HW_PLATFORM_RADXA)
 
    // Mode[0] is always the current display mode
    s_nHDMI_CurrentResolutionIndex = 0;
@@ -219,7 +174,6 @@ int _hdmi_detect_current_mode()
    drmModeFreeResources(pAllDRMResources);
    close(fdDRM);
    return 0;
-   #endif
    return -1;
 }
 
@@ -229,36 +183,8 @@ int hdmi_enum_modes()
    s_nHDMI_CurrentResolutionIndex = -1;
    s_nHDMI_CurrentResolutionRefreshIndex = -1;
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   _hdmi_add_resolution(1,1, 640, 480, 60, HDMI_ASPECT_MODE_4_3);
-   _hdmi_add_resolution(2,9, 800, 600, 60, HDMI_ASPECT_MODE_4_3);
-   _hdmi_add_resolution(2,16, 1024, 768, 60, HDMI_ASPECT_MODE_4_3);
 
-   _hdmi_add_resolution(1,61, 1280, 720, 25, HDMI_ASPECT_MODE_16_9);
-   _hdmi_add_resolution(1,62, 1280, 720, 30, HDMI_ASPECT_MODE_16_9);
-   _hdmi_add_resolution(1,19, 1280, 720, 50, HDMI_ASPECT_MODE_16_9);
-   _hdmi_add_resolution(1,4,  1280, 720, 60, HDMI_ASPECT_MODE_16_9);
-
-   _hdmi_add_resolution(2,28,  1280, 800, 60, HDMI_ASPECT_MODE_16_10);
-
-   _hdmi_add_resolution(2,32,  1280, 960, 60, HDMI_ASPECT_MODE_4_3);
-
-   _hdmi_add_resolution(2,35,  1280, 1024, 60, HDMI_ASPECT_MODE_4_3);
-
-   _hdmi_add_resolution(2,51,  1600, 1200, 60, HDMI_ASPECT_MODE_4_3);
-
-   _hdmi_add_resolution(1,33,  1920, 1080, 25, HDMI_ASPECT_MODE_16_9);
-   _hdmi_add_resolution(1,34,  1920, 1080, 30, HDMI_ASPECT_MODE_16_9);
-   _hdmi_add_resolution(1,31,  1920, 1080, 50, HDMI_ASPECT_MODE_16_9);
-
-   _hdmi_add_resolution(2,69,  1920, 1200, 60, HDMI_ASPECT_MODE_16_9);
-   _hdmi_add_resolution(2,70,  1920, 1200, 75, HDMI_ASPECT_MODE_16_9);
-   return 0;
-   #endif
-
-   #if defined (HW_PLATFORM_RADXA)
    return _hdmi_detect_current_mode();
-   #endif
 }
 
 int hdmi_load_current_mode()
@@ -442,20 +368,7 @@ int hdmi_set_current_resolution(int width, int height, int refresh)
    s_nHDMI_CurrentResolutionIndex = indexResolution;
    s_nHDMI_CurrentResolutionRefreshIndex = indexRefresh;
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   hardware_mount_boot();
-   hardware_sleep_ms(50);
-   hw_execute_bash_command("cp /boot/config.txt config.txt", NULL);
 
-   char szBuff[256];
-   sprintf(szBuff, "sed -i 's/hdmi_group=[0-9]*/hdmi_group=%d/g' config.txt", s_nHDMI_ResolutionGroup[indexResolution][indexRefresh]);
-   hw_execute_bash_command(szBuff, NULL);
-   sprintf(szBuff, "sed -i 's/hdmi_mode=[0-9]*/hdmi_mode=%d/g' config.txt", s_nHDMI_ResolutionMode[indexResolution][indexRefresh]);
-   hw_execute_bash_command(szBuff, NULL);
-   hw_execute_bash_command("cp config.txt /boot/config.txt", NULL);
-   #endif
-
-   #if defined (HW_PLATFORM_RADXA)
    char szFile[MAX_FILE_PATH_SIZE];
    strcpy(szFile, FOLDER_CONFIG);
    strcat(szFile, "hdmi_mode.cfg");
@@ -469,7 +382,6 @@ int hdmi_set_current_resolution(int width, int height, int refresh)
    fprintf(fd, "%d %d %d\n", width, height, refresh);
    fclose(fd);
    log_line("[HDMI] Stored used selected HDMI mode (%d x %d @ %d)", width, height, refresh);
-   #endif
    return 0;
 }
 

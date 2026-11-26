@@ -39,7 +39,6 @@
 #include "ctrl_preferences.h"
 #include "hardware.h"
 #include "hardware_audio.h"
-#include "hardware_camera.h"
 #include "hardware_procs.h"
 #include "hardware_i2c.h"
 #include "camera_utils.h"
@@ -2723,21 +2722,9 @@ void Model::resetVideoParamsToDefaults()
    video_params.iVideoWidth = DEFAULT_VIDEO_WIDTH;
    video_params.iVideoHeight = DEFAULT_VIDEO_HEIGHT;
    video_params.iVideoFPS = DEFAULT_VIDEO_FPS;
-   if ( hardware_board_is_openipc(hardware_getBoardType()) )
-      video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC;
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-      video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
 
-   if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
-   {
-      video_params.iVideoWidth = 1920;
-      video_params.iVideoHeight = 1080;
-      video_params.iVideoFPS = 30;
-   }
 
    video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
-   if ( hardware_board_is_openipc(hardware_getBoardType()) )
-      video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
    video_params.iRemovePPSVideoFrames = 0;
    video_params.iInsertPPSVideoFrames = 1;
    video_params.iInsertSPTVideoFramesTimings = 0;
@@ -2815,12 +2802,6 @@ void Model::resetVideoLinkProfile(int iProfile)
    resetAdaptiveVideoParams(iProfile);
 
    video_link_profiles[iProfile].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE;
-   if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
-        ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
-        hardware_board_is_goke(hardware_getBoardType()) )
-      video_link_profiles[iProfile].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-      video_link_profiles[iProfile].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
 
    if ( iProfile == VIDEO_PROFILE_HIGH_QUALITY )
    {
@@ -2855,10 +2836,6 @@ void Model::resetVideoLinkProfile(int iProfile)
       video_link_profiles[iProfile].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
       video_link_profiles[iProfile].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HP<<8);
       video_link_profiles[iProfile].uTargetVideoBitrateBPS = DEFAULT_HP_VIDEO_BITRATE;
-      if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
-           ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
-           hardware_board_is_goke(hardware_getBoardType()) )
-         video_link_profiles[iProfile].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_PI_ZERO;
 
       video_link_profiles[iProfile].iBlockDataPackets = DEFAULT_VIDEO_BLOCK_PACKETS_HP;
       video_link_profiles[iProfile].iBlockECs = DEFAULT_VIDEO_BLOCK_ECS_HP;
@@ -2913,18 +2890,7 @@ void Model::resetVideoLinkProfile(int iProfile)
       video_link_profiles[iProfile].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION;
 
    //------------------------------------------------
-   // Lower video bitrate if running on a single core CPU
-   u32 board_type = hardware_getBoardType();
 
-   if ( ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE200) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE210) ||
-        ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_NONE) )
-   {    
-      if ( video_link_profiles[iProfile].uTargetVideoBitrateBPS > 4500000 )
-         video_link_profiles[iProfile].uTargetVideoBitrateBPS -= 1000000;
-      else if ( video_link_profiles[iProfile].uTargetVideoBitrateBPS > 3000000 )
-         video_link_profiles[iProfile].uTargetVideoBitrateBPS -= 500000;
-      log_line("Model: Lowered video bitrate for video profile %d (single core CPU) to %u", iProfile, video_link_profiles[iProfile].uTargetVideoBitrateBPS);
-   }
 
    convertECPercentageToData(&video_link_profiles[iProfile]);
    log_line("Models: Did reset video profile %s to defaults.", str_get_video_profile_name(iProfile));
@@ -3708,130 +3674,6 @@ int Model::logVehicleRadioLinkDifferences(const char* szPrefix, type_radio_links
    return iDifferences;
 }
 
-bool Model::find_and_validate_camera_settings()
-{
-   if ( hardware_is_station() )
-      return false;
-
-   bool bUpdated = false;
-   int camera_now = hardware_getCameraType();
-
-   if ( ! hardware_hasCamera() )
-   {
-      if ( iCurrentCamera >= 0 )
-      {
-         log_line("Validating camera info: has no camera and current camera was positive. Set it to -1");
-         bUpdated = true;
-      }
-      if ( iCameraCount > 0 )
-      {
-         log_line("Validating camera info: had one camera before, now has no camera.");
-         bUpdated = true;
-      }
-      iCurrentCamera = -1;
-      iCameraCount = 0;
-   }
-   else
-   {
-      if ( iCurrentCamera < 0 )
-      {
-         log_line("Validating camera info: has camera and current camera was negative. Set it to 0");
-         bUpdated = true;
-         iCurrentCamera = 0;
-      }
-      if ( iCameraCount <= 0 )
-      {
-         iCameraCount = 1;
-         log_line("Validating camera info: had no camera before, now has a camera.");
-         bUpdated = true;
-         camera_params[0].iCameraType = CAMERA_TYPE_NONE;
-      }
-   }
-
-   if ( iCameraCount < 0 )
-   {
-      iCameraCount = 0;
-      bUpdated = true;
-   }
-   if ( iCameraCount >= MODEL_MAX_CAMERAS )
-   {
-      iCameraCount = MODEL_MAX_CAMERAS-1;
-      bUpdated = true;
-   }
-   if ( iCurrentCamera >= MODEL_MAX_CAMERAS )
-   {
-      iCurrentCamera = MODEL_MAX_CAMERAS-1;
-      bUpdated = true;
-   }
-
-   if ( iCameraCount == 0 )
-   {
-      log_line("Validating camera info: There is no camera. No more updates. Was updated just now? %s", bUpdated?"yes":"no");
-      return bUpdated;
-   }
-   if ( camera_params[iCurrentCamera].iCameraType != camera_now )
-   {
-      char szTmp[64];
-      char szTmp2[64];
-      str_get_hardware_camera_type_string_to_string(camera_params[iCurrentCamera].iCameraType, szTmp);
-      str_get_hardware_camera_type_string_to_string(camera_now, szTmp2);
-      log_line("Validating camera info: hardware camera_%d has changed from %u, %u to new type: %u, %s", iCurrentCamera, camera_params[iCurrentCamera].iCameraType, szTmp, camera_now, szTmp2);
-      if ( (camera_now != CAMERA_TYPE_NONE) && (camera_params[iCurrentCamera].iCameraType < CAMERA_TYPE_IP) )
-         resetCameraToDefaults(iCurrentCamera);
-      camera_params[iCurrentCamera].iCameraType = camera_now;
-
-      if ( camera_now == CAMERA_TYPE_HDMI )
-         camera_params[iCurrentCamera].iCurrentProfile = MODEL_CAMERA_PROFILES-1;
-
-      if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
-      {
-         video_params.iVideoWidth = 1920;
-         video_params.iVideoHeight = 1080;
-         video_params.iVideoFPS = 30;
-      }
-      if ( hardware_isCameraVeye() )
-      {
-         resetCameraToDefaults(iCurrentCamera);
-         camera_params[iCurrentCamera].iCurrentProfile = 0;
-         for( int i=0; i<MODEL_CAMERA_PROFILES; i++ )
-            resetCameraProfileToDefaults(&(camera_params[iCurrentCamera].profiles[i]));
-      }
-      bUpdated = true;
-   }
-   else
-   {
-      char szTmp[64];
-      str_get_hardware_camera_type_string_to_string(camera_now, szTmp);
-      log_line("Validating camera info: camera has not changed. Camera type: %d, %s", camera_now, szTmp);
-   }
-   // Force valid resolution for:
-   // * always for Veye cameras
-   // * when a HDMI camera is first plugged in
-
-   if ( (bUpdated && hardware_isCameraHDMI()) || hardware_isCameraVeye() )
-   {     
-      if ( (video_params.iVideoWidth == 1280) && (video_params.iVideoHeight == 720) )
-      {
-         if ( video_params.iVideoFPS > 60 )
-            { video_params.iVideoFPS = 60; bUpdated = true; }
-      }
-      else if ( (video_params.iVideoWidth == 1920) && (video_params.iVideoHeight == 1080) )
-      {
-         if ( video_params.iVideoFPS > 30 )
-            { video_params.iVideoFPS = 30; bUpdated = true; }
-      }
-      else
-      {
-         video_params.iVideoWidth = 1280;
-         video_params.iVideoHeight = 720;
-         video_params.iVideoFPS = 30;
-         bUpdated = true;
-      }
-   }
-   log_line("Validating camera info: camera was updated: %s", bUpdated?"yes":"no");
-   return bUpdated;
-}
-
 // Returns true if changes where made
 bool Model::validate_fps_and_exposure_settings(camera_profile_parameters_t* pCameraProfile, bool bFullForce)
 {
@@ -3908,8 +3750,6 @@ bool Model::validate_settings()
    if ( (video_params.iH264Slices < 1) || (video_params.iH264Slices > 16) )
    {
       video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
-      if ( hardware_board_is_openipc(hardware_getBoardType()) )
-         video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
    }
    if ( video_params.lowestAllowedAdaptiveVideoBitrate < 250000 )
       video_params.lowestAllowedAdaptiveVideoBitrate = DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE;
@@ -4082,17 +3922,7 @@ bool Model::validate_settings()
       video_params.iVideoWidth = DEFAULT_VIDEO_WIDTH;
       video_params.iVideoHeight = DEFAULT_VIDEO_HEIGHT;
       video_params.iVideoFPS = DEFAULT_VIDEO_FPS;
-      if ( hardware_board_is_openipc(hardware_getBoardType()) )
-         video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC;
-      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-         video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
 
-      if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
-      {
-         video_params.iVideoWidth = 1920;
-         video_params.iVideoHeight = 1080;
-         video_params.iVideoFPS = 30;
-      }
    }
 
    if ( (hwCapabilities.iMaxTxVideoBlocksBuffer < 2) || (hwCapabilities.iMaxTxVideoBlocksBuffer > MAX_RXTX_BLOCKS_BUFFER) )
@@ -4481,7 +4311,7 @@ void Model::resetToDefaults(bool generateId)
    log_line("SW Version: %d.%d (b-%d)", get_sw_version_major(this), get_sw_version_minor(this), get_sw_version_build(this));
    
    vehicle_type = ((MODEL_FIRMWARE_TYPE_RUBY << 5) & MODEL_FIRMWARE_MASK);
-   if ( (! hardware_hasCamera()) && isRunningOnRadxaHardware() )
+   if ( isRunningOnRadxaHardware() )
       vehicle_type |= (MODEL_TYPE_RELAY & MODEL_TYPE_MASK);
    else
       vehicle_type |= (MODEL_TYPE_DRONE & MODEL_TYPE_MASK);
@@ -4638,10 +4468,7 @@ void Model::resetHWCapabilities()
    hwCapabilities.iMaxTxVideoBlockPackets = MAX_TOTAL_PACKETS_IN_BLOCK;
    
    hwCapabilities.uHWFlags = 0;
-   if ( hardware_board_is_goke( hardware_getBoardType() ) )
-      hwCapabilities.uHWFlags &= ~MODEL_HW_CAP_FLAG_OTA;
-   else
-      hwCapabilities.uHWFlags |= MODEL_HW_CAP_FLAG_OTA;
+   hwCapabilities.uHWFlags |= MODEL_HW_CAP_FLAG_OTA;
 
    hwCapabilities.uHWFlags |= (((u32)75) << 8);
 }
@@ -5057,26 +4884,6 @@ void Model::resetCameraToDefaults(int iCameraIndex)
       {
          resetCameraProfileToDefaults(&(camera_params[k].profiles[i]));
 
-         if ( hardware_isCameraVeye() && (k == 0) )
-         {
-            camera_params[k].profiles[i].brightness = 47;
-            camera_params[k].profiles[i].contrast = 50;
-            camera_params[k].profiles[i].saturation = 80;
-            camera_params[k].profiles[i].sharpness = 110; // 100 is zero
-            camera_params[k].profiles[i].whitebalance = 1; //auto
-            camera_params[k].profiles[i].iShutterSpeed = 0; //auto
-            if ( (hardware_board_is_sigmastar(hwCapabilities.uBoardType)) || hardware_board_is_openipc(hwCapabilities.uBoardType) )
-            {
-               camera_params[k].profiles[i].iShutterSpeed = DEFAULT_OIPC_SHUTTERSPEED; //milisec
-               validate_fps_and_exposure_settings(&(camera_params[k].profiles[i]), true);
-            }
-            camera_params[k].profiles[i].hue = 40;
-            if ( (hardware_getCameraType() == CAMERA_TYPE_VEYE307) || (hardware_getCameraType() == CAMERA_TYPE_VEYE290) )
-               camera_params[k].profiles[i].drc = 0;
-            if ( hardware_getCameraType() == CAMERA_TYPE_VEYE327 )
-               camera_params[k].profiles[i].drc = 0x0C;
-
-         }
       }
       // HDMI profile defaults:
 
@@ -5087,15 +4894,11 @@ void Model::resetCameraToDefaults(int iCameraIndex)
       camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].contrast = 50;
       camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].saturation = 60;
       camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].sharpness = 100;
-      if ( hardware_isCameraVeye() )
-         camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].hue = 40;
       camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].analogGain = 2.0;
       camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].awbGainB = 1.5;
       camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].awbGainR = 1.4;
       camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].vstab = 0;
       camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].drc = 0;
-      if ( hardware_getCameraType() == CAMERA_TYPE_VEYE327 )
-         camera_params[k].profiles[MODEL_CAMERA_PROFILES-1].drc = 0x0C;
    }
 }
 
@@ -6448,7 +6251,6 @@ u32 Model::getVideoProfileInitialVideoBitrate(int iVideoProfile)
 
 void Model::setVideoProfilesDefaultVideoBitrates()
 {
-   u32 board_type = hardware_getBoardType();
 
    video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE;
    video_link_profiles[VIDEO_PROFILE_HIGH_PERF].uTargetVideoBitrateBPS = DEFAULT_HP_VIDEO_BITRATE;
@@ -6456,38 +6258,7 @@ void Model::setVideoProfilesDefaultVideoBitrates()
    video_link_profiles[VIDEO_PROFILE_USER].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE;
    video_link_profiles[VIDEO_PROFILE_CUST].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE;
 
-   if ( ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
-        ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
-        hardware_board_is_goke(board_type) )
-   {
-      video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      video_link_profiles[VIDEO_PROFILE_HIGH_PERF].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      video_link_profiles[VIDEO_PROFILE_LONG_RANGE].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      video_link_profiles[VIDEO_PROFILE_USER].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      video_link_profiles[VIDEO_PROFILE_CUST].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-   }
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-   {
-      video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
-      video_link_profiles[VIDEO_PROFILE_USER].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
-      video_link_profiles[VIDEO_PROFILE_CUST].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
-   }
 
-   // Lower video bitrate on all video profiles if running on a single core CPU
-   if ( ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE200) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE210) ||
-        ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_NONE) )
-   {
-      for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
-      {
-         {
-            if ( video_link_profiles[i].uTargetVideoBitrateBPS > 4500000 )
-               video_link_profiles[i].uTargetVideoBitrateBPS -= 1000000;
-            else if ( video_link_profiles[i].uTargetVideoBitrateBPS > 3000000 )
-               video_link_profiles[i].uTargetVideoBitrateBPS -= 500000;
-            log_line("Model: Lowered video bitrate for video profile %d (single core CPU) to %u", i, video_link_profiles[i].uTargetVideoBitrateBPS);
-         }
-      }
-   }
 
    validateVideoProfilesMaxVideoBitrate();
 }

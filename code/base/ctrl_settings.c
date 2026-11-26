@@ -38,7 +38,6 @@
 #include "hardware_procs.h"
 #include "flags.h"
 
-#if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 
 ControllerSettings s_CtrlSettings;
 int s_CtrlSettingsLoaded = 0;
@@ -465,13 +464,3 @@ u32 compute_ping_interval_ms(u32 uModelFlags, u32 uRxTxSyncType, u32 uCurrentVid
 
    return ping_interval_ms;
 }
-
-#else
-int save_ControllerSettings() { return 0; }
-int load_ControllerSettings() { return 0; }
-void reset_ControllerSettings() {}
-void reset_ControllerPriorities() {}
-ControllerSettings* get_ControllerSettings() { return NULL; }
-
-u32 compute_ping_interval_ms(u32 uModelFlags, u32 uRxTxSyncType, u32 uCurrentVideoProfileFlags) { return 200000; }
-#endif

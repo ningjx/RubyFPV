@@ -1014,10 +1014,6 @@ void MenuVehicleVideoEncodings::onSelectItem()
    {
       if ( sendVideoParams() )
       {
-         #if defined HW_PLATFORM_RASPBERRY
-         if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
-            addMessage(L("Slice units might not work properly when a Raspberry Pi controller is paired with a vehicle running on OpenIPC hardware."));
-         #endif
       }
       return;
    }

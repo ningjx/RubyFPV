@@ -85,47 +85,6 @@ void hardware_radio_set_txpower_raw_atheros(int iCardIndex, int iTxPower)
    if ( (iTxPower < 1) || (iTxPower > MAX_TX_POWER) )
       iTxPower = DEFAULT_RADIO_TX_POWER;
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   int iHasOrgFile = 0;
-   if ( access( "/etc/modprobe.d/ath9k_hw.conf.org", R_OK ) != -1 )
-      iHasOrgFile = 1;
-   if ( iHasOrgFile )
-   {
-      FILE *pF = fopen("/etc/modprobe.d/ath9k_hw.conf.org", "rb");
-      if ( NULL == pF )
-         iHasOrgFile = 0;
-      else
-      {
-         fseek(pF, 0, SEEK_END);
-         long fsize = ftell(pF);
-         fclose(pF);
-         if ( fsize < 20 || fsize > 512 )
-            iHasOrgFile = 0;
-      }
-   }
-
-   char szBuff[256];
-   szBuff[0] = 0;
-   if ( iHasOrgFile )
-      sprintf(szBuff, "cp /etc/modprobe.d/ath9k_hw.conf.org tmp/ath9k_hw.conf; sed -i 's/txpower=[0-9]*/txpower=%d/g' tmp/ath9k_hw.conf; cp tmp/ath9k_hw.conf /etc/modprobe.d/", iTxPower);
-   else if ( access( "/etc/modprobe.d/ath9k_hw.conf", R_OK ) != -1 )
-      sprintf(szBuff, "cp /etc/modprobe.d/ath9k_hw.conf tmp/ath9k_hw.conf; sed -i 's/txpower=[0-9]*/txpower=%d/g' tmp/ath9k_hw.conf; cp tmp/ath9k_hw.conf /etc/modprobe.d/", iTxPower);
-   else
-      log_softerror_and_alarm("Can't access/find Atheros power config files.");
-
-   if ( 0 != szBuff[0] )
-      hw_execute_bash_command(szBuff, NULL);
-
-   // Change power for RALINK cards too. They are 2.4Ghz only cards 
-   if ( access( "/etc/modprobe.d/rt2800usb.conf", R_OK ) != -1 )
-   {
-      iTxPower = (iTxPower/10)-2;
-      if ( iTxPower < 0 ) iTxPower = 0;
-      if ( iTxPower > 5 ) iTxPower = 5;
-      sprintf(szBuff, "cp /etc/modprobe.d/rt2800usb.conf tmp/; sed -i 's/txpower=[0-9]*/txpower=%d/g' tmp/rt2800usb.conf; cp tmp/rt2800usb.conf /etc/modprobe.d/", iTxPower);
-      hw_execute_bash_command(szBuff, NULL);
-   }
-   #endif
    log_line("Radio interface %d Atheros raw tx power changed to: %d", iCardIndex+1, iTxPower);
 }
 

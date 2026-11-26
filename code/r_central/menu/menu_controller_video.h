@@ -20,10 +20,8 @@ class MenuControllerVideo: public Menu
       MenuItemSlider* m_pItemsSlider[10];
       MenuItemRange* m_pItemsRange[14];
 
-      int m_IndexHDMIBoost;
       int m_IndexHDMIRes;
       int m_IndexHDMIRefreshRate;
-      int m_IndexHDMIOverscan;
       int m_IndexHDMIVSync;
 
       int m_IndexVideoUSBForward;

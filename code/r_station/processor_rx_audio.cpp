@@ -445,16 +445,6 @@ void start_audio_player_and_pipe()
    sprintf(szComm, "aplay -q -N -R 10000 -c 1 --rate 44100 --format S16_LE %s", FIFO_RUBY_AUDIO1);
    if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
       sprintf(szComm, "aplay -q -N -R 10000 -c 1 --rate 8000 --format S16_BE %s", FIFO_RUBY_AUDIO1);
-   #if defined(HW_PLATFORM_RADXA)
-   char szDevice[64];
-   szDevice[0] = 0;
-   if ( (hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_RADXA_3C )
-      strcpy(szDevice, "-D hw:CARD=rockchiphdmi0 ");
-
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "aplay -q %s-N -R 10000 -c 1 --rate 44100 --format S16_LE %s", szDevice, FIFO_RUBY_AUDIO1);
-   if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "aplay -q %s-N -R 10000 -c 1 --rate 8000 --format S16_BE %s", szDevice, FIFO_RUBY_AUDIO1);
-   #endif
    hw_execute_bash_command_nonblock(szComm, NULL);
    hardware_sleep_ms(20);
 

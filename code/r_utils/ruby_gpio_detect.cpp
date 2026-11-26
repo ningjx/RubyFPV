@@ -77,7 +77,6 @@ int main(int argc, char *argv[])
    if ( strcmp(argv[argc-1], "-debug") == 0 )
       log_enable_stdout();
    
-   #ifdef HW_CAPABILITY_GPIO
    char szFile[128];
    strcpy(szFile, FOLDER_CONFIG);
    strcat(szFile, FILE_CONFIG_CONTROLLER_BUTTONS);
@@ -146,7 +145,6 @@ int main(int argc, char *argv[])
       else
          log_softerror_and_alarm("Failed to open [%s] buttons config file. Retry detection.", szFile);
    }
-   #endif
    log_line("GPIO detection process finished.");
 
    return 0;

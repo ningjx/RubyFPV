@@ -24,10 +24,6 @@ extern "C" {
 
 
 static bool s_bHwDbgSortOnCores = false;
-static bool s_bHwDbgFilterAirOnly = false;
-static bool s_bHwDbgFilterGroundOnly = false;
-static bool s_bHwDbgShowAir = true;
-static bool s_bHwDbgShowGround = true;
 
 
 char* _get_short_proc_name(const char* szProcessName, const char* szParams)
@@ -356,8 +352,6 @@ void hw_log_processes(int argc, char *argv[])
       printf("Arguments:\n");
       printf("  -v  version\n");
       printf("  -h  help\n");
-      printf("  -a  vehicle (air side) only\n");
-      printf("  -g  controller (ground side) only\n");
       printf("  -t  sort on priorities\n");
       printf("  -c  sort on CPU cores\n");
       printf("  -pagefaults show processes memory page faults\n");
@@ -365,10 +359,6 @@ void hw_log_processes(int argc, char *argv[])
    }
 
    s_bHwDbgSortOnCores = false;
-   s_bHwDbgFilterAirOnly = false;
-   s_bHwDbgFilterGroundOnly = false;
-   s_bHwDbgShowAir = true;
-   s_bHwDbgShowGround = true;
 
    for( int i=1; i<argc; i++ )
    {
@@ -376,16 +366,6 @@ void hw_log_processes(int argc, char *argv[])
          continue;
       if ( 0 == strcmp(argv[i], "-c") )
          s_bHwDbgSortOnCores = true;
-      if ( 0 == strcmp(argv[i], "-a") )
-      {
-          s_bHwDbgFilterAirOnly = true;
-          s_bHwDbgShowGround = false;
-      }
-      if ( 0 == strcmp(argv[i], "-g") )
-      {
-          s_bHwDbgFilterGroundOnly = true;
-          s_bHwDbgShowAir = false;
-      }
    }
 
    int iCoreFilterStart = -1;
@@ -404,43 +384,16 @@ void hw_log_processes(int argc, char *argv[])
    {
       _enum_process("ruby_logger", iCore);
 
-      if ( s_bHwDbgShowGround )
-      {
-         if ( iCore != -1 )
-            printf("\n");
-         _enum_process("ruby_controller", iCore);
-         _enum_process("ruby_central", iCore);
-         _enum_process("ruby_rt_station", iCore);
-         _enum_process("ruby_rx_telemetry", iCore);
-         _enum_process("ruby_tx_rc", iCore);
-         _enum_process("ruby_i2c", iCore);
-         #if defined (HW_PLATFORM_RASPBERRY)
-         _enum_process("ruby_player_s", iCore);
-         _enum_process("ruby_player_f", iCore);
-         _enum_process("ruby_player_p", iCore);
-         #endif
-         #if defined (HW_PLATFORM_RADXA)
-         _enum_process("ruby_player_radxa", iCore);
-         #endif
-      }
-      if ( s_bHwDbgShowAir )
-      {
-         if ( iCore != -1 )
-            printf("\n");
-         #if defined (HW_PLATFORM_RASPBERRY)
-         _enum_process("ruby_alive", iCore);
-         #endif
-         _enum_process("ruby_start", iCore);
-         _enum_process("ruby_rt_vehicle", iCore);
-         _enum_process("ruby_tx_telemetry", iCore);
-         #if defined (HW_PLATFORM_RASPBERRY)
-         _enum_process("ruby_capture_raspi", iCore);
-         _enum_process("ruby_capture_veye", iCore);
-         #endif
-         #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-         _enum_process("majestic", iCore);
-         #endif
-      }
+      _enum_process("ruby_start", iCore);
+      if ( iCore != -1 )
+         printf("\n");
+      _enum_process("ruby_controller", iCore);
+      _enum_process("ruby_central", iCore);
+      _enum_process("ruby_rt_station", iCore);
+      _enum_process("ruby_rx_telemetry", iCore);
+      _enum_process("ruby_tx_rc", iCore);
+      _enum_process("ruby_i2c", iCore);
+      _enum_process("ruby_player_radxa", iCore);
    }
 }
 
@@ -1460,9 +1413,7 @@ int hw_procs_get_cpu_count()
 
 int hw_get_current_thread_id()
 {
-   #if defined(HW_PLATFORM_RADXA)
    return gettid();
-   #endif
    //return pthread_getthreadid_np();
    return (int)pthread_self();
    //return  gettid();
@@ -1500,11 +1451,7 @@ int hw_init_worker_thread_attrs(pthread_attr_t* pAttr, int iDesiredCore, int iSt
    {
       if ( 0 != pthread_attr_setstacksize(pAttr, iNewStackSize) )
       {
-         #if defined (HW_PLATFORM_RADXA)
          log_line("[HWP] ERROR: Failed to set thread new stack size to %d bytes (for: %s). Error: %d (%s)", iNewStackSize, szSource, errno, strerror(errno));
-         #else
-         log_softerror_and_alarm("[HWP] Failed to set thread new stack size (for: %s). Error: %d (%s)", szSource, errno, strerror(errno));
-         #endif
          log_softerror_and_alarm("[HWP] Using initial original stack size of %d bytes (for: %s)", iStackSize, szSource);
          iNewStackSize *= 2;
       }
@@ -1899,15 +1846,6 @@ void hw_get_process_priority(const char* szProcName, char* szOutput)
    strcat(szOutput, "pri.");
    strcat(szOutput, szCommOut+8);
 
-   #ifdef HW_CAPABILITY_IONICE
-   strcat(szOutput, ", io priority: ");
-
-   sprintf(szComm, "ionice -p %s", p);
-   hw_execute_bash_command_raw(szComm, szCommOut);
-   if ( 0 < strlen(szCommOut) )
-      szCommOut[strlen(szCommOut)-1] = 0;
-   strcat(szOutput, szCommOut);
-   #endif
    strcat(szOutput, ";");
 }
 

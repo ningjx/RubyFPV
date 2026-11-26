@@ -65,9 +65,6 @@
 #include <ctype.h>
 #include <sys/ioctl.h>
 
-#ifndef HW_PLATFORM_RADXA
-#error "ONLY FOR RADXA PLATFORM!"
-#endif
 
 #include "../base/ctrl_settings.h"
 #include "../renderer/drm_core.h"

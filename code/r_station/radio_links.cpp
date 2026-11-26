@@ -1380,7 +1380,6 @@ void radio_links_set_monitor_mode()
       if ( ! hardware_radio_is_wifi_radio(pRadioHWInfo) )
          continue;
 
-      #ifdef HW_PLATFORM_RADXA
       char szComm[128];
       //sprintf(szComm, "iwconfig %s mode monitor 2>&1", pRadioHWInfo->szName );
       //hw_execute_bash_command(szComm, NULL);
@@ -1393,18 +1392,7 @@ void radio_links_set_monitor_mode()
       sprintf(szComm, "iw dev %s set monitor fcsfail 2>&1", pRadioHWInfo->szName);
       hw_execute_bash_command(szComm, NULL);
       hardware_sleep_ms(uDelayMS);
-      #endif
 
-      #ifdef HW_PLATFORM_RASPBERRY
-      char szComm[128];
-      sprintf(szComm, "iw dev %s set monitor none 2>&1", pRadioHWInfo->szName);
-      hw_execute_bash_command(szComm, NULL);
-      hardware_sleep_ms(uDelayMS);
-
-      sprintf(szComm, "iw dev %s set monitor fcsfail 2>&1", pRadioHWInfo->szName);
-      hw_execute_bash_command(szComm, NULL);
-      hardware_sleep_ms(uDelayMS);
-      #endif
    }
 }
 

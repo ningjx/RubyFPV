@@ -42,12 +42,7 @@
 
 #include <time.h>
 #include <sys/resource.h>
-#if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RASPBERRY)
-#include <wiringPiI2C.h>
-#endif
-#if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RADXA)
 #include "../base/wiringPiI2C_radxa.h"
-#endif
 #include <math.h>
 
 
@@ -114,7 +109,6 @@ void close_files()
 
 void _init_INA()
 {
-#ifdef HW_CAPABILITY_I2C
    if ( NULL != g_pSMCurrent )
    {
       g_pSMCurrent->lastSetTime = MAX_U32;
@@ -158,12 +152,10 @@ void _init_INA()
          wiringPiI2CWriteReg16 (g_nINAFd, 0, val);
       }
    }
-#endif
 }
 
 bool _setup_external_device(int iIndex)
 {
-#ifdef HW_CAPABILITY_I2C
    u8 bufferOut[32];
    u8 bufferIn[64];
 
@@ -292,9 +284,6 @@ bool _setup_external_device(int iIndex)
    }
 	  g_bListExternalDevicesSetupCorrectly[iIndex] = true;
 	  return true;
-#else
-   return false;
-#endif
 }
 
 void _init_external_device(u8 i2cAddress)
@@ -308,7 +297,6 @@ void _init_external_device(u8 i2cAddress)
    if ( ! g_pListExternalDevices[g_nCountExternalDevices]->bEnabled )
       return;
 
-   #ifdef HW_CAPABILITY_I2C
 
    g_nListFilesExternalDevices[g_nCountExternalDevices] = wiringPiI2CSetup(i2cAddress);
    if ( g_nListFilesExternalDevices[g_nCountExternalDevices] <= 0 )
@@ -322,7 +310,6 @@ void _init_external_device(u8 i2cAddress)
  
    g_nCountExternalDevices++;
    
-   #endif
 }
 
 void _init_external_devices()
@@ -376,7 +363,6 @@ void load_settings()
    if ( g_SleepTime > 20 )
       g_SleepTime = 20;
 
-#ifdef HW_CAPABILITY_I2C
  
    if ( hardware_i2c_has_device_id(I2C_DEVICE_ADDRESS_PICO_RC_IN) )
    {
@@ -441,12 +427,10 @@ void load_settings()
       else
          wiringPiI2CWriteReg8(file, I2C_DEVICE_COMMAND_ID_RC_IN_SET_INVERTED, 0);
    }
-#endif
 }
 
 void checkReadINA()
 {
-#ifdef HW_CAPABILITY_I2C
    if (  g_TimeNow < g_TimeLastINARead )
       g_TimeLastINARead = g_TimeNow;
 
@@ -482,12 +466,10 @@ void checkReadINA()
          g_pSMCurrent->lastSetTime = g_TimeNow;
       }
    }
-#endif
 }
 
 void _read_RCIn_OldMethod()
 {
-#ifdef HW_CAPABILITY_I2C
    if ( hardware_i2c_has_device_id(I2C_DEVICE_ADDRESS_PICO_RC_IN) )
    if ( g_nFileRCIn <= 0 )
    if ( NULL != g_pSMRCIn )
@@ -581,12 +563,10 @@ void _read_RCIn_OldMethod()
    }
    log_line(szOut);
    */
-#endif
 }
 
 void checkReadRCIn()
 {
-#ifdef HW_CAPABILITY_I2C
    if ( NULL == g_pDeviceInfoRCIn && NULL == g_pDeviceInfoPicoExtender && (g_iHasExternalRCInputDevice==0) )
       return;
 
@@ -695,12 +675,10 @@ void checkReadRCIn()
          */
       }
    }
-#endif
 }
 
 void checkReadRotaryEncoderAndButtons()
 {
-#ifdef HW_CAPABILITY_I2C
    if ( NULL == g_pSMRotaryEncoderButtonsEvents )
       return;
 
@@ -930,7 +908,6 @@ void checkReadRotaryEncoderAndButtons()
    }
    log_line(szBuff);
    */
-#endif
 }
 
 void handle_sigint(int sig) 
@@ -955,12 +932,7 @@ int main(int argc, char *argv[])
    log_init("RubyI2C");
    //log_enable_stdout();
 
-   #if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RASPBERRY)
-   log_line("Using Raspberry built in wiringPi library.");
-   #endif
-   #if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RADXA)
    log_line("Using Radxa custom wiringPi library.");
-   #endif
 
    hardware_detectBoardAndSystemType();
    

@@ -39,7 +39,6 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/hardware.h"
-#include "../base/hardware_camera.h"
 #include "../base/models_list.h"
 #include "../base/hardware_procs.h"
 #include "../base/config.h"
@@ -49,57 +48,16 @@
 
 
 bool gbQuit = false;
-bool s_isVehicle = false;
 
 int iMajor = 0;
 int iMinor = 0;
 int iBuild = 0;
    
-void getSystemType()
-{
-   if ( hardware_is_vehicle() )
-   {
-      log_line("Detected system as vehicle/relay.");
-      s_isVehicle = true;
-   }
-   else
-   {
-      log_line("Detected system as controller.");
-      s_isVehicle = false;
-   }
-
-   log_line("");
-   if ( s_isVehicle )
-      log_line("| System detected as vehicle/relay.");
-   else
-      log_line("| System detected as controller.");
-   log_line("");
-}  
-
-void validate_camera(Model* pModel)
-{
-   if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
-   {
-      pModel->video_params.iVideoWidth = 1920;
-      pModel->video_params.iVideoHeight = 1080;
-      if ( pModel->video_params.iVideoFPS > 30 )
-         pModel->video_params.iVideoFPS = 30;
-   }
-}
-
-void update_openipc_cpu(Model* pModel)
-{
-   hardware_set_default_sigmastar_cpu_freq();
-   if ( NULL != pModel )
-      pModel->processesPriorities.iFreqARM = DEFAULT_FREQ_OPENIPC_SIGMASTAR;
-}
-
 
 void do_update_to_118()
 {
    log_line("Doing update to 11.8");
  
-   if ( ! s_isVehicle )
    {
       load_ControllerSettings();
       ControllerSettings* pCS = get_ControllerSettings();
@@ -124,7 +82,6 @@ void do_update_to_117()
 {
    log_line("Doing update to 11.7");
  
-   if ( ! s_isVehicle )
    {
       load_ControllerSettings();
       ControllerSettings* pCS = get_ControllerSettings();
@@ -222,7 +179,6 @@ void do_update_to_116()
 {
    log_line("Doing update to 11.6");
  
-   if ( ! s_isVehicle )
    {
       load_ControllerSettings();
       reset_ControllerPriorities();
@@ -281,7 +237,6 @@ void do_update_to_115()
 {
    log_line("Doing update to 11.5");
  
-   if ( ! s_isVehicle )
    {
       load_ControllerSettings();
       reset_ControllerPriorities();
@@ -302,25 +257,9 @@ void do_update_to_115()
    pModel->resetProcessesParams();
    pModel->uDeveloperFlags &= ~DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_STREAM_TIMINGS;
 
-   if ( hardware_board_is_openipc(hardware_getBoardType()) )
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-   {
-      for( int k=0; k<MODEL_MAX_CAMERAS; k++ )
-      for( int i=0; i<MODEL_CAMERA_PROFILES; i++ )
-      {
-         if ( pModel->camera_params[k].profiles[i].iShutterSpeed > DEFAULT_OIPC_SHUTTERSPEED )
-            pModel->camera_params[k].profiles[i].iShutterSpeed = DEFAULT_OIPC_SHUTTERSPEED; //milisec
-      }
-   }
 
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-   if ( pModel->video_params.iVideoHeight < 1200 )
-   if ( pModel->video_params.iVideoFPS < DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR )
-      pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
 
    pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
-   if ( hardware_board_is_openipc(hardware_getBoardType()) )
-      pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
 
    pModel->video_params.lowestAllowedAdaptiveVideoBitrate = DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE;
 
@@ -355,7 +294,6 @@ void do_update_to_114()
 {
    log_line("Doing update to 11.4");
  
-   if ( ! s_isVehicle )
    {
       load_Preferences();
       Preferences* pP = get_Preferences();
@@ -374,46 +312,22 @@ void do_update_to_113()
 {
    log_line("Doing update to 11.3");
  
-   if ( ! s_isVehicle )
-   {
-     
-   }
 
    Model* pModel = getCurrentModel();
    if ( NULL == pModel )
       return;
 
    pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
-   #endif
 
    pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS;
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC;
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-      pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
-   #endif
 
    pModel->video_params.uVideoExtraFlags |= VIDEO_FLAG_ENABLE_FOCUS_MODE_BW;
    pModel->resetAdaptiveVideoParams(-1);
 
-   if ( hardware_board_is_openipc(hardware_getBoardType()) )
-   {
-      for( int k=0; k<MODEL_MAX_CAMERAS; k++ )
-      for( int i=0; i<MODEL_CAMERA_PROFILES; i++ )
-         pModel->camera_params[k].profiles[i].iShutterSpeed = DEFAULT_OIPC_SHUTTERSPEED; //milisec
-   }
 
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
    {
       pModel->video_link_profiles[i].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE;
-      if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
-           ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
-           hardware_board_is_goke(hardware_getBoardType()) )
-         pModel->video_link_profiles[i].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-         pModel->video_link_profiles[i].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
    }
 
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
@@ -429,7 +343,6 @@ void do_update_to_112()
 {
    log_line("Doing update to 11.2");
  
-   if ( ! s_isVehicle )
    {
       load_ControllerSettings();
       ControllerSettings* pCS = get_ControllerSettings();
@@ -496,17 +409,7 @@ void do_update_to_112()
    pModel->video_params.iVideoHeight = DEFAULT_VIDEO_HEIGHT;
 
    pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS;
-   if ( hardware_board_is_openipc(hardware_getBoardType()) )
-      pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC;
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-      pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
 
-   if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
-   {
-      pModel->video_params.iVideoWidth = 1920;
-      pModel->video_params.iVideoHeight = 1080;
-      pModel->video_params.iVideoFPS = 30;
-   }
    
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
    {
@@ -537,8 +440,6 @@ void do_update_to_112()
 
    pModel->resetNegociatedRadioAndRadioCapabilitiesFlags();
    pModel->validateRadioSettings();
-   if ( hardware_board_is_openipc(hardware_getBoardType()) )
-      hw_execute_bash_command("rm -rf /etc/init.d/S*majestic", NULL);
    log_line("Updated model VID %u (%s) to v11.2", pModel->uVehicleId, pModel->getLongName());
 }
 
@@ -547,7 +448,6 @@ void do_update_to_111()
 {
    log_line("Doing update to 11.1");
  
-   if ( ! s_isVehicle )
    {
       load_Preferences();
       Preferences* pP = get_Preferences();
@@ -560,10 +460,6 @@ void do_update_to_111()
    if ( NULL == pModel )
       return;
 
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hardware_camera_set_default_oipc_calibration(pModel->getActiveCameraType());
-   pModel->resetAudioParams();
-   #endif
 
    pModel->hwCapabilities.uHWFlags &= ~(0x0000FF00);
    pModel->hwCapabilities.uHWFlags |= (((u32)75) << 8);
@@ -592,10 +488,6 @@ void do_update_to_110()
 {
    log_line("Doing update to 11.0");
  
-   if ( ! s_isVehicle )
-   {
-     
-   }
 
    Model* pModel = getCurrentModel();
    if ( NULL == pModel )
@@ -616,7 +508,6 @@ void do_update_to_108()
 {
    log_line("Doing update to 10.8");
  
-   if ( ! s_isVehicle )
    {
       load_ControllerSettings();
       ControllerSettings* pCS = get_ControllerSettings();
@@ -626,10 +517,8 @@ void do_update_to_108()
       Preferences* pP = get_Preferences();
       pP->nLogLevel = 1;
       pP->iLanguage = 1;
-      #if defined (HW_PLATFORM_RADXA)
       pP->iOSDFont = 1;
       pP->iOSDFontBold = 1;
-      #endif
       save_Preferences();
    }
 
@@ -659,7 +548,6 @@ void do_update_to_107()
 {
    log_line("Doing update to 10.7");
  
-   if ( ! s_isVehicle )
    {
       load_Preferences();
       Preferences* pP = get_Preferences();
@@ -681,7 +569,6 @@ void do_update_to_106()
 {
    log_line("Doing update to 10.6");
  
-   if ( ! s_isVehicle )
    {
       load_ControllerSettings();
       ControllerSettings* pCS = get_ControllerSettings();
@@ -697,20 +584,10 @@ void do_update_to_106()
    if ( NULL == pModel )
       return;
 
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hardware_camera_check_set_oipc_sensor();
-   pModel->resetAudioParams();
-   #endif
 
    pModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS;
    pModel->resetOSDStatsFlags();
 
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-   {
-      for( int i=0; i<MODEL_MAX_CAMERAS; i++ )
-      for( int k=0; k<MODEL_CAMERA_PROFILES-1; k++ )
-            pModel->camera_params[i].profiles[k].iShutterSpeed = DEFAULT_OIPC_SHUTTERSPEED; //milisec
-   }
 
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
    {
@@ -731,7 +608,6 @@ void do_update_to_105()
 {
    log_line("Doing update to 10.5");
  
-   if ( ! s_isVehicle )
    {
       load_ControllerSettings();
       ControllerSettings* pCS = get_ControllerSettings();
@@ -744,10 +620,6 @@ void do_update_to_105()
    if ( NULL == pModel )
       return;
 
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hardware_camera_check_set_oipc_sensor();
-   pModel->resetAudioParams();
-   #endif
 
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
    {
@@ -762,9 +634,6 @@ void do_update_to_104()
 {
    log_line("Doing update to 10.4");
  
-   if ( ! s_isVehicle )
-   {
-   }
 
    Model* pModel = getCurrentModel();
    if ( NULL == pModel )
@@ -786,12 +655,6 @@ void do_update_to_104()
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
    {
       pModel->video_link_profiles[i].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE;
-      if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
-           ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
-           hardware_board_is_goke(hardware_getBoardType()) )
-         pModel->video_link_profiles[i].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-         pModel->video_link_profiles[i].uTargetVideoBitrateBPS = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
    }
 
    pModel->video_link_profiles[VIDEO_PROFILE_HIGH_PERF].uTargetVideoBitrateBPS = DEFAULT_HP_VIDEO_BITRATE;
@@ -810,32 +673,9 @@ void do_generic_update()
 {
    log_line("Doing generic update step");
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   if( access( "ruby_capture_raspi", R_OK ) != -1 )
-      hw_execute_bash_command("cp -rf ruby_capture_raspi /opt/vc/bin/raspivid", NULL);
-
-   if( access( "ruby_capture_veye", R_OK ) != -1 )
-      hw_execute_bash_command("cp -rf ruby_capture_veye /usr/local/bin/veye_raspivid", NULL);
-
-   if( access( "onyxfpv_capture_raspi", R_OK ) != -1 )
-      hw_execute_bash_command("cp -rf onyxfpv_capture_raspi /opt/vc/bin/raspivid", NULL);
-
-   if( access( "onyxfpv_capture_veye", R_OK ) != -1 )
-      hw_execute_bash_command("cp -rf onyxfpv_capture_veye /usr/local/bin/veye_raspivid", NULL);
-   #endif
    
-   #if defined (HW_PLATFORM_RASPBERRY)
-   hw_execute_bash_command("cp -rf ruby_update.log /boot/ 2>/dev/null", NULL);
-   hw_execute_bash_command("cp -rf onyxfpv_update.log /boot/ 2>/dev/null", NULL);
-   #endif
-   #if defined (HW_PLATFORM_RADXA)
    hw_execute_bash_command("cp -rf ruby_update.log /config/ 2>/dev/null", NULL);
    hw_execute_bash_command("cp -rf onyxfpv_update.log /config/ 2>/dev/null", NULL);
-   #endif
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hw_execute_bash_command("cp -rf ruby_update.log /root/ruby/ 2>/dev/null", NULL);
-   hw_execute_bash_command("cp -rf onyxfpv_update.log /root/onyxfpv/ 2>/dev/null", NULL);
-   #endif
 }
 
 void handle_sigint(int sig) 
@@ -887,7 +727,6 @@ int main(int argc, char *argv[])
       log_line("Done executing pre-update step.");
    }
 
-   getSystemType();
 
    u32 uCurrentVersion = 0;
    char szFile[MAX_FILE_PATH_SIZE];
@@ -968,12 +807,10 @@ int main(int argc, char *argv[])
 
    loadAllModels();
 
-   u32 uOldSwVersion = 0;
    Model* pModel = getCurrentModel();
    if ( NULL != pModel )
    {
       log_line("Current model software version: %d.%d, (b-%d)", get_sw_version_major(pModel), get_sw_version_minor(pModel), get_sw_version_build(pModel));
-      uOldSwVersion = pModel->sw_version;
    }
 
    if ( (iMajor < 10) || (iMajor == 10 && iMinor <= 4) )
@@ -1007,38 +844,6 @@ int main(int argc, char *argv[])
 
    saveCurrentModel();
 
-   // For vehicles older than 11.6, stop telemetry process first as it would fail to read the new model (before reboot) and try to save it in old format
-   if ( (iMajor < 11) || ((iMajor == 11) && (iMinor < 6)) ||
-        (uOldSwVersion == 0) ||
-        (((uOldSwVersion>>8) & 0xFF) < 11) ||
-        ( (((uOldSwVersion>>8) & 0xFF) == 11) && ((uOldSwVersion & 0xFF) < 6) ) )
-   {
-      log_line("Vehicle is older than 11.6, needs to restart telemetry.");
-      char szOutput[4096];
-      hw_execute_bash_command("ps -aef | grep tx_telemetry", szOutput);
-      log_line("Running telemetry processes: [%s]", szOutput);
-      hw_stop_process("ruby_tx_telemetry");
-      hardware_sleep_ms(100);
-      hw_execute_bash_command("ps -aef | grep tx_telemetry", szOutput);
-      log_line("Running telemetry processes: [%s]", szOutput);
-      saveCurrentModel();
-      hw_execute_ruby_process(NULL, "ruby_tx_telemetry", "-log", NULL);
-      // Wait for it to start
-      for( int i=0; i<10; i++ )
-      {
-         log_line("Wait a little");
-         hardware_sleep_ms(100);
-      }
-   }
-   else
-      log_line("Vehicle is newer than 11.5, no need to restart telemetry.");
-
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hw_execute_bash_command("rm -rf /usr/sbin/ruby_update_* 2>/dev/null", NULL);
-   hw_execute_bash_command("rm -rf /usr/sbin/ruby_alive 2>/dev/null", NULL);
-   hw_execute_bash_command("rm -rf /usr/sbin/majestic 2>/dev/null", NULL);
-   #endif
-   
    log_line("Update finished.");
    return (0);
 } 

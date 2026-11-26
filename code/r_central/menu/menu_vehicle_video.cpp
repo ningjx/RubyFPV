@@ -489,24 +489,11 @@ void MenuVehicleVideo::sendVideoSettings()
          paramsNew.iVideoFPS = 20;
    }
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   if ( (paramsNew.iVideoWidth > 1980) || (paramsNew.iVideoHeight > 1080) )
-   {
-      addMessage(L("Can't use 2k,4k resolutions on Raspberry Pi controllers."));
-      valuesToUI();
-      return;
-   }
-   #endif
 
    if ( 0 == m_pItemsSelect[10]->getSelectedIndex() )
       paramsNew.uVideoExtraFlags &= ~VIDEO_FLAG_GENERATE_H265;
    else
    {
-      #if defined (HW_PLATFORM_RASPBERRY)
-      addMessage(L("Your controller Raspberry Pi hardware supports only H264 video decoder. Can't use H265 codec."));
-      valuesToUI();
-      return;
-      #endif
       if ( ! g_pCurrentModel->isRunningOnOpenIPCHardware() )
       {
          char szTextW[256];

@@ -813,40 +813,6 @@ bool _onEventCheckNewlyPairedModelForUIActionsToTake()
       return true;
    }
 
-   #if defined(HW_PLATFORM_RASPBERRY)
-   if ( s_pEventsLastRecvModelSettings->video_params.uVideoExtraFlags & VIDEO_FLAG_GENERATE_H265 )
-   if ( ! s_bEventTookPairingUIActionEncoderType )
-   {
-       char szVehicleType[64];
-       char szText[128];
-       strcpy(szVehicleType, s_pEventsLastRecvModelSettings->getVehicleTypeString());
-       snprintf(szText, sizeof(szText)/sizeof(szText[0]), "Your %s generates H265 video but your controller supports only H264. Change the %s video encoder to H264 encoder", szVehicleType, szVehicleType);
-       warnings_add(s_pEventsLastRecvModelSettings->uVehicleId, szText, g_idIconCamera, get_Color_IconWarning() );
-       snprintf(szText, sizeof(szText)/sizeof(szText[0]), "Your %s generates H265 video but your controller supports only H264. Change teh %s video encoder to H264 encoder (from Menu->Vehicle Settings->Video)", szVehicleType, szVehicleType);
-       MenuConfirmation* pMC = new MenuConfirmation(L("Unsuppoerted video codec"), szText, 0, true);
-       pMC->m_yPos = 0.3;
-       add_menu_to_stack(pMC);
-       s_bEventTookPairingUIActionEncoderType = true;
-       log_line("[Events] Added pairing UI action: vehicle has H265 on Pi controller.");
-       return true;
-   }
-
-   // Check for H264 slices on OpenIPC-Raspberry pair
-   if ( s_pEventsLastRecvModelSettings->isRunningOnOpenIPCHardware() )
-   if ( s_pEventsLastRecvModelSettings->video_params.iH264Slices > 1 )
-   if ( ! s_bEventTookPairingUIActionEncoderSlices )
-   {
-      char szBuff[256];
-      strcpy(szBuff, L("Your vehicle has H264/H265 slices enabled and Raspberry Pi can't decode slices from OpenIPC hardware. You will have issues."));
-      MenuConfirmation* pMC = new MenuConfirmation(L("Unsuppoerted video slices"), szBuff, 0, true);
-      pMC->addTopLine(L("Set H264/H265 slices to 1, from [Menu]->[Vehicle]->[Video]->[Advanced settings]"));
-      pMC->m_yPos = 0.3;
-      add_menu_to_stack(pMC);
-      s_bEventTookPairingUIActionEncoderSlices = true;
-      log_line("[Events] Added pairing UI action: vehicle has H264 slices on Pi controller.");
-      return true;
-   }
-   #endif
 
    if ( g_bMustNegociateRadioLinksFlag )
    {
@@ -870,28 +836,6 @@ bool _onEventCheckNewlyPairedModelForUIActionsToTake()
          is_sw_version_latest(s_pEventsLastRecvModelSettings)?"no":"yes",
          s_bEventTookPairingUIActionNegociateRadio?"yes":"no");
    }
-   #if defined HW_PLATFORM_RASPBERRY
-   if ( ! s_bEventTookPairingUIActionEncoderSpikes )
-   //if ( ! g_bDidAnUpdate )
-   if ( s_pEventsLastRecvModelSettings->isRunningOnOpenIPCHardware() )
-   if ( getPreferencesDoNotShowAgain(ID_DONOT_SHOW_AGAIN_MIXED_PI_OPENIPC_HARDWARE) != 1 )
-   {
-      char szText1[256];
-      char szText2[256];
-      strcpy(szText1, L("You are using a Raspberry pi board connected to an OpenIPC board."));
-      strcpy(szText2, L("You might experience spikes in the video feed on this hardware combination depending on the video settings."));
-      MenuConfirmation* pMC = new MenuConfirmation(L("Hardware Info"), szText1, 0, true);
-      pMC->m_yPos = 0.3;
-      pMC->addTopLine(szText2);
-      pMC->setUniqueId(ID_DONOT_SHOW_AGAIN_MIXED_PI_OPENIPC_HARDWARE);
-      pMC->enableShowDoNotShowAgain();
-      pMC->setIconId(g_idIconCPU);
-      add_menu_to_stack(pMC);
-      s_bEventTookPairingUIActionEncoderSpikes = true;
-      log_line("[Events] Added pairing UI action: Pi-OpenIPC keyframe spikes.");
-      return true;
-   }
-   #endif
 
    log_line("[Events] Checking for pairing UI actions to take: none taken.");
    return false;
@@ -972,15 +916,6 @@ void _onEventCheckModelAddNonBlockingPopupWarnings(Model* pModel, bool bUnsolici
    }
 
    // Check for H264 slices on OpenIPC-Raspberry pair
-   #if defined HW_PLATFORM_RASPBERRY
-   if ( pModel->isRunningOnOpenIPCHardware() )
-   if ( pModel->video_params.iH264Slices > 1 )
-   {
-      char szBuff[256];
-      strcpy(szBuff, L("Your vehicle has H264/H265 slices enabled and Raspberry Pi can't decode slices from OpenIPC hardware. You will have issues."));
-      warnings_add(pModel->uVehicleId, szBuff, g_idIconCamera, get_Color_IconError());
-   }
-   #endif
 }
 
 

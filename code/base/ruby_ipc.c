@@ -195,7 +195,6 @@ void _check_ruby_ipc_consistency()
 
 int ruby_init_ipc_channels()
 {
-   #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    char szBuff[256];
    sprintf(szBuff, "mkfifo %s", FIFO_RUBY_CAMERA1);
    hw_execute_bash_command(szBuff, NULL);
@@ -217,7 +216,6 @@ int ruby_init_ipc_channels()
 
    sprintf(szBuff, "mkfifo %s", FIFO_RUBY_STATION_VIDEO_STREAM_ETH);
    hw_execute_bash_command(szBuff, NULL);
-   #endif
 
    #ifdef RUBY_USE_FIFO_PIPES
 

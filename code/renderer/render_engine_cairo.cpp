@@ -1547,11 +1547,9 @@ void RenderEngineCairo::_updateCurrentFontToUse(RenderEngineRawFont* pFont, bool
    {
       log_line("[RenderEngineCairo] Test access to new fonts...");
       m_bMustTestFontAccess = false;
-      #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
       m_bHasNewFont = false;
       if ( access("/usr/share/fonts/truetype/noto/noto.ttf", R_OK) != -1 )
           m_bHasNewFont = true;
-      #endif
       log_line("[RenderEngineCairo] Test access to new fonts result: %s", m_bHasNewFont?"ok":"failed");
    }
 

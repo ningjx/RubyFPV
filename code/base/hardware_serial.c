@@ -69,42 +69,7 @@ void _hardware_enumerate_serial_ports()
 {
    s_iCountHardwareSerialPorts = 0;
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   strcpy(s_HardwareSerialPortsInfo[0].szName, "Serial-0");
-   strcpy(s_HardwareSerialPortsInfo[0].szPortDeviceName, "/dev/serial0");
-   s_HardwareSerialPortsInfo[0].iSupported = 1;
-   s_HardwareSerialPortsInfo[0].lPortSpeed = DEFAULT_FC_TELEMETRY_SERIAL_SPEED;
-   s_HardwareSerialPortsInfo[0].iPortUsage = SERIAL_PORT_USAGE_NONE;
-   s_iCountHardwareSerialPorts = 1;
-   #endif
    
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-
-   strcpy(s_HardwareSerialPortsInfo[0].szName, "Serial-0");
-   strcpy(s_HardwareSerialPortsInfo[0].szPortDeviceName, "/dev/ttyAMA0");
-   if ( (hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_SIGMASTAR_338Q )
-      strcpy(s_HardwareSerialPortsInfo[0].szPortDeviceName, "/dev/ttyS0");
-   s_HardwareSerialPortsInfo[0].iSupported = 1;
-   s_HardwareSerialPortsInfo[0].lPortSpeed = DEFAULT_FC_TELEMETRY_SERIAL_SPEED;
-   s_HardwareSerialPortsInfo[0].iPortUsage = SERIAL_PORT_USAGE_NONE;
-   s_iCountHardwareSerialPorts = 1;
-
-   //if ( (hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_SIGMASTAR_338Q )
-   {
-      for( int i=1; i<5; i++ )
-      {
-         sprintf(s_HardwareSerialPortsInfo[s_iCountHardwareSerialPorts].szPortDeviceName, "/dev/ttyS%d", i);
-         if ( access(s_HardwareSerialPortsInfo[s_iCountHardwareSerialPorts].szPortDeviceName, R_OK) != -1 )
-         {
-            sprintf(s_HardwareSerialPortsInfo[s_iCountHardwareSerialPorts].szName, "Serial-%d", i);
-            s_HardwareSerialPortsInfo[s_iCountHardwareSerialPorts].iSupported = 1;
-            s_HardwareSerialPortsInfo[s_iCountHardwareSerialPorts].lPortSpeed = DEFAULT_FC_TELEMETRY_SERIAL_SPEED;
-            s_HardwareSerialPortsInfo[s_iCountHardwareSerialPorts].iPortUsage = SERIAL_PORT_USAGE_NONE;
-            s_iCountHardwareSerialPorts++;
-         }
-      }
-   }
-   #endif
 
    for( int i=0; i<MAX_SERIAL_PORTS-4; i++ )
    {

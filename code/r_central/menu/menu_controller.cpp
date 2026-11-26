@@ -62,7 +62,6 @@ MenuController::MenuController(void)
    m_Width = 0.18;
    m_xPos = menu_get_XStartPos(m_Width); m_yPos = 0.18;
 
-   m_bShownHDMIChangeNotif = false;
 }
 
 void MenuController::onShow()
@@ -176,28 +175,6 @@ void MenuController::onReturnFromChild(int iChildMenuId, int returnValue)
       return;
    }
 
-   if ( (11 == iChildMenuId/1000) && (1 == returnValue) )
-   {
-      onEventReboot();
-      hardware_reboot();
-      return;
-   }
-
-   log_line("Add HDMI changed confirmation dialog.");
-   char szFile[128];
-   strcpy(szFile, FOLDER_CONFIG);
-   strcat(szFile, FILE_TEMP_HDMI_CHANGED);
-   if ( ! m_bShownHDMIChangeNotif )
-   if ( access(szFile, R_OK) != -1 )
-   {
-      m_bShownHDMIChangeNotif = true;
-      MenuConfirmation* pMC = new MenuConfirmation("HDMI Output Configuration Changed","You updated the HDMI output configuration.", 11);
-      pMC->addTopLine("If the new resolution is not supported by your display, Ruby will reboot again with the old display configuration.");
-      pMC->addTopLine("Do you want to reboot now for the new changes to take effect?");
-      pMC->m_yPos = 0.3;
-      add_menu_to_stack(pMC);
-      return;
-   }
 }
 
 void MenuController::onSelectItem()
@@ -241,7 +218,6 @@ void MenuController::onSelectItem()
 
    if ( m_IndexVideo == m_SelectedIndex )
    {
-      m_bShownHDMIChangeNotif = false;
       add_menu_to_stack(new MenuControllerVideo());
       return;
    }

@@ -237,8 +237,6 @@ int send_packet_to_router(u8* pPacket, int nLength)
       log_softerror_and_alarm("[Router COMM] No IPC to router to send message to.");
       return 0; 
    }
-   if ( hardware_is_running_on_runcam_vrx() )
-      hardware_led_green_set_blinking_fast(1000);
    int iRes = ruby_ipc_channel_send_message(s_fIPCToRouter, pPacket, nLength);
    if ( iRes != nLength )
       log_softerror_and_alarm("[Router COM] Failed to send message to router (msg size: %d bytes), error: %d", nLength, iRes);
@@ -819,10 +817,7 @@ int _process_received_message_from_router(u8* pPacketBuffer)
       {
          if ( g_bIsVideoRecording )
          {
-             if ( hardware_is_running_on_runcam_vrx() )
-                hardware_led_red_set_on();
-             else
-                hardware_led_green_set_off();
+             hardware_led_green_set_off();
 
              notification_add_recording_end();
              warnings_add(0, L("Video file processing complete."), g_idIconCamera, get_Color_IconNormal());
@@ -840,12 +835,9 @@ int _process_received_message_from_router(u8* pPacketBuffer)
             notification_add_recording_start();
 
             Preferences* p = get_Preferences();
-            if ( (p->iRecordingLedAction == 2) || (hardware_is_running_on_runcam_vrx()) )
+            if ( p->iRecordingLedAction == 2 )
             {
-               if ( hardware_is_running_on_runcam_vrx() )
-                  hardware_led_red_set_blinking(MAX_U32);
-               else
-                  hardware_led_green_set_blinking(MAX_U32);
+               hardware_led_green_set_blinking(MAX_U32);
             }
             else if ( p->iRecordingLedAction == 1 )
                hardware_led_green_set_on();

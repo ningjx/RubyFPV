@@ -185,13 +185,8 @@ void MenuControllerNetwork::onSelectItem()
 
    if ( m_IndexSSH == m_SelectedIndex )
    {
-      #if defined(HW_PLATFORM_RASPBERRY)
-      hw_execute_bash_command("touch /boot/ssh", NULL);
-      #endif
 
-      #if defined(HW_PLATFORM_RADXA)
       hw_execute_bash_command("sudo systemctl enable ssh", NULL);
-      #endif
 
       menu_discard_all();
       popups_remove_all();

@@ -56,35 +56,6 @@ bool gbQuit = false;
 
 void power_leds(int onoff)
 {
-   #ifdef HW_PLATFORM_RASPBERRY
-   DIR *d;
-   struct dirent *dir;
-   char szBuff[1024];
-   d = opendir("/sys/class/leds/");
-   if (d)
-   {
-      while ((dir = readdir(d)) != NULL)
-      {
-         if ( strlen(dir->d_name) < 3 )
-            continue;
-         if ( dir->d_name[0] != 'l' )
-            continue;
-         snprintf(szBuff, 1023, "/sys/class/leds/%s/brightness", dir->d_name);
-         FILE* fd = fopen(szBuff, "w");
-         if ( NULL != fd )
-         {
-            fprintf(fd, "%d\n", onoff);
-            fclose(fd);
-         }
-      }
-      closedir(d);
-   }
-
-   if ( onoff )
-      GPIOWrite(GPIOGetPinLedRed(), HIGH);
-   else
-      GPIOWrite(GPIOGetPinLedRed(), LOW);
-   #endif
 }
 
 void _check_cpu_watchdog(u32 uTimeNow, int iCounter)
@@ -203,20 +174,6 @@ int main(int argc, char *argv[])
       }
       else
       {
-         if ( hardware_is_vehicle() )
-         {
-            if ( (counter%10) == 0 )
-            {
-               nLeds = 1;
-               power_leds(nLeds);
-            }
-            if ( (counter%10) == 3 )
-            {
-               nLeds = 0;
-               power_leds(nLeds);
-            }
-         }
-         else
          {
             if ( (counter%30) == 0 )
             {

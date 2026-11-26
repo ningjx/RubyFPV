@@ -6,13 +6,8 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-#if defined (HW_PLATFORM_OPENIPC)
-#define MAX_RX_PACKETS_QUEUE_REG 500
-#define MAX_RX_PACKETS_QUEUE_HIP 200
-#else
 #define MAX_RX_PACKETS_QUEUE_REG 2000
 #define MAX_RX_PACKETS_QUEUE_HIP 1000
-#endif
 
 typedef struct
 {

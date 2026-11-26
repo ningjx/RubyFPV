@@ -987,9 +987,7 @@ void process_local_control_packet(u8* pPacketBuffer)
       int iOldSocketBuffers = g_pControllerSettings->iRadioBypassSocketBuffers;
       int iOldThreadPriorityRouter = g_pControllerSettings->iThreadPriorityRouter;
 
-      #if defined (HW_PLATFORM_RADXA)
       int iOldHDMIVSync = g_pControllerSettings->iHDMIVSync;
-      #endif
       hw_serial_port_info_t oldSerialPorts[MAX_SERIAL_PORTS];
       for( int i=0; i<hardware_serial_get_ports_count(); i++ )
       {
@@ -1002,7 +1000,6 @@ void process_local_control_packet(u8* pPacketBuffer)
       load_ControllerSettings();
       g_pControllerSettings = get_ControllerSettings();
 
-      #if defined (HW_PLATFORM_RADXA)
       if ( g_pControllerSettings->iHDMIVSync != iOldHDMIVSync )
       {
          g_TimeNow = get_current_timestamp_ms();
@@ -1010,7 +1007,6 @@ void process_local_control_packet(u8* pPacketBuffer)
          rx_video_output_signal_restart_streamer();
          return;
       }
-      #endif
 
       if ( g_pControllerSettings->iRadioTxUsesPPCAP != iOldTxMode )
       {

@@ -44,7 +44,6 @@
 #include "../base/models_list.h"
 #include "../base/hardware.h"
 #include "../base/hardware_files.h"
-#include "../base/hardware_camera.h"
 #include "../base/hardware_procs.h"
 #include "../base/hardware_radio_serial.h"
 #include "../base/vehicle_settings.h"
@@ -52,18 +51,13 @@
 #include "../base/ruby_ipc.h"
 #include "../base/tx_powers.h"
 
-#if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 #include "../base/ctrl_settings.h"
 #include "../utils/utils_controller.h"
 #include "../base/ctrl_interfaces.h"
-#endif
 
 #include "../common/string_utils.h"
 #include "../common/strings_loc.h"
-#include "r_start_vehicle.h"
 #include "r_initradio.h"
-#include "../r_vehicle/ruby_rx_commands.h"
-#include "../r_vehicle/ruby_rx_rc.h"
 #include "first_boot.h"
 #include "r_test.h"
 
@@ -73,40 +67,10 @@ static int s_iBootCount = 0;
 
 static bool g_bDebug = false;
 static bool g_bIsFirstBoot = false;
-static bool s_isVehicle = false;
 static bool s_bIgnoreDrivers = false;
 
 bool s_bQuit = false;
 Model modelVehicle;
-u32 board_type = BOARD_TYPE_NONE;
-
-void power_leds(int onoff)
-{
-   #ifdef HW_PLATFORM_RASPBERRY
-   DIR *d;
-   struct dirent *dir;
-   char szBuff[512];
-   d = opendir("/sys/class/leds/");
-   if (d)
-   {
-      while ((dir = readdir(d)) != NULL)
-      {
-         if ( strlen(dir->d_name) < 3 )
-            continue;
-         if ( dir->d_name[0] != 'l' )
-            continue;
-         sprintf(szBuff, "/sys/class/leds/%s/brightness", dir->d_name);
-         FILE* fd = fopen(szBuff, "w");
-         if ( NULL != fd )
-         {
-            fprintf(fd, "%d\n", onoff);
-            fclose(fd);
-         }
-      }
-      closedir(d);
-   }
-   #endif
-}
 
 int _get_fast_reboot_counter()
 {
@@ -157,45 +121,6 @@ void _reset_fast_reboot_counter()
    hardware_file_check_and_fix_access(szFile);
    printf("\nDid reset fast boot counter.\n");
 }
-
-
-#if defined HW_PLATFORM_OPENIPC_CAMERA
-static int s_iLogBootStepsOIPC = 0;
-#endif
-
-void _log_oipc_boot_step(const char* szText)
-{
-   #if defined HW_PLATFORM_OPENIPC_CAMERA
-   FILE* fd = fopen(FILE_BOOT_LOG_STEPS, "a+");
-   if ( NULL != fd )
-   {
-      if ( (NULL == szText) || (0 == szText[0]) )
-         fprintf(fd, "%d-%d: [No text]\n", s_iBootCount, s_iLogBootStepsOIPC);
-      else
-         fprintf(fd, "%d-%d: %s\n", s_iBootCount, s_iLogBootStepsOIPC, szText);
-      fflush(fd);
-      fclose(fd);
-      s_iLogBootStepsOIPC++;
-   }
-   #endif
-}
-
-void _log_oipc_boot_rotate()
-{
-   #if defined HW_PLATFORM_OPENIPC_CAMERA
-   char szComm[MAX_FILE_PATH_SIZE];
-   if ( access(FILE_BOOT_LOG_STEPS, R_OK) != -1 )
-   {
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "mv -f %s %s.bak", FILE_BOOT_LOG_STEPS, FILE_BOOT_LOG_STEPS);
-      hw_execute_bash_command_silent(szComm, NULL);
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "touch %s", FILE_BOOT_LOG_STEPS);
-      hw_execute_bash_command_silent(szComm, NULL);
-      _log_oipc_boot_step("Rotated boot log file");
-      _log_oipc_boot_step("Boot-Steps:");
-   }
-   #endif
-}
-
 
 void initLogFiles()
 {
@@ -262,15 +187,6 @@ void initLogFiles()
       hw_execute_bash_command_silent(szComm, NULL);
    }
 
-   strcpy(szSrcFile, FOLDER_LOGS);
-   strcat(szSrcFile, LOG_FILE_CAPTURE_VEYE);
-   if( access( szSrcFile, R_OK ) != -1 )
-   {
-      sprintf(szComm, "mv %s %s/log_capture_veye_%d.txt", szSrcFile, FOLDER_LOGS, s_iBootCount-1 );
-      hw_execute_bash_command_silent(szComm, NULL);
-   }
-
-
    if ( s_iBootCount >= 40 )
    {
       for( int i=0; i<=5; i++ )
@@ -287,45 +203,14 @@ void initLogFiles()
 
 void detectSystemType()
 {
-   if ( hardware_is_vehicle() )
-   {
-      log_line("Detected system as vehicle/relay.");
-      s_isVehicle = true;
-   }
-   else
-   {
-      log_line("Detected system as controller.");
-      s_isVehicle = false;
-   }
-   
-   log_line("");
-   log_line("===========================================================================");
-   if ( s_isVehicle )
-      log_line("| System detected as vehicle/relay.");
-   else
-      log_line("| System detected as controller.");
-   log_line("===========================================================================");
-   log_line("");
-
-   FILE* fd = NULL;
-   
-   #ifdef HW_PLATFORM_RASPBERRY
-   fd = fopen("/boot/ruby_systype.txt", "w");
-   #endif
-   #ifdef HW_PLATFORM_RADXA
-   fd = fopen("/config/ruby_systype.txt", "w");
-   #endif
-   
+   log_line("Radxa Zero 3W ground station.");
+   FILE* fd = fopen("/config/ruby_systype.txt", "w");
    if ( NULL != fd )
    {
-      if ( s_isVehicle )
-         fprintf(fd, "VEHICLE");
-      else
-         fprintf(fd, "STATION");
+      fprintf(fd, "STATION");
       fclose(fd);
    }
 }
-
 
 void _check_files()
 {
@@ -333,7 +218,6 @@ void _check_files()
    szFilesMissing[0] = 0;
    bool failed = false;
 
-   #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    if( access( "ruby_controller", R_OK ) == -1 )
       { failed = true; strcat(szFilesMissing, " ruby_controller"); }
    if( access( "ruby_rt_station", R_OK ) == -1 )
@@ -347,21 +231,12 @@ void _check_files()
       { failed = true; strcat(szFilesMissing, " "); strcat(szFilesMissing, VIDEO_PLAYER_SM); }
    if( access( VIDEO_PLAYER_OFFLINE, R_OK ) == -1 )
       { failed = true; strcat(szFilesMissing, " "); strcat(szFilesMissing, VIDEO_PLAYER_OFFLINE); }
-   #endif
 
-   if( access( "ruby_rt_vehicle", R_OK ) == -1 )
-      { failed = true; strcat(szFilesMissing, " ruby_rt_vehicle"); }
-   if( access( "ruby_tx_telemetry", R_OK ) == -1 )
-      { failed = true; strcat(szFilesMissing, " ruby_tx_telemetry"); }
+   if( access( "ruby_central", R_OK ) == -1 )
+      { failed = true; strcat(szFilesMissing, " ruby_central"); }
+   if( access( "ruby_tx_rc", R_OK ) == -1 )
+      { failed = true; strcat(szFilesMissing, " ruby_tx_rc"); }
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   if ( access( "/etc/modprobe.d/ath9k_hw.conf.org", R_OK ) == -1 )
-   {
-      hw_execute_bash_command("cp -rf /etc/modprobe.d/ath9k_hw.conf /etc/modprobe.d/ath9k_hw.conf.org", NULL);
-      if ( access( "/etc/modprobe.d/ath9k_hw.conf.org", R_OK ) == -1 )
-         {failed = true; strcat(szFilesMissing, " Atheros_config");}
-   }
-   #endif
 
    if ( failed )
       printf("Ruby: Checked files consistency: failed.\n");
@@ -373,7 +248,6 @@ void _check_update_drivers_on_update()
 {
    if ( s_bIgnoreDrivers )
       return;
-   #if defined (HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    char szOutput[4098];
    bool bNeedsInstall = false;
    hw_execute_bash_command("lsmod | grep 88XXau", szOutput);
@@ -395,24 +269,6 @@ void _check_update_drivers_on_update()
       fflush(stdout);
       hardware_install_drivers(1);
    }
-   #endif
-}
-
-void _log_openipc_info()
-{
-   hw_execute_bash_command("rm -rf /root/ruby/hw_info.txt", NULL);
-   hardware_sleep_ms(50);
-   FILE* fd = fopen("/root/ruby/hw_info.txt", "wb");
-   if ( NULL == fd )
-      return;
-   fprintf(fd, "Hardware detected info:\nCamera:\n");
-   fclose(fd);
-   hw_execute_bash_command("ipcinfo -s >> /root/ruby/hw_info.txt", NULL);
-   hw_execute_bash_command("fw_printenv sensor 2>/dev/null >> /root/ruby/hw_info.txt", NULL);
-   hw_execute_bash_command("echo 'Env:' >> /root/ruby/hw_info.txt", NULL);
-   hw_execute_bash_command("fw_printenv >> /root/ruby/hw_info.txt", NULL);
-   hw_execute_bash_command("echo 'OS:' >> /root/ruby/hw_info.txt", NULL);
-   hw_execute_bash_command("cat /etc/os-release >> /root/ruby/hw_info.txt", NULL);
 }
 
 bool _init_timestamp_and_boot_count()
@@ -457,10 +313,6 @@ bool _init_timestamp_and_boot_count()
          fclose(fd);
          break;
       }
-      #ifdef HW_PLATFORM_RASPBERRY
-      system("sudo mount -o remount,rw /");
-      hardware_sleep_ms(50);
-      #endif
       count++;
    }
    s_iBootCount++;
@@ -579,24 +431,7 @@ void _check_power_levels_of_current_cards(radio_hw_info_t* pRadioInfoArrayPrev, 
 
    log_line("Checking power levels as there are new hardware radio interfaces on the system...");
 
-   if ( s_isVehicle )
    {
-      //bool bUpdated = false;
-      for( int i=0; i<modelVehicle.radioInterfacesParams.interfaces_count; i++ )
-      {
-         int iCardModel = modelVehicle.radioInterfacesParams.interface_card_model[i];
-         int iMaxPowerRaw = tx_powers_get_max_usable_power_raw_for_card(modelVehicle.hwCapabilities.uBoardType, iCardModel);
-
-         if ( modelVehicle.radioInterfacesParams.interface_raw_power[i] > iMaxPowerRaw )
-         {
-            modelVehicle.radioInterfacesParams.interface_raw_power[i] = iMaxPowerRaw;
-            //bUpdated = true;
-         }
-      }
-   }
-   else
-   {
-      #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
       bool bUpdated = false;
       int iMaximumRawCanBeSet = 10000;
       for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
@@ -636,24 +471,13 @@ void _check_power_levels_of_current_cards(radio_hw_info_t* pRadioInfoArrayPrev, 
       }
       if ( bUpdated )
          save_ControllerSettings();
-      #endif
    }
    log_line("Done checking power levels.");
 }
 
 void _log_platform(bool bNewLine)
 {
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   printf("Built for OpenIPC camera.");
-   #elif defined(HW_PLATFORM_LINUX_GENERIC)
-   printf("Built for Linux");
-   #elif defined(HW_PLATFORM_RASPBERRY)
-   printf("Built for Raspberry");
-   #elif defined(HW_PLATFORM_RADXA)
-   printf("Built for Radxa Zero3");
-   #else
-   printf("Built for N/A");
-   #endif
+   printf("Built for Radxa Zero 3W");
    if ( bNewLine )
       printf("\n");
 }
@@ -708,24 +532,6 @@ int _step_process_cmd_line(int argc, char* argv[])
    if ( strcmp(argv[argc-1], "-noop") == 0 )
    {
       _log_platform(true);
-      return 1;
-   }
-
-   if ( strcmp(argv[argc-1], "-vehicle") == 0 )
-   {
-      r_start_vehicle(argc, argv);
-      return 1;
-   }
-
-   if ( strcmp(argv[argc-1], "-rx_commands") == 0 )
-   {
-      r_start_commands_rx(argc, argv);
-      return 1;
-   }
-
-   if ( strcmp(argv[argc-1], "-rc") == 0 )
-   {
-      r_start_rx_rc(argc, argv);
       return 1;
    }
 
@@ -793,24 +599,10 @@ int _step_find_console()
    if ( (NULL != tty_name) && strcmp(tty_name, "/dev/pts/0") == 0 )
       foundGoodConsole = true;
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   sprintf(szComm, "echo 'Ruby execute for Raspberry platform' >> /tmp/ruby_boot.log");
-   hw_execute_bash_command_silent(szComm, NULL);
-   #endif
 
-   #if defined (HW_PLATFORM_RADXA)
    sprintf(szComm, "echo 'Ruby execute for Radxa Zero 3 platform' >> /tmp/ruby_boot.log");
    hw_execute_bash_command_silent(szComm, NULL);
-   #endif
 
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   sprintf(szComm, "echo 'Ruby execute for OpenIPC platform' >> /tmp/ruby_boot.log");
-   hw_execute_bash_command_silent(szComm, NULL);
-   foundGoodConsole = true;
-   char szConsoleName[12];
-   strcpy(szConsoleName, "OpenIPCCon");
-   tty_name = szConsoleName;
-   #endif
 
    if ( (NULL == tty_name) || (!foundGoodConsole) )
    {
@@ -837,19 +629,10 @@ int _step_find_console()
    printf("\nRuby: Is starting...\n");
    fflush(stdout);
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   //execute_bash_command_silent("con2fbmap 1 0", NULL);
-   system("sudo mount -o remount,rw /");
-   system("sudo mount -o remount,rw /boot");
-   system("cd /boot; sudo mount -o remount,rw /boot; cd /home/pi/ruby");
-   hardware_sleep_ms(50);
-   #endif
 
-   #if defined (HW_PLATFORM_RADXA)
    system("sudo mount -o remount,rw /");
    system("cd /home/radxa/ruby");
    hardware_sleep_ms(50);
-   #endif
 
    sprintf(szComm, "mkdir -p %s", FOLDER_CONFIG);
    hw_execute_bash_command(szComm, NULL);
@@ -858,10 +641,8 @@ int _step_find_console()
    sprintf(szComm, "chmod 777 %sonyx* 2>/dev/null", FOLDER_BINARIES);
    hw_execute_bash_command(szComm, NULL);
 
-   #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
    hw_execute_bash_command("chown -hR root *", NULL);
    hw_execute_bash_command("chgrp -hR root *", NULL);
-   #endif
 
    sprintf(szComm, "chmod 777 %s* 2>/dev/null", FOLDER_CONFIG);
    hw_execute_bash_command(szComm, NULL);
@@ -902,16 +683,14 @@ int _step_check_file_system()
    int readWriteRetryCount = 0;
    FILE* fd = NULL;
    
-   #if defined (HW_PLATFORM_RADXA)
    hw_execute_bash_command("date -s 'next year'", NULL);
    hw_execute_bash_command("date -s 'next year'", NULL);
-   #endif
 
    while ( ! readWriteOk )
    {
       printf("Ruby: Trying to access files...\n");
       readWriteRetryCount++;
-      power_leds(readWriteRetryCount%2);
+
 
       if ( readWriteRetryCount > 50 )
       {
@@ -931,23 +710,12 @@ int _step_check_file_system()
       }
       hardware_sleep_ms(100);
 
-      #ifdef HW_PLATFORM_RASPBERRY
-      system("sudo mount -o remount,rw /");
-      system("sudo mount -o remount,rw /boot");
-      system("cd /boot; sudo mount -o remount,rw /boot; cd /home/pi/ruby");
-      hardware_mount_root();
-      hardware_mount_boot();
-      hw_execute_bash_command_silent("cd /boot; mount -o remount,rw /boot; cd /home/pi/ruby", NULL);
-      hardware_sleep_ms(100);
-      #endif
 
-      #if defined(HW_PLATFORM_RADXA)
       system("sudo mount -o remount,rw /");
       system("sudo mount -o remount,rw /config");
       system("cd /config; sudo mount -o remount,rw /config; cd /home/radxa/ruby");
       system("cd /home/radxa/ruby");
       hardware_sleep_ms(100);
-      #endif
 
       // For temporary fifo-s, same tmp root folder on all platforms
       sprintf(szComm, "mkdir -p %s", FOLDER_RUBY_FIFO_TEMP);
@@ -1042,7 +810,6 @@ int _step_check_file_system()
       sprintf(szComm, "chmod 777 %s%s* 2>/dev/null", FOLDER_UPDATES, SUBFOLDER_UPDATES_DRIVERS);
       hw_execute_bash_command_silent(szComm, NULL);
 
-      #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
       sprintf(szComm, "chmod 777 %sres/* 2>/dev/null", FOLDER_BINARIES);
       hw_execute_bash_command_silent(szComm, NULL);
 
@@ -1055,7 +822,6 @@ int _step_check_file_system()
       hw_execute_bash_command_silent(szComm, NULL);
       sprintf(szComm, "chmod 777 %s", FOLDER_CORE_PLUGINS);
       hw_execute_bash_command_silent(szComm, NULL);
-      #endif
 
       strcpy(szFile, FOLDER_LOGS);
       strcat(szFile, LOG_FILE_START);
@@ -1130,14 +896,8 @@ void _step_check_binaries_and_resources()
    sprintf(szComm, "rm -rf %s%s", FOLDER_RUBY_TEMP, FILE_TEMP_UPDATE_IN_PROGRESS_APPLY);
    hw_execute_bash_command(szComm, NULL);
 
-   #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    _check_files();
-   #endif
 
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   hardware_camera_check_set_oipc_sensor();
-   _log_openipc_info();
-   #endif
 
    log_line("Ruby: Start on verison %d.%d (b-%d)", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR, SYSTEM_SW_BUILD_NUMBER);
    printf("Ruby: Start on verison %d.%d (b-%d)\n", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR, SYSTEM_SW_BUILD_NUMBER);
@@ -1152,26 +912,12 @@ void _step_check_binaries_and_resources()
    char szInfo[256];
    char szOutput[1024];
    strcpy(szInfo, "Ruby: Platform: ");
-   #if defined(HW_PLATFORM_RASPBERRY)
-   strcat(szInfo, "Raspberry");
-   #endif
-   #if defined(HW_PLATFORM_RADXA)
    strcat(szInfo, "Radxa");
-   #endif
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   strcat(szInfo, "OpenIPC");
-   #endif
 
    u32 uBoardType = hardware_getBoardType();
    strcat(szInfo, ", Board: ");
    strcat(szInfo, str_get_hardware_board_name(uBoardType));
 
-   #if defined(HW_PLATFORM_RASPBERRY)
-   hw_execute_bash_command("cat /proc/cpuinfo | grep 'Revision' | awk '{print $3}'", szOutput);
-   removeTrailingNewLines(szOutput);
-   strcat(szInfo, ", Board id: ");
-   strcat(szInfo, szOutput);
-   #endif
 
    hw_execute_bash_command_raw("uname -rn", szOutput);
    removeTrailingNewLines(szOutput);
@@ -1183,7 +929,6 @@ void _step_check_binaries_and_resources()
    printf("\n");
    fflush(stdout);
 
-   #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
    if ( access("/usr/share/fonts/truetype/noto/noto.ttf", R_OK) == -1 )
    {
       char szFile[MAX_FILE_PATH_SIZE];
@@ -1198,31 +943,14 @@ void _step_check_binaries_and_resources()
          hw_execute_bash_command("chmod 777 /usr/share/fonts/truetype/noto/noto.ttf", NULL);
       }
    }
-   #endif
 
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   log_line("Check OpenIPC presence of sysupgrade stop script...");
-   if ( access("/etc/rc.local.stop", R_OK) == -1 )
-   {
-      hw_execute_bash_command("echo \"/usr/sbin/ruby_stop.sh\" > /etc/rc.local.stop", NULL);
-      hw_execute_bash_command("chmod 755 /etc/rc.local.stop", NULL);
-   }
-   if ( access("/etc/rc.local.stop", X_OK) == -1 )
-   {
-      hw_execute_bash_command("chmod 755 /etc/rc.local.stop", NULL);
-   }
-   #endif
 }
 
 void _step_load_init_devices()
 {
-   #ifdef HW_PLATFORM_RADXA
    hw_execute_bash_command("ip link set wlx down 2>&1 1>/dev/null", NULL);
-   #endif
 
-   #ifdef HW_CAPABILITY_I2C
    hw_execute_bash_command("modprobe i2c-dev", NULL);
-   #endif
 
    char szOutput[4096];
    hw_execute_bash_command_raw("lsusb", szOutput);
@@ -1235,7 +963,6 @@ void _step_load_init_devices()
    log_line("Loaded Modules:");
    log_line(szOutput);      
       
-   #ifdef HW_CAPABILITY_I2C
    hw_execute_bash_command_raw("i2cdetect -l", szOutput);
    strcat(szOutput, "\n*END*\n");
    log_line("I2C buses:");
@@ -1263,7 +990,6 @@ void _step_load_init_devices()
       log_line("Ruby: Done finding external I2C devices add-ons. Found %d known devices of which %d are configurable.", iKnown, iConfigurable );
       printf("Ruby: Done finding external I2C devices add-ons. Found %d known devices of which %d are configurable.\n", iKnown, iConfigurable );
    }
-   #endif
 
    fflush(stdout);
 
@@ -1428,9 +1154,9 @@ void _step_load_init_radios()
       hardware_sleep_ms(500);
       for( int i=0; i<5; i++ )
       {
-         power_leds(1);
+
          hardware_sleep_ms(170);
-         power_leds(0);
+
          hardware_sleep_ms(170);
       }
 
@@ -1484,14 +1210,7 @@ void _step_load_init_radios()
    fflush(stdout);
 
    _step_enumerate_radios();
-   _log_oipc_boot_step("Done enumerate radios.");
-}
 
-void _step_initialize_check_vehicle()
-{
-   log_line("Doing initialization checks on vehicle...");
-
-   log_line("Done doing initialization checks on vehicle.");
 }
 
 void handle_sigint(int sig) 
@@ -1502,6 +1221,11 @@ void handle_sigint(int sig)
   
 int main(int argc, char *argv[])
 {
+   if ( strcmp(argv[argc-1], "-vehicle") == 0 || strcmp(argv[argc-1], "-rx_commands") == 0 || strcmp(argv[argc-1], "-rc") == 0 )
+   {
+      fprintf(stderr, "This build supports the Radxa Zero 3W ground station only.\n");
+      return 1;
+   }
    if ( _step_process_cmd_line(argc, argv) )
       return 0;
 
@@ -1519,23 +1243,14 @@ int main(int argc, char *argv[])
    if ( _get_fast_reboot_counter() > 10 )
       _reset_fast_reboot_counter();
 
-   _log_oipc_boot_rotate();
-   
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   for( int i=0; i<10; i++ )
-   {
-      hardware_sleep_ms(500);
-      _log_oipc_boot_step("Boot start delay");
-   }
-   #endif
    strcpy(szFile, FOLDER_CONFIG);
    strcat(szFile, "debug");
    if ( access(szFile, R_OK) != -1 )
    {
-      _log_oipc_boot_step("Debug wait");
+
       for( int i=0; i<10; i++ )
          hardware_sleep_ms(800);
-      _log_oipc_boot_step("Debug wait done");
+
    }
 
    if ( ! _step_find_console() )
@@ -1543,8 +1258,6 @@ int main(int argc, char *argv[])
       _reset_fast_reboot_counter();
       return 0;
    }
-
-   _log_oipc_boot_step("Console found");
 
    log_line_forced_to_file("Found good console. Continuing...");
    log_arguments(argc, argv);
@@ -1567,97 +1280,18 @@ int main(int argc, char *argv[])
    if ( _step_check_file_system() < 0 )
    {
       _reset_fast_reboot_counter();
-      #if defined HW_PLATFORM_OPENIPC_CAMERA
-      hw_execute_bash_command("firstboot", NULL);
-      #endif
       return 0;
    }
 
-   //#if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
-   //initLocalizationData();
-   //#endif
-   
-   _log_oipc_boot_step("Done check files.");
-
-   strcpy(szFile, FOLDER_CONFIG);
-   strcat(szFile, FILE_CONFIG_SYSTEM_TYPE);
-   hardware_file_check_and_fix_access(szFile);
-   int iPrevSystemType = -1;
    FILE* fd = NULL;
-   if ( access(szFile, R_OK) != -1 )
-   {
-      fd = fopen(szFile, "r");
-      if ( NULL != fd )
-      {
-         u32 uTmp = 0;
-         if ( 2 != fscanf(fd, "%d %u", &iPrevSystemType, &uTmp) )
-         {
-            log_softerror_and_alarm("Failed to read previous system type.");
-            iPrevSystemType = -1;
-         }
-         else
-            log_line("Read previous system type: %d", iPrevSystemType);
-         fclose(fd);
-      }
-      else
-         log_softerror_and_alarm("Failed to open previous system type.");
-   }
-   else
-      log_softerror_and_alarm("Failed to access previous system type.");
-
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "rm -rf %s%s", FOLDER_CONFIG, FILE_CONFIG_SYSTEM_TYPE);
-   hw_execute_bash_command(szComm, NULL);
-
-   init_hardware_only_detection_pins();
    hardware_detectBoardAndSystemType();
 
-   if ( (iPrevSystemType >= 0) && (hardware_is_vehicle() != iPrevSystemType) )
-   {
-      log_line("---------------------------------------------");
-      log_line("Ruby: System type was changed (from %d to %d). Cleaning previous config...", iPrevSystemType, hardware_is_vehicle());
-      printf("--------------------------------\n");
-      printf("Ruby: System type was changed. Cleaning previous config...\n");
-      fflush(stdout);
-
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "rm -rf %s", FOLDER_CONFIG);
-      hw_execute_bash_command(szComm, NULL);
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "mkdir -p %s", FOLDER_CONFIG);
-      hw_execute_bash_command(szComm, NULL);
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "chmod 777 %s* 2>/dev/null", FOLDER_CONFIG);
-      hw_execute_bash_command(szComm, NULL);
-      
-      hardware_writeBoardAndSystemType();
-
-      strcpy(szFile, FOLDER_CONFIG);
-      strcat(szFile, FILE_CONFIG_BOOT_COUNT);
-      fd = fopen(szFile, "wb");
-      if ( NULL == fd )
-      {
-         log_softerror_and_alarm("Failed to open boot count config file for write [%s]", szFile);
-         fclose(fd);
-         fd = NULL;
-         printf("Ruby: Can't access config folder (%s)\n", FOLDER_CONFIG);
-      }
-      else
-      {
-         if ( s_iBootCount < 2 )
-            s_iBootCount = 2;
-         fprintf(fd, "%d\n", s_iBootCount);
-         fclose(fd);
-         fd = NULL;
-      }
-      _init_timestamp_and_boot_count();
-   }
-
    printf("-----------------------------------\n");
-   if ( hardware_is_vehicle() )
-      printf("Ruby: System detected as vehicle/relay.\n");
-   else
-      printf("Ruby: System detected as controller.\n");
+   printf("Ruby: System detected as controller.\n");
    fflush(stdout);
 
    _step_check_binaries_and_resources();
-   _log_oipc_boot_step("Done check binaries.");
+
 
    szOutput[0] = 0;
 
@@ -1666,13 +1300,9 @@ int main(int argc, char *argv[])
 
    _step_load_init_devices();
 
-   _log_oipc_boot_step("Done init devices.");
-
    if ( ! g_bIsFirstBoot )
       _check_update_drivers_on_update();
    _step_load_init_radios();
-
-   _log_oipc_boot_step("Done init radios.");
 
    if ( access( FILE_FORCE_RESET, R_OK ) != -1 )
    {
@@ -1684,31 +1314,22 @@ int main(int argc, char *argv[])
       hardware_sleep_ms(900);
    }
 
-   board_type = (hardware_getBoardType() & BOARD_TYPE_MASK);
 
    // Detect hardware camera
-   hardware_getCameraType();
 
-   #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
    hw_execute_ruby_process(NULL, "ruby_initdhcp", NULL, NULL);
-   #endif
 
    detectSystemType();
 
-   #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
    if ( g_bDebug )
-   if ( hardware_is_station() )
    {
        load_Preferences();
        Preferences* pP = get_Preferences();
        pP->nLogLevel = 0;
        save_Preferences();
    }
-   #endif
 
    hardware_release();
-
-   _log_oipc_boot_step("Done hardware detect.");
 
    log_line("Starting Ruby system...");
    fflush(stdout);
@@ -1734,17 +1355,7 @@ int main(int argc, char *argv[])
       hardware_serial_save_configuration();
    }
 
-   _log_oipc_boot_step("Done enumerate serial.");
-
-#ifdef HW_PLATFORM_RASPBERRY
-   log_line("Running on Raspberry Pi hardware");
-#endif
-#ifdef HW_PLATFORM_RADXA
    log_line("Running on Radxa Zero 3 hardware");
-#endif
-#ifdef HW_PLATFORM_OPENIPC_CAMERA
-   log_line("Running on OpenIPC hardware");
-#endif
 
 #ifdef FEATURE_LOCAL_AUDIO_RECORDING
    log_line("Feature local audio recording is: On.");
@@ -1759,46 +1370,18 @@ int main(int argc, char *argv[])
 #endif
 
    if ( g_bIsFirstBoot )
-      do_first_boot_initialization(s_isVehicle, board_type);
+      do_first_boot_initialization();
 
    strcpy(szFile, FOLDER_CONFIG);
    strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
    if ( access( szFile, R_OK) == -1 )
    {
       log_line("Default model/current model is missing. Creating a default one...");
-      first_boot_create_default_model(s_isVehicle, board_type);
+      first_boot_create_default_model();
    }
 
-   if ( s_isVehicle )
-   {
-      _step_initialize_check_vehicle();
-
-      int c = 0;
-      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-      {
-         radio_hw_info_t* pNIC = hardware_get_radio_info(i);
-         if ( pNIC->isSupported )
-            c++;
-      }
-      if ( 0 == c || 0 == hardware_get_radio_interfaces_count() )
-      {
-         printf("Ruby: No supported radio interfaces found. Total radio interfaces found: %d\n", hardware_get_radio_interfaces_count());
-         fflush(stdout);
-
-         if ( NULL != s_pSemaphoreStarted )
-            sem_close(s_pSemaphoreStarted);
-         log_line("");
-         log_line("------------------------------");
-         log_line("Ruby Start Finished.");
-         log_line("------------------------------");
-         log_line("");
-         return 0;
-      }
-   }
-   else
    {
        // Controller
-       #if defined (HW_PLATFORM_RADXA)
        hw_execute_bash_command("cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor", szOutput);
        if ( NULL == strstr(szOutput, "performance") )
           hardware_set_default_radxa_cpu_freq();
@@ -1807,9 +1390,7 @@ int main(int argc, char *argv[])
        hw_execute_bash_command("systemctl mask systemd-journald.service 2>&1 1>/dev/null", NULL);
        hw_execute_bash_command("systemctl disable rknpu2.service 2>&1 1>/dev/null", NULL);
        hw_execute_bash_command("systemctl mask rknpu2.service 2>&1 1>/dev/null", NULL);
-       #endif
 
-       #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
        bool allDisabled = true;
        for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
        {
@@ -1832,20 +1413,12 @@ int main(int argc, char *argv[])
           save_ControllerInterfacesSettings();
           load_ControllerInterfacesSettings();
        }
-       #endif
    }
-
-   _log_oipc_boot_step("Check processes versions...");
 
    hw_execute_ruby_process_wait(NULL, "ruby_start", "-ver", szOutput, 1);
    log_line("ruby_start: [%s]", szOutput);
 
-   hw_execute_ruby_process_wait(NULL, "ruby_rt_vehicle", "-ver", szOutput, 1);
-   log_line("ruby_rt_vehicle: [%s]", szOutput);
-   hw_execute_ruby_process_wait(NULL, "ruby_tx_telemetry", "-ver", szOutput, 1);
-   log_line("ruby_tx_telemetry: [%s]", szOutput);
 
-   if ( !s_isVehicle )
    {
       hw_execute_ruby_process_wait(NULL, "ruby_rt_station", "-ver", szOutput, 1);
       log_line("ruby_rt_station: [%s]", szOutput);
@@ -1857,23 +1430,8 @@ int main(int argc, char *argv[])
       log_line("ruby_central: [%s]", szOutput);
    }
 
-   _log_oipc_boot_step("Check for update files...");
-
-   #if defined(HW_PLATFORM_RADXA)
    //hw_stop_process("wpa_supplicant");
-   #endif
 
-   if ( s_isVehicle )
-   {
-      strcpy(szFile, FOLDER_CONFIG);
-      strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
-      if ( ! modelVehicle.loadFromFile(szFile, true) )
-      {
-         modelVehicle.resetToDefaults(true);
-         modelVehicle.is_spectator = false;
-         modelVehicle.saveToFile(szFile, false);
-      }
-   }
 
    strcpy(szFile, FOLDER_CONFIG);
    strcat(szFile, FILE_CONFIG_CURRENT_VERSION);
@@ -1896,73 +1454,33 @@ int main(int argc, char *argv[])
 
       _reset_fast_reboot_counter();
 
-      #ifdef HW_PLATFORM_RASPBERRY
-      hw_execute_bash_command("cp -rf /home/pi/ruby/logs/log_start.txt /home/pi/ruby/logs/log_firstboot_start.txt", NULL);
-      hw_execute_bash_command("cp -rf /home/pi/ruby/logs/log_system.txt /home/pi/ruby/logs/log_firstboot.txt", NULL);
-      #endif
-      #ifdef HW_PLATFORM_RADXA
       hw_execute_bash_command("cp -rf /home/radxa/ruby/logs/log_start.txt /home/radxa/ruby/logs/log_firstboot_start.txt", NULL);
       hw_execute_bash_command("cp -rf /home/radxa/ruby/logs/log_system.txt /home/radxa/ruby/logs/log_firstboot.txt", NULL);
-      #endif
-      #ifdef HW_PLATFORM_OPENIPC_CAMERA
-      hw_execute_bash_command("cp -rf /tmp/logs/log_start.txt /root/ruby/log_firstboot_start.txt", NULL);
-      hw_execute_bash_command("cp -rf /tmp/logs/log_system.txt /root/ruby/log_firstboot.txt", NULL);
-      #endif
       hw_execute_bash_command("sync", NULL);
 
       hardware_sleep_ms(500);
       if ( ! g_bDebug )
       {
-         hw_execute_bash_command("sudo raspi-config --expand-rootfs > /dev/null 2>&1", NULL);
          hardware_reboot();
       }
       return 0;
    }
  
-   _log_oipc_boot_step("Check for hw changes...");
+
    printf("Ruby: Checking for HW changes...");
    log_line("Checking for HW changes...");
    fflush(stdout);
 
-   if ( s_isVehicle )
-   {
-      strcpy(szFile, FOLDER_CONFIG);
-      strcat(szFile, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
-      if ( ! modelVehicle.loadFromFile(szFile, true) )
-      {
-         modelVehicle.resetToDefaults(true);
-         modelVehicle.is_spectator = false;
-         modelVehicle.saveToFile(szFile, false);
-      }
-
-      if ( _get_fast_reboot_counter() > 3 )
-      {
-         log_line("Did 3 fast reboots. Reset current model and reboot...");
-         printf("\nDid 3 fast reboots. Reset current model and reboot...\n\n");
-         _reset_fast_reboot_counter();
-         modelVehicle.resetAllSettingsKeepPairing(true);
-         modelVehicle.saveToFile(szFile, false);
-         hardware_reboot();
-         hardware_sleep_ms(900);
-         return  0;
-      }
-   }
 
    hardware_i2c_check_and_update_device_settings();
    printf(" Done.\n");
    log_line("Checking for HW changes complete.");
    fflush(stdout);
 
-   _log_oipc_boot_step("Init IPC...");
+
    ruby_init_ipc_channels();
-   _log_oipc_boot_step("Done init IPC.");
+
    
-   if ( s_isVehicle )
-   {
-      log_line("---------------------------------");
-      log_line("|  Vehicle Id: %u", modelVehicle.uVehicleId);
-      log_line("---------------------------------");
-   }
    printf("Ruby: Starting processes...\n");
    log_line("Starting processes...");
    fflush(stdout);
@@ -1973,25 +1491,6 @@ int main(int argc, char *argv[])
 
    char szParams[64];
    strcpy(szParams, "-initradio");
-   if ( s_isVehicle )
-   {
-      for ( int i=0; i<modelVehicle.radioInterfacesParams.interfaces_count; i++ )
-      {
-         if ( (modelVehicle.radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) == RADIO_TYPE_ATHEROS )
-         if ( modelVehicle.radioInterfacesParams.interface_link_id[i] >= 0 )
-         if ( modelVehicle.radioInterfacesParams.interface_link_id[i] < modelVehicle.radioLinksParams.links_count )
-         {
-            int dataRateMb = modelVehicle.radioLinksParams.downlink_datarate_video_bps[modelVehicle.radioInterfacesParams.interface_link_id[i]];
-            if ( dataRateMb > 0 )
-               dataRateMb = dataRateMb / 1000 / 1000;
-            if ( dataRateMb > 0 )
-            {
-               sprintf(szParams, "-initradio %d", dataRateMb);
-               break;
-            }
-         }
-      }
-   }
    hw_execute_ruby_process_wait(NULL, "ruby_start", szParams, NULL, 1);
    
    log_line("Reloading hardware radio configuration after radio init step completed...");
@@ -2010,59 +1509,11 @@ int main(int argc, char *argv[])
    snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "chmod 777 %s*", FOLDER_CONFIG);
    hw_execute_bash_command(szComm, NULL);
 
-   if ( s_isVehicle )
    {
-      printf("Ruby: Starting vehicle...\n");
-      log_line("Starting vehicle...");
-      fflush(stdout);
-      if ( modelVehicle.radioLinksParams.links_count == 1 )
-         printf("Ruby: Current frequency: %s\n", str_format_frequency(modelVehicle.radioLinksParams.link_frequency_khz[0]));
-      else if ( modelVehicle.radioLinksParams.links_count == 2 )
-      {
-         char szFreq1[64];
-         char szFreq2[64];
-         strcpy(szFreq1, str_format_frequency(modelVehicle.radioLinksParams.link_frequency_khz[0]));
-         strcpy(szFreq2, str_format_frequency(modelVehicle.radioLinksParams.link_frequency_khz[1]));
-         printf("Ruby: Current frequencies: %s/%s\n", szFreq1, szFreq2);
-      }
-      else
-      {
-         char szFreq1[64];
-         char szFreq2[64];
-         char szFreq3[64];
-         strcpy(szFreq1, str_format_frequency(modelVehicle.radioLinksParams.link_frequency_khz[0]));
-         strcpy(szFreq2, str_format_frequency(modelVehicle.radioLinksParams.link_frequency_khz[1]));
-         strcpy(szFreq3, str_format_frequency(modelVehicle.radioLinksParams.link_frequency_khz[2]));
-         printf("Ruby: Current frequencies: %s/%s/%s\n", szFreq1, szFreq2, szFreq3);
-      }
-      printf("Ruby: Detected radio interfaces: %d\n", hardware_get_radio_interfaces_count());
-      printf("Ruby: Supported radio interfaces:\n");
-      fflush(stdout);
-      int c = 0;
-      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-      {
-         radio_hw_info_t* pNIC = hardware_get_radio_info(i);
-         if ( pNIC->isSupported )
-         {
-            printf("  %d: %s, driver: %s, USB port: %s\n", c+1, pNIC->szDescription, pNIC->szDriver, pNIC->szUSBPort);
-            c++;
-         }
-      }
-      printf("Ruby: Total supported radio interfaces: %d\n", c);
-      fflush(stdout);
-      hw_execute_ruby_process(NULL, "ruby_start", "-vehicle", NULL);
-   }
-   else
-   {
-      #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 
       u32 uControllerId = controller_utils_getControllerId();
       log_line("Controller UID: %u", uControllerId);
 
-      #if defined(HW_PLATFORM_RASPBERRY)
-      hw_execute_bash_command_silent("con2fbmap 1 0", NULL);
-      //execute_bash_command_silent("printf \"\\033c\"", NULL);
-      #endif
 
       if ( hardware_radio_has_sik_radios() )
       {
@@ -2138,18 +1589,13 @@ int main(int argc, char *argv[])
       log_line("Starting controller...");
       fflush(stdout);
 
-      #ifdef HW_PLATFORM_RADXA
       hw_execute_ruby_process(NULL, "ruby_alive", NULL, NULL);
-      #endif
    
 
       hw_execute_ruby_process(NULL, "ruby_controller", NULL, NULL);
 
-      #endif
    }
 
-   _log_oipc_boot_step("Done started processes.");
-   
    printf("Ruby: Started processes. Checking if all ok...\n");
    fflush(stdout);
 
@@ -2162,75 +1608,6 @@ int main(int argc, char *argv[])
    else
       log_error_and_alarm("ruby_logger is not running");
 
-   if ( s_isVehicle )
-   {
-      if ( NULL != s_pSemaphoreStarted )
-         sem_close(s_pSemaphoreStarted);
-      log_line("");
-      log_line("------------------------------");
-      log_line("Ruby Start Finished.");
-      log_line("------------------------------");
-      log_line("");
-
-      char szFileUpdate[128];
-      strcpy(szFileUpdate, FOLDER_RUBY_TEMP);
-      strcat(szFileUpdate, FILE_TEMP_UPDATE_IN_PROGRESS);
-
-      int iCheckCount = 0;
-      while ( true )
-      {
-         if ( access(szFileUpdate, R_OK) != -1 )
-         {
-            log_line("Detected update in progress. Stop main look check.");
-            _reset_fast_reboot_counter();
-            break;
-         }
-
-         bool bError = false;
-
-         if ( hw_process_exists("ruby_start") )
-            log_line("ruby_start is started");
-         else
-            { log_error_and_alarm("ruby_start is not running"); bError = true; }
-
-
-         if ( hw_process_exists("ruby_rt_vehicle") )
-            log_line("ruby_rt_vehicle is started");
-         else
-            { log_error_and_alarm("ruby_rt_vehicle is not running"); bError = true; }
-           
-         if ( hw_process_exists("ruby_tx_telemetry") )
-            log_line("ruby_tx_telemetry is started");
-         else
-            { log_error_and_alarm("ruby_tx_telemetry is not running"); bError = true; }
-
-         if ( bError )
-         {
-            printf("Error: Some processes are not running. Check again.\n");
-            log_line("Error: Some processes are not running. Check again.");
-         }
-         else
-         {
-            u32 uTimeNow = get_current_timestamp_ms();
-            char szTime[128];
-            sprintf(szTime,"%d %d:%02d:%02d.%03d", s_iBootCount, (int)(uTimeNow/1000/60/60), (int)(uTimeNow/1000/60)%60, (int)((uTimeNow/1000)%60), (int)(uTimeNow%1000));
-            printf("%s All processes are running fine.\n", szTime);
-         }
-         fflush(stdout);
-         iCheckCount++;
-           
-         for( int i=0; i<5; i++ )
-            hardware_sleep_ms(500);
-
-         if ( g_bDebug || (iCheckCount > 4) || (!bError) )
-         {
-            _reset_fast_reboot_counter();
-            break;
-         }
-      }
-      _log_oipc_boot_step("Done boot sequence.");
-   }
-   else // Controller
    {
       int iRetryCounter = 10;
       while ( iRetryCounter > 0 )
@@ -2276,17 +1653,10 @@ int main(int argc, char *argv[])
    hw_execute_bash_command_raw("ls /sys/class/net/", szOutput);
    log_line("Network devices found: [%s]", szOutput);
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   hw_execute_bash_command("rm -rf /boot/last_ruby_boot.txt", NULL);
-   hw_execute_bash_command("cp -rf logs/log_system.txt /boot/last_ruby_boot.txt", NULL);
-   log_line("Copy boot log to /boot partition. Done.");
-   #endif
 
-   #ifdef HW_PLATFORM_RADXA
    hw_execute_bash_command("rm -rf /config/last_ruby_boot.txt", NULL);
    hw_execute_bash_command("cp -rf logs/log_system.txt /config/last_ruby_boot.txt", NULL);
    log_line("Copy boot log to /config partition. Done.");
-   #endif
 
 
    if ( NULL != s_pSemaphoreStarted )

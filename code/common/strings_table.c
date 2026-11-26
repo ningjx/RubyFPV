@@ -34,7 +34,6 @@
 #include <ctype.h>
 #include "strings_table.h"
 
-#if defined (HW_PLATFORM_RADXA) || defined (HW_PLATFORM_RASPBERRY)
 
 type_localized_strings s_LocalizedStringsTable[] = 
 {
@@ -1590,12 +1589,6 @@ type_localized_strings s_LocalizedStringsTable[] =
   {"", "", "", "", "", "", "", 0}
 };
 
-#else
-type_localized_strings s_LocalizedStringsTable[] = 
-{
-  {"NA", "NA", "NA", "NA", "NA", "NA", "NA", 0}
-};
-#endif
 
 type_localized_strings* string_get_table()
 {

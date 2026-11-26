@@ -28,13 +28,6 @@
 #define SHARED_MEM_WATCHDOG_COMMANDS_RX "/SYSTEM_SHARED_MEM_WATCHDOG_COMMANDS_RX"
 #define SHARED_MEM_WATCHDOG_RC_RX "/SYSTEM_SHARED_MEM_WATCHDOG_RC_RX"
 
-#define SHARED_MEM_RASPIVIDEO_COMMAND "/SYSTEM_SHARED_MEM_RASPIVID_COMM"
-#define SIZE_OF_SHARED_MEM_RASPIVID_COMM 32
-// it's a 32 byte shared mem (8 u32) gives the commands to raspivid
-// first u32 and last u32: modify counter, for checksum purpose
-// u32 1...6 - commands: byte 0: command number, byte 1: command type, byte 2,3: params
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif 

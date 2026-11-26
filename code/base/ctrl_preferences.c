@@ -39,7 +39,6 @@
 
 #define PREFERENCES_SETTINGS_STAMP_ID "vIV.3"
 
-#if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 
 Preferences s_Preferences;
 
@@ -133,10 +132,8 @@ void reset_Preferences()
    s_Preferences.iMSPOSDDeltaX = 0;
    s_Preferences.iMSPOSDDeltaY = 0;
 
-   #if defined (HW_PLATFORM_RADXA)
    s_Preferences.iOSDFont = 1;
    s_Preferences.iOSDFontBold = 1;
-   #endif
 
    s_Preferences.iShowCompactMenus = 1;
    s_Preferences.uEnabledQuickMenu = 0xFFFFFFFF;
@@ -550,14 +547,3 @@ void removePreferencesDoNotShowAgain(int iUniqueId)
       }
    }
 }
-
-#else
-
-int save_Preferences() { return 0; }
-int load_Preferences() { return 0; }
-void reset_Preferences() {}
-Preferences* get_Preferences() { return NULL; }
-int getPreferencesDoNotShowAgain(int iUniqueId) { return 0; }
-void setPreferencesDoNotShowAgain(int iUniqueId, int iDoNotShowAgain){}
-void removePreferencesDoNotShowAgain(int iUniqueId){}
-#endif

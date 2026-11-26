@@ -90,25 +90,13 @@ void log_page_faults()
    while ( ! s_bQuit )
    {   
       _check_process("ruby_logger", 0);
-      _check_process("ruby_rt_vehicle", 1);
-      _check_process("ruby_tx_telemetry", 2);
 
-      #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-      _check_process("majestic", 3);
-      #else
-      _check_process("ruby_capture_raspi", 4);
-      #endif
 
       _check_process("ruby_central", 5);
       _check_process("ruby_rt_station", 6);
       _check_process("ruby_rx_telemetry", 7);
 
-      #if defined(HW_PLATFORM_RADXA)
       _check_process("ruby_player_radxa", 8);
-      #else
-      _check_process("ruby_player_p", 9);
-      _check_process("ruby_player_s", 10);
-      #endif
 
       if ( 0 == iCounter )
       {

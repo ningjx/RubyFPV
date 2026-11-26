@@ -650,7 +650,6 @@ class Model
       void logVehicleRadioInfo();
       int logVehicleRadioLinkDifferences(const char* szPrefix, type_radio_links_parameters* pData1, type_radio_links_parameters* pData2);
       
-      bool find_and_validate_camera_settings();
       bool validate_fps_and_exposure_settings(camera_profile_parameters_t* pCameraProfile, bool bFullForce);
       bool validate_settings();
       bool validateRadioSettings();

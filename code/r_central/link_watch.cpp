@@ -917,34 +917,6 @@ void link_watch_loop_processes()
       log_line("Router is in blocking operation: %d", g_pProcessStatsRouter->uInBlockingOperation);
    else
       log_line("Router SM process stats is invalid.");
-   #if defined HW_PLATFORM_RASPBERRY
-   szPIDs[0] = 0;
-   hw_process_get_pids("ruby_player_p", szPIDs);
-   removeTrailingNewLines(szPIDs);
-   if ( strlen(szPIDs) > 2 )
-      log_line("Video player (pipe) is still present, pid: %s.", szPIDs);
-   else
-      log_line("Video player (pipe) is not present, has crashed.");
-
-   szPIDs[0] = 0;
-   hw_process_get_pids("ruby_player_s", szPIDs);
-   removeTrailingNewLines(szPIDs);
-   if ( strlen(szPIDs) > 2 )
-      log_line("Video player (sm) is still present, pid: %s.", szPIDs);
-   else
-      log_line("Video player (sm) is not present, has crashed.");
-
-   shared_mem_player_process_stats* pSMPlayer = (shared_mem_player_process_stats*) open_shared_mem_for_read("RUBY_PLAYER_SM_STATS", sizeof(shared_mem_player_process_stats));
-   if ( NULL != pSMPlayer )
-   {
-      log_line("Opened shared mem to video player process stats");
-      log_line("Video player active %u ms ago", g_TimeNow - pSMPlayer->lastActiveTime);
-      log_line("Video player is in blocking operation: %d", pSMPlayer->uInBlockingOperation);
-      munmap(pSMPlayer, sizeof(shared_mem_player_process_stats));
-   }
-   else
-      log_softerror_and_alarm("Can't open shared mem to video player process stats.");
-   #endif
 
    int iCurrentRadioInterfacesCount = hardware_get_radio_interfaces_count();
    int iCurrentRadioInterfacesIEEECount = 0;

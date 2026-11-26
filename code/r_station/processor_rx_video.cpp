@@ -634,17 +634,6 @@ void ProcessorRxVideo::handleReceivedVideoPacket(int interfaceNb, u8* pBuffer, i
       adaptive_video_reset_time_for_vehicle(m_uVehicleId);
    }
 
-   #if defined(RUBY_BUILD_HW_PLATFORM_PI)
-   if (((pPHVS->uVideoStreamIndexAndType >> 4) & 0x0F) == VIDEO_TYPE_H265 )
-   {
-      static u32 s_uTimeLastSendVideoUnsuportedAlarmToCentral = 0;
-      if ( g_TimeNow > s_uTimeLastSendVideoUnsuportedAlarmToCentral + 20000 )
-      {
-         s_uTimeLastSendVideoUnsuportedAlarmToCentral = g_TimeNow;
-         send_alarm_to_central(ALARM_ID_UNSUPPORTED_VIDEO_TYPE, pPHVS->uVideoStreamIndexAndType, pPH->vehicle_id_src);
-      }
-   }
-   #endif
 
 
    if ( ! m_pVideoRxBuffer->checkAddVideoPacket(pBuffer, iBufferLength) )

@@ -56,7 +56,6 @@ void _hardware_audio_enumerate_capabilities()
    s_iHardwareAudiotSwitchControlId = -1;
    s_iHardwareAudioVolumeControlId = -1;
 
-   #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    char szOutput[4096];
    hw_execute_bash_command_raw("aplay -l 2>&1", szOutput );
    if ( (0 == szOutput[0]) || (NULL != strstr(szOutput, "no soundcards")) || (NULL != strstr(szOutput, "no sound")) )
@@ -97,7 +96,6 @@ void _hardware_audio_enumerate_capabilities()
       }
       pszLine = strtok(NULL, "\n");
    }
-   #endif
    log_line("[HardwareAudio] Done detecting capabilites.");
 }
 
@@ -173,14 +171,7 @@ int hardware_audio_play_file(const char* szFile)
 
    char szComm[256];
    snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "aplay -q %s 2>/dev/null 1>/dev/null", szFile);
-   
-   #if defined (HW_PLATFORM_RADXA)
-   char szDevice[64];
-   szDevice[0] = 0;
-   if ( (hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_RADXA_3C )
-      strcpy(szDevice, "-D hw:CARD=rockchiphdmi0 ");
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "aplay -q %s%s 2>/dev/null 1>/dev/null", szDevice, szFile);
-   #endif
+
 
    hw_execute_bash_command_timeout(szComm, NULL, 30000);
    return 0;
@@ -197,14 +188,7 @@ void* _thread_audio_play_async(void *argument)
    log_line("[HardwareAudio] Playing file: %s", s_szAudioFilePlayAsync);
    char szComm[256];
    snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "aplay -q %s 2>/dev/null 1>/dev/null &", s_szAudioFilePlayAsync);
-   
-   #if defined (HW_PLATFORM_RADXA)
-   char szDevice[64];
-   szDevice[0] = 0;
-   if ( (hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_RADXA_3C )
-      strcpy(szDevice, "-D hw:CARD=rockchiphdmi0 ");
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "aplay -q %s%s 2>/dev/null 1>/dev/null &", szDevice, s_szAudioFilePlayAsync);
-   #endif
+
    
    hw_execute_bash_command_nonblock(szComm, NULL);
    log_line("[HardwareAudio] Ended thread to play file async.");

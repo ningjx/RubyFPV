@@ -75,14 +75,9 @@
 #include "../base/ruby_ipc.h"
 #include "../base/core_plugins_settings.h"
 #include "../base/utils.h"
-#if defined (HW_PLATFORM_RASPBERRY)
-#include "../renderer/render_engine_raw.h"
-#endif
-#if defined (HW_PLATFORM_RADXA)
 #include "../renderer/drm_core.h"
 #include "../renderer/render_engine_cairo.h"
 #include <SDL2/SDL.h>
-#endif
 
 #include "../common/string_utils.h"
 #include "../common/strings_loc.h"
@@ -107,7 +102,6 @@
 #include "render_commands.h"
 #include "handle_commands.h"
 #include "menu_confirmation.h"
-#include "menu_confirmation_hdmi.h"
 #include "ui_alarms.h"
 #include "notifications.h"
 #include "local_stats.h"
@@ -138,7 +132,6 @@ sem_t* s_pSemaphoreVideoIntro = NULL;
 
 bool g_bMarkedHDMIReinit = false;
 bool g_bIsReinit = false;
-bool g_bIsHDMIConfirmation = false;
 bool s_bShowMira = false;
 
 static int s_iRubyFPS = 0;
@@ -154,7 +147,6 @@ static u32 s_uMicroTimeOSDRender = 0;
 static u32 s_uTimeLastRender = 0;
 static u32 s_uTimeLastRenderDuration = 0;
 
-static u32 s_TimeCentralInitializationComplete = 0;
 static u32 s_TimeLastMenuInput = 0;
 
 static bool s_bFreezeOSD = false;
@@ -165,9 +157,6 @@ static u32 s_uTimeToSwitchLogLevel = 0;
 Popup popupNoModel("No vehicle defined or linked to!", 0.2, 0.45, 5);
 Popup popupStartup("System starting. Please wait.", 0.05, 0.16, 0);
 
-static char s_szFileHDMIChanged[128];
-
-MenuConfirmationHDMI* s_pMenuConfirmHDMI = NULL;
 MenuConfirmationImport* s_pMenuConfirmationImport = NULL;
 
 Popup* ruby_get_startup_popup()
@@ -385,7 +374,6 @@ bool _render_video_background()
    u32 uVehicleSoftwareVersion = 0;
    bool bVehicleHasCamera = true;
    bool bDisplayingRelayedVideo = false;
-   bool bCantDisplayVideo = false;
 
    if ( NULL != g_pCurrentModel )
    {
@@ -419,23 +407,19 @@ bool _render_video_background()
       if ( (NULL != pModel) && (pModel->iCameraCount <= 0) )
          bVehicleHasCamera = false;
 
-      #if defined (HW_PLATFORM_RASPBERRY)
-      if ( (NULL != pModel) && (pModel->video_params.uVideoExtraFlags & VIDEO_FLAG_GENERATE_H265) )
-         bCantDisplayVideo = true;
-      #endif
 
       if ( pModel->b_mustSyncFromVehicle )
          bVehicleHasCamera = true;
    }
 
    if ( 0 != uVehicleIdFullVideo )
-   if ( (! bCantDisplayVideo) && (! g_bUpdateInProgress) )
+   if ( ! g_bUpdateInProgress )
    if ( bVehicleHasCamera && link_has_received_videostream(uVehicleIdFullVideo) )
    if ( (uVehicleSoftwareVersion >> 16) == SYSTEM_SW_BUILD_NUMBER )
       return false;
 
    if ( 0 != uVehicleIdFullVideo )
-   if ( (! bCantDisplayVideo) && (! g_bUpdateInProgress) )
+   if ( ! g_bUpdateInProgress )
    if ( bVehicleHasCamera && link_has_received_videostream(uVehicleIdFullVideo) )
    if ( (uVehicleSoftwareVersion >> 16) >= 11503 )
    if ( (uVehicleSoftwareVersion >> 16) <= SYSTEM_SW_BUILD_NUMBER )
@@ -473,8 +457,6 @@ bool _render_video_background()
       }
    }
 
-   if ( bCantDisplayVideo )
-      strcpy(szText, "Raspberry can't display H265 video");
    if ( bVehicleHasCamera )
    {
       static u32 sl_uLastTimeLogWaitVideo = 0;
@@ -559,13 +541,6 @@ void render_background_and_paddings(bool bForceBackground)
 
    Model* pActiveModel = osd_get_current_data_source_vehicle_model();
    u32 uActiveVehicleId = osd_get_current_data_source_vehicle_id();
-   #if defined (HW_PLATFORM_RASPBERRY)
-   if ( (NULL != pActiveModel) && (pActiveModel->video_params.uVideoExtraFlags & VIDEO_FLAG_GENERATE_H265) )
-   {
-      bShowBgPicture = false;
-      bShowBgVideo = true;    
-   }
-   #endif
 
    if ( g_bUpdateInProgress )
       bShowBgVideo = true;
@@ -980,9 +955,6 @@ int ruby_start_recording()
    if ( g_bIsVideoRecording )
        return -1;
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   system("sudo mount -o remount,rw /");
-   #endif
 
    hw_execute_bash_command("mkdir -p tmp", NULL );
    hw_execute_bash_command("chmod 777 tmp", NULL );
@@ -1444,8 +1416,7 @@ bool ruby_central_has_sdcard_update(bool bDoUpdateToo)
    // Disable MMC update from SD card
    return false;
 
-   if ( ! hardware_is_running_on_runcam_vrx() )
-      return false;
+   return false;
    char szOutput[2048];
    hw_execute_bash_command_raw("lsblk -l | grep mmcblk1p3", szOutput);
    removeTrailingNewLines(szOutput);
@@ -2018,8 +1989,6 @@ void start_loop()
       Preferences* p = get_Preferences();
       popup_log_set_show_flag(p->iShowLogWindow);
 
-      if ( is_first_boot() )
-         popups_add_topmost(new Popup("One time automatic setup after instalation done: Your CPU settings have been adjusted to match your Raspberry Pi. Please reboot the controller at your convenience for the new changes to take effect.", 0.2,0.1, 0.74, 11));
 
       log_line("Finished executing start up sequence step: %d (%s)", s_StartSequence, _ruby_central_get_star_seq_string(s_StartSequence));
       log_line("Go to loading plugins step...");
@@ -2093,7 +2062,6 @@ void start_loop()
          popupStartup.addLine(L("Start sequence done."));
          popupStartup.setTimeout(4);
          popupStartup.resetTimer();
-         s_TimeCentralInitializationComplete = g_TimeNow;
          return;
       }
       onMainVehicleChanged(true);
@@ -2137,13 +2105,6 @@ void start_loop()
       popupStartup.setTimeout(4);
       popupStartup.resetTimer();
 
-      s_TimeCentralInitializationComplete = g_TimeNow;
-      if ( g_bIsHDMIConfirmation )
-      {
-         s_pMenuConfirmHDMI = new MenuConfirmationHDMI("HDMI Output Configuration Updated","Does the HDMI output looks ok? Select [Yes] to keep the canges or select [No] to revert to the old HDMI configuration.", 0);
-         s_pMenuConfirmHDMI->m_yPos = 0.3;
-         add_menu_to_stack(s_pMenuConfirmHDMI);
-      }
 
       bool bHasSDCardUpdate = ruby_central_has_sdcard_update(false);
 
@@ -2175,7 +2136,6 @@ void start_loop()
       ruby_resume_watchdog("start up sequence completed");
 
       if ( ! g_bIsReinit )
-      if ( ! g_bIsHDMIConfirmation )
       if ( bHasSDCardUpdate )
       {
          MenuConfirmationSDCardUpdate* pMC = new MenuConfirmationSDCardUpdate();
@@ -2465,43 +2425,6 @@ void main_loop_r_central()
          g_bQuit = true;
    }
 
-   if ( g_bIsHDMIConfirmation )
-   if ( NULL != s_pMenuConfirmHDMI )
-   if ( g_TimeNow > s_TimeCentralInitializationComplete + 10000 )
-   if ( menu_is_menu_on_top(s_pMenuConfirmHDMI) )
-   if ( access(s_szFileHDMIChanged, R_OK) != -1 )         
-   {
-      log_line("Reverting HDMI resolution change...");
-      ruby_pause_watchdog("reverting HDMI resolution change");
-      save_temp_local_stats();
-      hardware_sleep_ms(50);
-
-      FILE* fd = fopen(s_szFileHDMIChanged, "r");
-      if ( NULL != fd )
-      {
-         char szBuff[256];
-         int group, mode;
-         int tmp1, tmp2, tmp3;
-         fscanf(fd, "%d %d", &tmp1, &tmp2 );
-         fscanf(fd, "%d %d %d", &tmp1, &tmp2, &tmp3 );
-         fscanf(fd, "%d %d", &group, &mode );
-         fclose(fd);
-         log_line("Reverting HDMI resolution back to: group: %d, mode: %d", group, mode);
-
-         sprintf(szBuff, "rm -rf %s%s", FOLDER_CONFIG, FILE_TEMP_HDMI_CHANGED);
-         hw_execute_bash_command(szBuff, NULL);
-
-         hw_execute_bash_command("cp /boot/config.txt config.txt", NULL);
-
-         sprintf(szBuff, "sed -i 's/hdmi_group=[0-9]*/hdmi_group=%d/g' config.txt", group);
-         hw_execute_bash_command(szBuff, NULL);
-         sprintf(szBuff, "sed -i 's/hdmi_mode=[0-9]*/hdmi_mode=%d/g' config.txt", mode);
-         hw_execute_bash_command(szBuff, NULL);
-         hw_execute_bash_command("cp config.txt /boot/config.txt", NULL);
-      }
-      onEventReboot();
-      hardware_reboot();
-   }
 }
 
 void ruby_signal_alive()
@@ -2690,12 +2613,6 @@ int main(int argc, char *argv[])
    if ( g_bIsReinit )
       g_bPlayIntro = false;
 
-   strcpy(s_szFileHDMIChanged, FOLDER_CONFIG);
-   strcat(s_szFileHDMIChanged, FILE_TEMP_HDMI_CHANGED);
-
-   g_bIsHDMIConfirmation = false;
-   if ( access(s_szFileHDMIChanged, R_OK) != -1 )
-      g_bIsHDMIConfirmation = true;
 
    log_line("Ruby UI starting");
 
@@ -2705,14 +2622,6 @@ int main(int argc, char *argv[])
       save_Preferences();
    Preferences* p = get_Preferences();
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   // Disable non latin charsets (raster fonts)
-   if ( (p->iLanguage == 0) || (p->iLanguage == 4) || (p->iLanguage == 5) )
-   {
-      p->iLanguage = 1;
-      save_Preferences();
-   }
-   #endif
    if ( p->iLanguage == 4 )
    {
       p->iLanguage = 1;
@@ -2738,11 +2647,7 @@ int main(int argc, char *argv[])
 
    s_uTimeToSwitchLogLevel = get_current_timestamp_ms() + 10000;
    
-   #if defined (HW_PLATFORM_RASPBERRY)
-   hdmi_enum_modes();
-   #endif
 
-   #if defined (HW_PLATFORM_RADXA)
    ruby_drm_core_wait_for_display_connected();
    hdmi_enum_modes();
    int iHDMIIndex = hdmi_load_current_mode();
@@ -2752,7 +2657,6 @@ int main(int argc, char *argv[])
    ruby_drm_core_init(0, DRM_FORMAT_ARGB8888, hdmi_get_current_resolution_width(), hdmi_get_current_resolution_height(), hdmi_get_current_resolution_refresh());
    ruby_drm_core_set_plane_properties_and_buffer(ruby_drm_core_get_main_draw_buffer_id());
    ruby_drm_enable_vsync(g_pControllerSettings->iHDMIVSync);
-   #endif
 
    g_pRenderEngine = render_init_engine();
    log_line("Render Engine was initialized.");
@@ -2837,14 +2741,12 @@ int main(int argc, char *argv[])
       
    save_ControllerInterfacesSettings();
 
-   #if defined (HW_PLATFORM_RADXA)
    log_line("Ruby OLED Init...");
    if ( hardware_i2c_has_oled_screen() )
    {
       oled_render_init();
       oled_render_thread_start();
    }
-   #endif
 
    if ( g_pControllerSettings->iCoresAdjustment )
       hw_set_current_thread_affinity("central", CORE_AFFINITY_CENTRAL_UI, CORE_AFFINITY_CENTRAL_UI);
@@ -2985,7 +2887,6 @@ void ruby_reinit_hdmi_display()
    free_all_fonts();
    render_free_engine();
    
-   #if defined (HW_PLATFORM_RADXA)
    ruby_drm_core_uninit();
    ruby_drm_core_wait_for_display_connected();
 
@@ -2997,7 +2898,6 @@ void ruby_reinit_hdmi_display()
    ruby_drm_core_init(0, DRM_FORMAT_ARGB8888, hdmi_get_current_resolution_width(), hdmi_get_current_resolution_height(), hdmi_get_current_resolution_refresh());
    ruby_drm_core_set_plane_properties_and_buffer(ruby_drm_core_get_main_draw_buffer_id());
    ruby_drm_enable_vsync(g_pControllerSettings->iHDMIVSync);
-   #endif
 
    g_pRenderEngine = render_init_engine();
    log_line("Render Engine was initialized.");
@@ -3036,9 +2936,7 @@ void ruby_shutdown_ui()
       hardware_sleep_ms(50);
    }
 
-   #if defined (HW_PLATFORM_RADXA)
    oled_render_shutdown();
-   #endif
    
    controller_stop_i2c();
 
@@ -3064,9 +2962,7 @@ void ruby_shutdown_ui()
 
    render_free_engine();
 
-   #if defined (HW_PLATFORM_RADXA)
    ruby_drm_core_uninit();
-   #endif
 
    log_line("Finished shutdown UI.");
 }

@@ -188,10 +188,6 @@ void _adaptive_video_reset_kf_state(Model* pModel, type_global_state_vehicle_run
    if ( pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME )
    {
       pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget = DEFAULT_VIDEO_AUTO_INITIAL_KEYFRAME_INTERVAL;
-      #if defined (HW_PLATFORM_RASPBERRY)
-      if ( pModel->isRunningOnOpenIPCHardware() )
-         pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget = DEFAULT_VIDEO_AUTO_INITIAL_KEYFRAME_INTERVAL_FALLBACK;
-      #endif
    }
    else
       pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget = pModel->getInitialKeyframeIntervalMs(pModel->video_params.iCurrentVideoProfile);

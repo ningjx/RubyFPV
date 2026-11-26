@@ -37,12 +37,7 @@
 #include "config_hw.h"
 
 
-#if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RASPBERRY)
-#include <wiringPiI2C.h>
-#endif
-#if defined(HW_CAPABILITY_I2C) && defined(HW_PLATFORM_RADXA)
 #include "wiringPiI2C_radxa.h"
-#endif
 
 #include "base.h"
 #include "hardware_i2c.h"
@@ -132,12 +127,9 @@ void hardware_i2c_enumerate_busses(int iConsoleLog)
 
    log_line("[Hardware]: Enumerating I2C busses...");
 
-#ifdef HW_CAPABILITY_I2C
    char szBuff[256];
    int iEnumerateCount = 4;
-   #if defined (HW_PLATFORM_RADXA)
    iEnumerateCount = 7;
-   #endif
    for( int i=0; i<iEnumerateCount; i++ )
    {
       snprintf(szBuff, 255, "/dev/i2c-%d", i);
@@ -154,43 +146,6 @@ void hardware_i2c_enumerate_busses(int iConsoleLog)
          s_iHardwareI2CBusCount++;
       }
    }
-   #if defined (HW_PLATFORM_RASPBERRY)
-   for( int i=10; i<14; i++ )
-   {
-      snprintf(szBuff, 255, "/dev/i2c-%d", i);
-      if( access( szBuff, R_OK ) != -1 )
-      if ( s_iHardwareI2CBusCount < MAX_I2C_BUS_COUNT )
-      {
-         log_line("[Hardware]: Found I2C bus: %s", szBuff);
-         s_HardwareI2CBusInfo[s_iHardwareI2CBusCount].nBusNumber = i;
-         snprintf(szBuff, 255, "i2c-%d", i);
-         strcpy(s_HardwareI2CBusInfo[s_iHardwareI2CBusCount].szName, szBuff);
-         for( int k=0; k<128; k++ )
-            s_HardwareI2CBusInfo[s_iHardwareI2CBusCount].devices[k] = 0;
-         s_HardwareI2CBusInfo[s_iHardwareI2CBusCount].picoExtenderVersion = 0;
-         s_iHardwareI2CBusCount++;
-      }
-   }
-   for( int i=20; i<24; i++ )
-   {
-      snprintf(szBuff, 255, "/dev/i2c-%d", i);
-      if( access( szBuff, R_OK ) != -1 )
-      if ( s_iHardwareI2CBusCount < MAX_I2C_BUS_COUNT )
-      {
-         log_line("[Hardware]: Found I2C bus: %s", szBuff);
-         s_HardwareI2CBusInfo[s_iHardwareI2CBusCount].nBusNumber = i;
-         snprintf(szBuff, 255, "i2c-%d", i);
-         strcpy(s_HardwareI2CBusInfo[s_iHardwareI2CBusCount].szName, szBuff);
-         for( int k=0; k<128; k++ )
-            s_HardwareI2CBusInfo[s_iHardwareI2CBusCount].devices[k] = 0;
-         s_HardwareI2CBusInfo[s_iHardwareI2CBusCount].picoExtenderVersion = 0;
-         s_iHardwareI2CBusCount++;
-      }
-   }
-   #endif
-#else
-   log_line("[Hardware] I2C is disabled in code.");
-#endif
    log_line("[Hardware]: Found %d I2C busses.", s_iHardwareI2CBusCount);
 
    if ( 1 == iConsoleLog )
@@ -198,8 +153,6 @@ void hardware_i2c_enumerate_busses(int iConsoleLog)
 
    int countDevicesTotal = 0;
 
-#ifdef HW_CAPABILITY_I2C
-   u32 uBoardType = hardware_getBoardType();
    char szOutput[2048];
    for( int i=0; i<s_iHardwareI2CBusCount; i++ )
    {
@@ -215,21 +168,6 @@ void hardware_i2c_enumerate_busses(int iConsoleLog)
             addrStart = 8;
          if ( k == 7 )
             addrEnd = (7*16)+7;
-
-         if ( ((uBoardType & BOARD_TYPE_MASK) == BOARD_TYPE_PI4B) && (0 == s_HardwareI2CBusInfo[i].nBusNumber) )
-         {
-            if ( k == 0 )
-               addrStart = addrEnd = I2C_DEVICE_ADDRESS_CAMERA_HDMI;
-            if ( k == 1 )
-               addrStart = addrEnd = I2C_DEVICE_ADDRESS_CAMERA_CSI;
-            if ( k == 2 )
-               addrStart = addrEnd = I2C_DEVICE_ADDRESS_CAMERA_VEYE;
-            if ( k == 3 )
-               addrStart = addrEnd = I2C_DEVICE_ADDRESS_PICO_EXTENDER;
-            if ( k > 3 )
-               break;
-            log_line("[Hardware]: Pi4: Searching for device on bus %d at address: 0x%02X", s_HardwareI2CBusInfo[i].nBusNumber, addrStart);
-         }
 
          snprintf( szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "i2cdetect -y %d 0x%02X 0x%02X | tr '\n' ' ' | sed -e 's/[^0-9a-fA-F]/ /g' -e 's/^ *//g' -e 's/ *$//g' | tr -s ' ' | sed $'s/ /\\\n/g'", s_HardwareI2CBusInfo[i].nBusNumber, addrStart, addrEnd);
          hw_execute_bash_command_raw_silent(szBuff, szOutput);
@@ -298,7 +236,6 @@ void hardware_i2c_enumerate_busses(int iConsoleLog)
          countDevicesTotal -= iCountDevicesFoundOnThisBus;
       }
    }
-#endif
    log_line("[Hardware]: Found a total of %d I2C devices on all busses.", countDevicesTotal);
    if ( 1 == iConsoleLog )
       printf("Ruby: Found a total of %d I2C devices.\n", countDevicesTotal);
@@ -328,7 +265,6 @@ hw_i2c_bus_info_t* hardware_i2c_get_bus_info(int busIndex)
 
 int hardware_i2c_has_device_id(u8 deviceAddress)
 {
-   #if defined (HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -340,13 +276,11 @@ int hardware_i2c_has_device_id(u8 deviceAddress)
    for( int i=0; i<s_iHardwareI2CBusCount; i++ )
       if ( 1 == s_HardwareI2CBusInfo[i].devices[deviceAddress] )
          return 1;
-   #endif
    return 0;
 }
 
 int hardware_i2c_get_device_bus_number(u8 deviceAddress)
 {
-   #if defined (HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -358,19 +292,11 @@ int hardware_i2c_get_device_bus_number(u8 deviceAddress)
    for( int i=0; i<s_iHardwareI2CBusCount; i++ )
       if ( 1 == s_HardwareI2CBusInfo[i].devices[deviceAddress] )
          return s_HardwareI2CBusInfo[i].nBusNumber;
-   #endif
    return -1;
 }
 
 int hardware_is_known_i2c_device(u8 deviceAddress)
 {
-   #if defined (HW_CAPABILITY_I2C)
-   #if defined (HW_PLATFORM_RASPBERRY)
-   if ( (deviceAddress == I2C_DEVICE_ADDRESS_CAMERA_HDMI) ||
-        (deviceAddress == I2C_DEVICE_ADDRESS_CAMERA_CSI) ||
-        (deviceAddress == I2C_DEVICE_ADDRESS_CAMERA_VEYE) )
-     return 1;
-   #endif
 
    if ( (deviceAddress == I2C_DEVICE_ADDRESS_INA219_1) ||
         (deviceAddress == I2C_DEVICE_ADDRESS_INA219_2) )
@@ -387,7 +313,6 @@ int hardware_is_known_i2c_device(u8 deviceAddress)
    if ( deviceAddress >= I2C_DEVICE_MIN_ADDRESS_RANGE &&
         deviceAddress <= I2C_DEVICE_MAX_ADDRESS_RANGE )
       return 1;
-   #endif
    return 0;
 }
 
@@ -397,13 +322,8 @@ void hardware_i2c_get_device_name(u8 deviceAddress, char* szOutput)
       return;
    strcpy(szOutput, I2C_DEVICE_NAME_UNKNOWN);
 
-   #if defined (HW_CAPABILITY_I2C)
    if ( deviceAddress == I2C_DEVICE_ADDRESS_CAMERA_HDMI )
       strcpy(szOutput, I2C_DEVICE_NAME_CAMERA_HDMI);
-   #if defined (HW_PLATFORM_RASPBERRY)
-   if ( deviceAddress == I2C_DEVICE_ADDRESS_CAMERA_CSI )
-      strcpy(szOutput, I2C_DEVICE_NAME_CAMERA_CSI);
-   #endif
    if ( deviceAddress == I2C_DEVICE_ADDRESS_CAMERA_VEYE )
       strcpy(szOutput, I2C_DEVICE_NAME_CAMERA_VEYE);
 
@@ -423,13 +343,11 @@ void hardware_i2c_get_device_name(u8 deviceAddress, char* szOutput)
    if ( (deviceAddress >= I2C_DEVICE_MIN_ADDRESS_RANGE) &&
         (deviceAddress <= I2C_DEVICE_MAX_ADDRESS_RANGE) )
       strcpy(szOutput, I2C_DEVICE_NAME_RUBY_ADDON);
-   #endif
 }
 
 
 int hardware_i2c_save_device_settings()
 {
-   #if defined (HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -466,13 +384,11 @@ int hardware_i2c_save_device_settings()
 
    log_line("[Hardware]: Saved I2C devices settings to file: %s", szFile);
    log_line("[Hardware]: Saved I2C devices settings for %d I2C devices.", s_iCountI2CDevicesSettings);
-   #endif
    return 1;
 }
 
 int hardware_i2c_load_device_settings()
 {
-   #if defined (HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -583,39 +499,33 @@ int hardware_i2c_load_device_settings()
    s_iI2CDeviceSettingsLoaded = 1;
    log_line("[Hardware]: Loaded I2C devices settings from file: %s", szFile);
    log_line("[Hardware]: Loaded I2C devices settings for %d I2C devices", s_iCountI2CDevicesSettings);
-   #endif
    return 1;
 }
 
 int hardware_i2c_HasPicoExtender() // to deprecate
 {
-   #if defined (HW_CAPABILITY_I2C)
    if ( ! s_iI2CDeviceSettingsLoaded )
       hardware_i2c_load_device_settings();
 
    for( int i=0; i<s_iCountI2CDevicesSettings; i++ )
       if ( s_listI2CDevicesSettings[i].nDeviceType == I2C_DEVICE_TYPE_PICO_EXTENDER )
          return 1;
-   #endif
    return 0;
 }
 
 int hardware_i2c_get_pico_extender_version()
 {
-   #if defined (HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
    for( int i=0; i<s_iHardwareI2CBusCount; i++ )
       if ( 1 == s_HardwareI2CBusInfo[i].devices[I2C_DEVICE_ADDRESS_PICO_EXTENDER] )
          return (int)(s_HardwareI2CBusInfo[i].picoExtenderVersion);
-   #endif
    return 0;
 }
 
 t_i2c_device_settings* hardware_i2c_get_device_settings(u8 i2cAddress)
 {
-   #if defined (HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -630,14 +540,12 @@ t_i2c_device_settings* hardware_i2c_get_device_settings(u8 i2cAddress)
          return &(s_listI2CDevicesSettings[i]);
       }
    }
-   #endif
    log_line("No device settings stored for I2C device 0x%02X !", (u8)i2cAddress);
    return NULL;
 }
 
 t_i2c_device_settings* hardware_i2c_add_device_settings(u8 i2cAddress)
 {
-   #if defined (HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -653,23 +561,6 @@ t_i2c_device_settings* hardware_i2c_add_device_settings(u8 i2cAddress)
 
    log_line("[Hardware]: Adding settings for I2C device address: 0x%02X; current I2C devices count: %d", i2cAddress, s_listI2CDevicesSettings );
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   if ( i2cAddress == I2C_DEVICE_ADDRESS_CAMERA_CSI )
-   {
-      strcpy(s_listI2CDevicesSettings[s_iCountI2CDevicesSettings].szDeviceName, I2C_DEVICE_NAME_CAMERA_CSI);
-      s_listI2CDevicesSettings[s_iCountI2CDevicesSettings].nI2CAddress = i2cAddress;
-      s_listI2CDevicesSettings[s_iCountI2CDevicesSettings].nDeviceType = I2C_DEVICE_TYPE_CAMERA_CSI;
-      s_listI2CDevicesSettings[s_iCountI2CDevicesSettings].uCapabilitiesFlags = 0;
-      s_listI2CDevicesSettings[s_iCountI2CDevicesSettings].bConfigurable = 0;
-      s_listI2CDevicesSettings[s_iCountI2CDevicesSettings].bEnabled = 1;
-      
-      for( int k=0; k<MAX_I2C_DEVICE_SETTINGS; k++ )
-         s_listI2CDevicesSettings[s_iCountI2CDevicesSettings].uParams[k] = 0;
-
-      s_iCountI2CDevicesSettings++;
-      return &(s_listI2CDevicesSettings[s_iCountI2CDevicesSettings-1]);
-   }
-   #endif
 
    if ( i2cAddress == I2C_DEVICE_ADDRESS_CAMERA_HDMI )
    {
@@ -776,14 +667,12 @@ t_i2c_device_settings* hardware_i2c_add_device_settings(u8 i2cAddress)
       s_iCountI2CDevicesSettings++;
       return &(s_listI2CDevicesSettings[s_iCountI2CDevicesSettings-1]);
    }
-   #endif
    return NULL;
 }
 
 
 void hardware_i2c_update_device_info(u8 i2cAddress)
 {
-   #if defined (HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -817,13 +706,11 @@ void hardware_i2c_update_device_info(u8 i2cAddress)
       s_listI2CDevicesSettings[index].bConfigurable = 1;
       s_listI2CDevicesSettings[index].bEnabled = 1;
    }
-   #endif
 }
 
 // returns 1 if settings where updated, 0 if no change
 int _hardware_i2c_check_and_update_extender_device_settings(u8 i2cAddress)
 {
-#ifdef HW_CAPABILITY_I2C
    t_i2c_device_settings* pDeviceInfo = hardware_i2c_get_device_settings(i2cAddress);
    int iUpdatedI2CSettings = 0;
    if ( NULL == pDeviceInfo )
@@ -939,15 +826,10 @@ int _hardware_i2c_check_and_update_extender_device_settings(u8 i2cAddress)
 
    log_line("[Hardware]: Checked info for I2C device 0x%02X. Any changes? %s", i2cAddress, (iUpdatedI2CSettings?"Yes":"No"));
    return iUpdatedI2CSettings;
-#else
-   log_line("[Hardware] I2C devices disabled in code (2).");
-   return 0;
-#endif
 }
 
 void hardware_i2c_check_and_update_device_settings()
 {
-   #if defined(HW_CAPABILITY_I2C)
    char szBuff[128];
    int iUpdatedI2CSettings = 0;
 
@@ -1006,13 +888,11 @@ void hardware_i2c_check_and_update_device_settings()
       log_line("[Hardware]: I2C devices settings where updated. Saving new config.");
       hardware_i2c_save_device_settings();
    }
-   #endif
 }
 
 
 int hardware_i2c_has_current_sensor()
 {
-   #if defined(HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -1022,13 +902,11 @@ int hardware_i2c_has_current_sensor()
    for( int i=0; i<s_iCountI2CDevicesSettings; i++ )
       if ( s_listI2CDevicesSettings[i].nDeviceType == I2C_DEVICE_TYPE_INA219 )
          return 1;
-   #endif
    return 0;
 }
 
 int hardware_i2c_has_external_extenders()
 {
-   #if defined(HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -1038,13 +916,11 @@ int hardware_i2c_has_external_extenders()
    for( int i=0; i<s_iCountI2CDevicesSettings; i++ )
       if ( s_listI2CDevicesSettings[i].nDeviceType == I2C_DEVICE_TYPE_RUBY_ADDON )
          return 1;
-   #endif
    return 0;
 }
 
 int hardware_i2c_has_external_extenders_rotary_encoders()
 {
-   #if defined(HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -1059,13 +935,11 @@ int hardware_i2c_has_external_extenders_rotary_encoders()
          if ( s_listI2CDevicesSettings[i].uCapabilitiesFlags & I2C_CAPABILITY_FLAG_ROTARY2 )
             return 1;
       }
-   #endif
    return 0;
 }
 
 int hardware_i2c_has_external_extenders_buttons()
 {
-   #if defined(HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -1078,13 +952,11 @@ int hardware_i2c_has_external_extenders_buttons()
          if ( s_listI2CDevicesSettings[i].uCapabilitiesFlags & I2C_CAPABILITY_FLAG_BUTTONS )
             return 1;
       }
-   #endif
    return 0;
 }
 
 int hardware_i2c_has_external_extenders_rcin()
 {
-   #if defined(HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -1099,13 +971,11 @@ int hardware_i2c_has_external_extenders_rcin()
             return s_listI2CDevicesSettings[i].nI2CAddress;
       }
    }
-   #endif
    return 0; 
 }
 
 int hardware_i2c_has_oled_screen()
 {
-   #if defined(HW_CAPABILITY_I2C)
    if ( 0 == s_iHardwareI2CBussesEnumerated )
       hardware_i2c_enumerate_busses(0);
 
@@ -1117,6 +987,5 @@ int hardware_i2c_has_oled_screen()
       if ( s_listI2CDevicesSettings[i].nDeviceType == I2C_DEVICE_TYPE_OLED_SCREEN )
          return s_listI2CDevicesSettings[i].nI2CAddress;
    }
-   #endif
    return 0; 
 }

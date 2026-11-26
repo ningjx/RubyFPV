@@ -34,14 +34,8 @@
 #include "../base/config_hw.h"
 #include <math.h>
 
-#if defined (HW_PLATFORM_RASPBERRY)
-//#include "render_engine_ovg.h"
-#include "render_engine_raw.h"
-#endif
 
-#if defined (HW_PLATFORM_RADXA)
 #include "render_engine_cairo.h"
-#endif
 
 #include "../base/base.h"
 #include "../base/hardware.h"
@@ -54,14 +48,8 @@ RenderEngine* render_init_engine()
    log_line("[RenderEngine] Renderer Engine Init...");
    if ( NULL == s_pRenderEngine )
    {
-      #if defined (HW_PLATFORM_RASPBERRY)
-      s_bRenderEngineSupportsRawFonts = true;
-      s_pRenderEngine = new RenderEngineRaw();
-      #endif
-      #if defined (HW_PLATFORM_RADXA)
       s_bRenderEngineSupportsRawFonts = true;
       s_pRenderEngine = new RenderEngineCairo();
-      #endif
 
       if (NULL != s_pRenderEngine )
          s_pRenderEngine->initEngine();
@@ -515,15 +503,6 @@ int RenderEngine::loadRawFont(int iFamilyId, const char* szFontFile, int iBold)
 
    log_line("[RenderEngineRaw] Loading font: %s", szFile);
    m_pRawFonts[m_iCountRawFonts]->pImageObject = _loadRawFontImageObject(szFile);
-   #if defined (HW_PLATFORM_RADXA)
-   #else
-   if ( NULL == m_pRawFonts[m_iCountRawFonts]->pImageObject )
-   {
-      log_softerror_and_alarm("[RenderEngineRaw] Failed to load font: %s (can't load font image)", szFile);
-      fclose(fd);
-      return -4;
-   }
-   #endif
    if ( 2 != fscanf(fd, "%d %d", &(m_pRawFonts[m_iCountRawFonts]->lineHeight), &(m_pRawFonts[m_iCountRawFonts]->baseLine) ) )
    {
       log_error_and_alarm("[RenderEngineRaw] Invalid font file (%s).", szFontFile);

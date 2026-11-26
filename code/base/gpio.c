@@ -24,8 +24,6 @@ int g_iGPIOPinQA22 = GPIO_PIN_QACTION2_2;
 int g_iGPIOPinQA3 = GPIO_PIN_QACTION3;
 int g_iGPIOPinQAPlus = GPIO_PIN_QACTIONPLUS;
 int g_iGPIOPinQAMinus = GPIO_PIN_QACTIONMINUS;
-int g_iGPIOPinDetectVehicle = GPIO_PIN_DETECT_TYPE_VEHICLE;
-int g_iGPIOPinDetectController = GPIO_PIN_DETECT_TYPE_CONTROLLER;
 
 int GPIOGetPinLedRed() { return g_iGPIOPinLedRed; }
 int GPIOGetPinLedGreen() { return g_iGPIOPinLedGreen; }
@@ -40,15 +38,12 @@ int GPIOGetPinQA22()    { return g_iGPIOPinQA22; }
 int GPIOGetPinQA3()    { return g_iGPIOPinQA3; }
 int GPIOGetPinQAPlus() { return g_iGPIOPinQAPlus; }
 int GPIOGetPinQAMinus() { return g_iGPIOPinQAMinus; }
-int GPIOGetPinDetectVehicle() { return g_iGPIOPinDetectVehicle; }
-int GPIOGetPinDetectController() { return g_iGPIOPinDetectController; }
 
 int _gpio_reverse_find_pin_mapping(int iGPIOPin)
 {
    if ( (iGPIOPin <= 0) || (iGPIOPin >= 50) )
       return -1;
 
-   #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 
    char szComm[128];
    char szOutput[256];
@@ -76,13 +71,11 @@ int _gpio_reverse_find_pin_mapping(int iGPIOPin)
 
    log_line("[GPIO] Mapped PIN_%d to Radxa pin %d", iGPIOPin, iNewPin);
    return iNewPin;
-   #endif
    return -1;
 }
 
 void _gpio_load_custom_mapping()
 {
-   #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    log_line("[GPIO] Loading custom GPIO mappings from file (%s%s)...", FOLDER_WINDOWS_PARTITION, FILE_CONFIG_GPIO);
    char szFile[MAX_FILE_PATH_SIZE];
    strcpy(szFile, FOLDER_WINDOWS_PARTITION);
@@ -122,12 +115,10 @@ void _gpio_load_custom_mapping()
    g_iGPIOPinPlus = iTmp3;
    g_iGPIOPinMinus = iTmp4;
 
-   #if defined (HW_PLATFORM_RADXA)
    g_iGPIOPinMenu = _gpio_reverse_find_pin_mapping(g_iGPIOPinMenu);
    g_iGPIOPinBack = _gpio_reverse_find_pin_mapping(g_iGPIOPinBack);
    g_iGPIOPinPlus = _gpio_reverse_find_pin_mapping(g_iGPIOPinPlus);
    g_iGPIOPinMinus = _gpio_reverse_find_pin_mapping(g_iGPIOPinMinus);
-   #endif
 
    log_line("[GPIO] Assigned GPIO for menu/back/plus/minus: %d %d %d %d", g_iGPIOPinMenu, g_iGPIOPinBack, g_iGPIOPinPlus, g_iGPIOPinMinus);
 
@@ -144,80 +135,17 @@ void _gpio_load_custom_mapping()
 
 
    log_line("[GPIO] GPIO custom pins for QA1/2/3: %d %d %d", iTmp1, iTmp2, iTmp3);
-   #if defined (HW_PLATFORM_RADXA)
    if ( iTmp1 > 0 )
       g_iGPIOPinQA1 = _gpio_reverse_find_pin_mapping(iTmp1);
    if ( iTmp2 > 0 )
       g_iGPIOPinQA2 = _gpio_reverse_find_pin_mapping(iTmp2);
    if ( iTmp3 > 0 )
       g_iGPIOPinQA3 = _gpio_reverse_find_pin_mapping(iTmp3);
-   #endif
 
    log_line("[GPIO] Assigned GPIO for QA1/QA2/QA3: %d %d %d", g_iGPIOPinQA1, g_iGPIOPinQA2, g_iGPIOPinQA3);
    fclose(fd);
-   #endif
 }
 
-#ifdef HW_CAPABILITY_GPIO
 
-#ifdef HW_PLATFORM_RASPBERRY
-#include "gpio_pi.c"
-#endif
 
-#ifdef HW_PLATFORM_RADXA
 #include "gpio_radxa.c"
-#endif
-
-#else
-
-int GPIOExport(int pin)
-{
-   return 0;
-}
-
-int GPIOUnexport(int pin)
-{
-  	return 0;
-}
-
-int GPIODirection(int pin, int dir)
-{
-  	return 0;
-}
-
-int GPIORead(int pin)
-{
-   return 0;
-}
-
-int GPIOWrite(int pin, int value)
-{
-  	return 0;
-}
-
-int GPIOGetButtonsPullDirection()
-{
-   return 1;
-}
-
-int _GPIOTryPullUpDown(int iPin, int iPullDirection)
-{
-   return 0;
-}
-
-
-void _GPIO_PullAllDown()
-{
-}
-
-void _GPIO_PullAllUp()
-{
-}
-
-// Returns 0 on success, 1 on failure
-
-int GPIOInitButtons()
-{
-   return 0;
-}
-#endif

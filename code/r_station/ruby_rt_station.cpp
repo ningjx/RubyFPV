@@ -1163,13 +1163,8 @@ void video_processors_init()
       
       rx_video_output_start_video_streamer();
 
-      #ifdef HW_PLATFORM_RASPBERRY
-      rx_video_output_enable_streamer_output();
-      #endif
-      #ifdef HW_PLATFORM_RADXA
       //rx_video_output_enable_local_player_udp_output();
       rx_video_output_enable_streamer_output();
-      #endif
 
       log_line("Do one time init of processors rx video...");
       ProcessorRxVideo::oneTimeInit();

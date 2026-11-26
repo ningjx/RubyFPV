@@ -1,2 +1,2 @@
-#!/bin/bash 
-make all RUBY_BUILD_ENV=radxa
+#!/bin/bash
+exec make all "$@"

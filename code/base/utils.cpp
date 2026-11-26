@@ -712,28 +712,11 @@ bool radio_utils_set_interface_frequency(Model* pModel, int iRadioIndex, int iAs
 
          if ( bTryHT40 )
          {
-            #if defined(HW_PLATFORM_RASPBERRY)
-            if ( pRadioInfo->iRadioType == RADIO_TYPE_ATHEROS )
-            {
-               sprintf(cmd, "iw dev %s set freq %u HT40+", pRadioInfo->szName, uFreqWifi);
-               bUsedHT40 = true;
-            }
-            else
-            {
-               sprintf(cmd, "iw dev %s set freq %u HT40+", pRadioInfo->szName, uFreqWifi);
-               bUsedHT40 = true;
-            }
-            #else
                sprintf(cmd, "iwconfig %s freq %u000", pRadioInfo->szName, uFrequencyKhz);            
-            #endif
          }
          else if ( pRadioInfo->isHighCapacityInterface )
          {
-            #if defined(HW_PLATFORM_RASPBERRY)
-            sprintf(cmd, "iw dev %s set freq %u", pRadioInfo->szName, uFreqWifi);
-            #else
             sprintf(cmd, "iwconfig %s freq %u000", pRadioInfo->szName, uFrequencyKhz);            
-            #endif
          }
          hw_execute_process(cmd, 0, szOutput, sizeof(szOutput)/sizeof(szOutput[0]));
          
@@ -753,11 +736,7 @@ bool radio_utils_set_interface_frequency(Model* pModel, int iRadioIndex, int iAs
             log_softerror_and_alarm("Failed to switch radio interface %d (%s, %s) to frequency %s in HT40 mode, returned error: [%s]. Retry operation.", i+1, pRadioInfo->szName, str_get_radio_driver_description(pRadioInfo->iRadioDriver), str_format_frequency(uFrequencyKhz), szOutput);
             hardware_sleep_ms(delayMs);
             szOutput[0] = 0;
-            #if defined(HW_PLATFORM_RASPBERRY)
-            sprintf(cmd, "iw dev %s set freq %u", pRadioInfo->szName, uFreqWifi);
-            #else
             sprintf(cmd, "iwconfig %s freq %u000", pRadioInfo->szName, uFrequencyKhz);
-            #endif
             hw_execute_bash_command_raw(cmd, szOutput);
          }
 

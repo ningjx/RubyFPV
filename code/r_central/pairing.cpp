@@ -81,8 +81,6 @@ bool _pairing_start()
       return false;
    }
 
-   if ( hardware_is_running_on_runcam_vrx() )
-      hardware_led_green_set_on();
 
    controller_launch_router(g_bSearching, g_iSearchFirmwareType);
    controller_launch_rx_telemetry();
@@ -221,8 +219,6 @@ bool pairing_stop()
    s_bPairingIsRouterReady = false;
 
    forward_streams_on_pairing_stop();
-   if ( hardware_is_running_on_runcam_vrx() )
-      hardware_led_green_set_off();
 
    _pairing_close_shared_mem();
 

@@ -113,17 +113,7 @@ int _open_msg_queue()
 
 void _log_platform(bool bNewLine)
 {
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   printf("Built for OpenIPC camera.");
-   #elif defined(HW_PLATFORM_LINUX_GENERIC)
-   printf("Built for Linux");
-   #elif defined(HW_PLATFORM_RASPBERRY)
-   printf("Built for Raspberry");
-   #elif defined(HW_PLATFORM_RADXA)
    printf("Built for Radxa Zero 3");
-   #else
-   printf("Built for N/A");
-   #endif
    if ( bNewLine )
       printf("\n");
 }

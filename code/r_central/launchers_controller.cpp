@@ -78,14 +78,6 @@ void controller_launch_router(bool bSearchMode, int iFirmwareType)
    {
       if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRouter > 100) )
          sprintf(szPrefix, "nice -n %d", g_pControllerSettings->iThreadPriorityRouter - 120);    
-      #ifdef HW_CAPABILITY_IONICE
-      if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->ioNiceRouter > 0) )
-      {
-         sprintf(szPrefix, "ionice -c 1 -n %d", g_pControllerSettings->ioNiceRouter);
-         if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRouter > 100) )
-            sprintf(szPrefix, "ionice -c 1 -n %d nice -n %d", g_pControllerSettings->ioNiceRouter, g_pControllerSettings->iThreadPriorityRouter - 120);
-      }
-      #endif
    }
 
    if ( ! g_pControllerSettings->iPrioritiesAdjustment )
@@ -138,15 +130,6 @@ void controller_launch_tx_rc()
    if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRC > 100) )
       sprintf(szPrefix, "nice -n %d", g_pControllerSettings->iThreadPriorityRC - 120);
 
-   #ifdef HW_CAPABILITY_IONICE
-   if ( g_pControllerSettings->iPrioritiesAdjustment && (NULL != g_pCurrentModel) )
-   if ( DEFAULT_IO_PRIORITY_RC > 0 )
-   {
-      sprintf(szPrefix, "ionice -c 1 -n %d", DEFAULT_IO_PRIORITY_RC);
-      if ( g_pControllerSettings->iPrioritiesAdjustment && (g_pControllerSettings->iThreadPriorityRC > 100) )
-         sprintf(szPrefix, "ionice -c 1 -n %d nice -n %d", DEFAULT_IO_PRIORITY_RC, g_pControllerSettings->iThreadPriorityRC - 120);
-   }
-   #endif
 
    hw_execute_ruby_process(szPrefix, "ruby_tx_rc", szParams, NULL);
 }

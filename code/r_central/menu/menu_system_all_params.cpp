@@ -65,12 +65,10 @@ void MenuSystemAllParams::Render()
    float yTop = RenderFrameAndTitle();
    float y = yTop;
 
-   FILE* fd = NULL;
    char szBuff[256];
-   char szFile[256];
    char szOutput[1024];
 
-   u32 uBoardType = 0;
+   u32 uBoardType = hardware_getBoardType();
 
    float height_text = g_pRenderEngine->textHeight(g_idFontMenuSmall);   
 
@@ -79,14 +77,6 @@ void MenuSystemAllParams::Render()
    float width = m_RenderWidth-2*m_sfMenuPaddingX;
    float height = m_RenderHeight-2*m_sfMenuPaddingY;
 
-   strcpy(szFile, FOLDER_RUBY_TEMP);
-   strcat(szFile, FILE_CONFIG_BOARD_TYPE);
-   fd = fopen(szFile,"r");
-   if ( NULL != fd )
-   {
-      fscanf(fd,"%u", &uBoardType);
-      fclose(fd);
-   }
          
    sprintf(szBuff, "Controller board: %s, no vehicle selected.", str_get_hardware_board_name(uBoardType));
    if ( NULL != g_pCurrentModel )
@@ -104,45 +94,39 @@ void MenuSystemAllParams::Render()
    if ( ! m_bGotIP )
    {
       m_szIP[0] = 0;
-      if ( uBoardType != BOARD_TYPE_PIZERO && uBoardType != BOARD_TYPE_PIZEROW && uBoardType != BOARD_TYPE_PI3APLUS )
+      szOutput[0] = 0;
+      //hw_execute_bash_command_raw("ifconfig | grep -A1 eth | head -2 | tail -1", szOutput);
+      hw_execute_bash_command_raw("ip addr | grep eth | grep inet", szOutput);
+      log_line("Out: [%s]", szOutput);
+
+      int cSpaces = 0;
+      int cOther = 0;
+      for( int i=0; i<(int)strlen(szOutput); i++ )
       {
-         szOutput[0] = 0;
-         //hw_execute_bash_command_raw("ifconfig | grep -A1 eth | head -2 | tail -1", szOutput);
-         hw_execute_bash_command_raw("ip addr | grep eth | grep inet", szOutput);
-         log_line("Out: [%s]", szOutput);
-         
-         int cSpaces = 0;
-         int cOther = 0;
-         for( int i=0; i<(int)strlen(szOutput); i++ )
-         {
-            if ( szOutput[i] != ' ' )
-               cOther++;
+         if ( szOutput[i] != ' ' )
+            cOther++;
 
-            if ( szOutput[i] == ' ' )
-            if ( cOther )
-               cSpaces++;
-            if ( szOutput[i] == 10 || szOutput[i] == 13 || cSpaces >= 2 )
-            {
-               szOutput[i] = 0;
-               break;
-            }
-         }
-         log_line("Out: [%s]", szOutput);
-         char* p = &(szOutput[0]);
-         if ( NULL != strstr(szOutput, "inet") )
+         if ( szOutput[i] == ' ' )
+         if ( cOther )
+            cSpaces++;
+         if ( szOutput[i] == 10 || szOutput[i] == 13 || cSpaces >= 2 )
          {
-            p = strstr(szOutput, "inet");
-            p += 5;
+            szOutput[i] = 0;
+            break;
          }
-
-         while ( (*p == ' ') && (*p != 0) )
-            p++;
-         if ( (*p != 0) && (strlen(p)>4) )
-            strcpy(m_szIP, p);
-         m_bGotIP = true;
       }
-      else
-         strcpy(m_szIP, "No ETH");
+      log_line("Out: [%s]", szOutput);
+      char* p = &(szOutput[0]);
+      if ( NULL != strstr(szOutput, "inet") )
+      {
+         p = strstr(szOutput, "inet");
+         p += 5;
+      }
+
+      while ( (*p == ' ') && (*p != 0) )
+         p++;
+      if ( (*p != 0) && (strlen(p)>4) )
+         strcpy(m_szIP, p);
       m_bGotIP = true;
    }
    snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "Controller IP: %s", m_szIP);

@@ -12,13 +12,7 @@
 
 #define ALIGN_STRUCT_SPEC_INFO __attribute__((aligned(4)))
 
-//sig_atomic_t
-//_Atomic
-//#if defined (HW_PLATFORM_OPENIPC_CAMERA)
-//#define _ATOMIC_PREFIX _Atomic
-//#else
 #define _ATOMIC_PREFIX volatile
-//#endif
 
 //#define DISABLE_ALL_LOGS 1
 #define FEATURE_ENABLE_RC 1
@@ -39,13 +33,8 @@
 #define MAX_CAMERA_BIN_PROFILE_NAME 32
 
 #define DEFAULT_VEHICLE_NAME ""
-#ifdef HW_PLATFORM_OPENIPC_CAMERA
-#define MAX_MODELS 2
-#define MAX_MODELS_SPECTATOR 2
-#else
 #define MAX_MODELS 40
 #define MAX_MODELS_SPECTATOR 20
-#endif
 
 
 #define SYSTEM_RT_INFO_UPDATE_INTERVAL_MS 5
@@ -89,12 +78,7 @@
 #define DEFAULT_MAVLINK_SYS_ID_VEHICLE 1
 #define DEFAULT_MAVLINK_SYS_ID_CONTROLLER 255
 
-//#if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 #define DEFAULT_FC_TELEMETRY_SERIAL_SPEED 57600
-//#endif
-//#ifdef HW_PLATFORM_OPENIPC_CAMERA
-//#define DEFAULT_FC_TELEMETRY_SERIAL_SPEED 115200
-//#endif
 
 #define DEFAULT_TELEMETRY_SEND_RATE 4 // Times per second. How often the Ruby/FC telemetry gets sent from vehicle to controller
 
@@ -126,10 +110,6 @@ extern "C" {
 void getSystemVersionString(char* p, u32 swversion);
 int hardware_file_check_and_fix_access_c(char* szFullFileName);
 
-int config_file_get_value(const char* szPropName);
-void config_file_set_value(const char* szFile, const char* szPropName, int value);
-void config_file_force_value(const char* szFile, const char* szPropName, int value);
-void config_file_add_value(const char* szFile, const char* szPropName, int value);
 
 void save_simple_config_fileU(const char* fileName, u32 value);
 u32 load_simple_config_fileU(const char* fileName, u32 defaultValue);

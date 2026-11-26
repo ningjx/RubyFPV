@@ -41,7 +41,6 @@
 #include "../common/string_utils.h"
 #include "../radio/radioflags.h"
 
-#if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 
 ControllerInterfacesSettings s_CIS;
 bool s_bAddedNewRadioInterfaces = false;
@@ -1252,13 +1251,11 @@ void controllerInterfacesEnumJoysticks()
          if ( pJoystick->countButtons != s_CIS.inputInterfaces[j].countButtons )
             continue;
          s_CIS.inputInterfaces[j].currentHardwareIndex = i;
-         #if defined (HW_PLATFORM_RADXA)
          for( int k=0; k<MAX_JOYSTICK_AXES; k++ )
          {
             s_CIS.inputInterfaces[j].axesMinValue[k] = -32780;
             s_CIS.inputInterfaces[j].axesMaxValue[k] = 32780;
          }
-         #endif
          bFound = true;
          break;
       }
@@ -1270,9 +1267,7 @@ void controllerInterfacesEnumJoysticks()
          s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].countAxes = pJoystick->countAxes;
          s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].countButtons = pJoystick->countButtons;
          s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].bCalibrated = false;
-         #if defined (HW_PLATFORM_RADXA)
          s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].bCalibrated = true;
-         #endif
          s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].currentHardwareIndex = i;
          for( int k=0; k<MAX_JOYSTICK_AXES; k++ )
          {
@@ -1280,10 +1275,8 @@ void controllerInterfacesEnumJoysticks()
             s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesCenterValue[k] = 0;
             s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesMinValue[k] = -99;
             s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesMaxValue[k] = 99;
-            #if defined (HW_PLATFORM_RADXA)
             s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesMinValue[k] = -32780;
             s_CIS.inputInterfaces[s_CIS.inputInterfacesCount].axesMaxValue[k] = 32780;
-            #endif
          }
          for( int k=0; k<MAX_JOYSTICK_BUTTONS; k++ )
          {
@@ -1352,12 +1345,3 @@ t_ControllerInputInterface* controllerInterfacesGetAt(int index)
    }
    return NULL;
 }
-
-#else
-
-int save_ControllerInterfacesSettings() { return 0; }
-int load_ControllerInterfacesSettings() { return 0; }
-void reset_ControllerInterfacesSettings() {}
-ControllerInterfacesSettings* get_ControllerInterfacesSettings() { return NULL; }
-void controllerRadioInterfacesLogInfo() {}
-#endif

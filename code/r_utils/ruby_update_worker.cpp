@@ -142,76 +142,6 @@ void process_custom_commands_file()
    //hw_execute_process_wait(szCommand);
 }
 
-long compute_file_sizes()
-{
-   long lSize = 0;
-   long lTotalSize = 0;
-
-   lSize = get_filesize("ruby_central");
-   if ( -1 == lSize )
-      return -1;    
-
-   lTotalSize += lSize;
-
-   lTotalSize += lSize;
-
-   lSize = get_filesize("ruby_rt_station");
-   if ( -1 == lSize )
-      return -1;
-
-   lTotalSize += lSize;
-
-   lSize = get_filesize("ruby_update");
-   if ( -1 == lSize )
-      return -1;
-
-   lTotalSize += lSize;
-
-   lSize = get_filesize("ruby_rt_vehicle");
-   if ( -1 == lSize )
-      return -1;
-
-   lTotalSize += lSize;
-
-   lSize = get_filesize("ruby_start");
-   if ( -1 == lSize )
-      return -1;
-
-   lTotalSize += lSize;
-
-   lSize = get_filesize("ruby_update");
-   if ( -1 == lSize )
-      return -1;
-
-   lTotalSize += lSize;
-
-   lSize = get_filesize("ruby_rx_telemetry");
-   if ( -1 == lSize )
-      return -1;
-
-   lTotalSize += lSize;
-
-   lSize = get_filesize("ruby_tx_telemetry");
-   if ( -1 == lSize )
-      return -1;
-
-   lTotalSize += lSize;
-
-   lSize = get_filesize("ruby_tx_rc");
-   if ( -1 == lSize )
-      return -1;
-
-   lTotalSize += lSize;
-
-   lSize = get_filesize("ruby_i2c");
-   if ( -1 == lSize )
-      return -1;
-
-   lTotalSize += lSize;
-
-   return lTotalSize;
-}
-
 void _write_return_code(int iCode, const char* szText)
 {
    char szComm[256];
@@ -263,8 +193,6 @@ int _replace_runtime_binary_files()
    char szOutput[4096];
    hw_execute_ruby_process_wait(NULL, "ruby_start", "-ver", szOutput, 1);
    log_line("ruby_start: [%s]", szOutput);
-   hw_execute_ruby_process_wait(NULL, "ruby_rt_vehicle", "-ver", szOutput, 1);
-   log_line("ruby_rt_vehicle: [%s]", szOutput);
    hw_execute_ruby_process_wait(NULL, "ruby_rt_station", "-ver", szOutput, 1);
    log_line("ruby_rt_station: [%s]", szOutput);
    hw_execute_ruby_process_wait(NULL, "ruby_central", "-ver", szOutput, 1);
@@ -272,15 +200,7 @@ int _replace_runtime_binary_files()
  
    char szComm[MAX_FILE_PATH_SIZE];
    char szSrcBinariesFolder[MAX_FILE_PATH_SIZE];
-   #ifdef HW_PLATFORM_RASPBERRY
-   snprintf(szSrcBinariesFolder, sizeof(szSrcBinariesFolder)/sizeof(szSrcBinariesFolder[0]), "%s%s", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   #endif
-   #ifdef HW_PLATFORM_RADXA
    snprintf(szSrcBinariesFolder, sizeof(szSrcBinariesFolder)/sizeof(szSrcBinariesFolder[0]), "%s%s", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_RADXA);
-   #endif
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-   snprintf(szSrcBinariesFolder, sizeof(szSrcBinariesFolder)/sizeof(szSrcBinariesFolder[0]), "%s%s", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_OIPC);
-   #endif
 
    log_line("Check for binary files in unzipped folder [%s] ...", szSrcBinariesFolder);
 
@@ -311,30 +231,13 @@ int _replace_runtime_binary_files()
    }
 
 
-   #if defined (HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    if ( bIsOnyx )
    {
       hw_execute_bash_command("chmod 777 /root/.profile 2>/dev/null", NULL);
       hw_execute_bash_command("sed -i -e 's/ruby/onyxfpv/g' /root/.profile", NULL);
       hw_execute_bash_command("chmod 777 /root/.profile 2>/dev/null", NULL);
    }
-   #endif
 
-   /*
-   log_line("Binaries version in the unzipped folder:");
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), ".%s%sruby_start -ver", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   hw_execute_process(szComm, 0, szOutput, sizeof(szOutput)/sizeof(szOutput[0]));
-   log_line("ruby_start: [%s]", szOutput);
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), ".%s%/ruby_rt_vehicle -ver", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   hw_execute_process(szComm, 0, szOutput, sizeof(szOutput)/sizeof(szOutput[0]));
-   log_line("ruby_rt_vehicle: [%s]", szOutput);
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), ".%s%sruby_rt_station -ver", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   hw_execute_process(szComm, 0, szOutput, sizeof(szOutput)/sizeof(szOutput[0]));
-   log_line("ruby_rt_station: [%s]", szOutput);
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), ".%s%sruby_central -ver", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   hw_execute_process(szComm, 0, szOutput, sizeof(szOutput)/sizeof(szOutput[0]));
-   log_line("ruby_central: [%s]", szOutput);
-   */
 
    snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "ls %s",szSrcBinariesFolder);
    hw_execute_process(szComm, 0, szOutput, sizeof(szOutput)/sizeof(szOutput[0]));
@@ -365,8 +268,6 @@ int _replace_runtime_binary_files()
       log_line("onyxfpv_start: [%s]", szOutput);
       hw_execute_ruby_process_wait(NULL, "onyxfpv_router_s", "-ver", szOutput, 1);
       log_line("onyxfpv_router_s: [%s]", szOutput);
-      hw_execute_ruby_process_wait(NULL, "onyxfpv_router_v", "-ver", szOutput, 1);
-      log_line("onyxfpv_router_v: [%s]", szOutput);
       hw_execute_ruby_process_wait(NULL, "onyxfpv_central", "-ver", szOutput, 1);
       log_line("onyxfpv_central: [%s]", szOutput);
    }
@@ -379,8 +280,6 @@ int _replace_runtime_binary_files()
       log_line("Binaries versions after replacing:");
       hw_execute_ruby_process_wait(NULL, "ruby_start", "-ver", szOutput, 1);
       log_line("ruby_start: [%s]", szOutput);
-      hw_execute_ruby_process_wait(NULL, "ruby_rt_vehicle", "-ver", szOutput, 1);
-      log_line("ruby_rt_vehicle: [%s]", szOutput);
       hw_execute_ruby_process_wait(NULL, "ruby_rt_station", "-ver", szOutput, 1);
       log_line("ruby_rt_station: [%s]", szOutput);
       hw_execute_ruby_process_wait(NULL, "ruby_central", "-ver", szOutput, 1);
@@ -388,26 +287,12 @@ int _replace_runtime_binary_files()
    }
  
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %sraspi* %s", szSrcBinariesFolder, FOLDER_BINARIES);
-   //hw_execute_process_wait(szComm);
-   hw_execute_bash_command(szComm, NULL);
-   if ( access( "ruby_capture_raspi", R_OK ) != -1 )
-      hw_execute_bash_command("cp -rf ruby_capture_raspi /opt/vc/bin/raspivid", NULL);
-   if ( access( "ruby_capture_veye", R_OK ) != -1 )
-      hw_execute_bash_command("cp -rf ruby_capture_veye /usr/local/bin/veye_raspivid", NULL);
-   if ( access( "onyxfpv_capture_raspi", R_OK ) != -1 )
-      hw_execute_bash_command("cp -rf onyxfpv_capture_raspi /opt/vc/bin/raspivid", NULL);
-   if ( access( "onyxfpv_capture_veye", R_OK ) != -1 )
-      hw_execute_bash_command("cp -rf onyxfpv_capture_veye /usr/local/bin/veye_raspivid", NULL);
-   #endif
 
    return 0;
 }
 
 void _copy_libraries()
 {
-   #if defined (HW_PLATFORM_RADXA)
    int iMajor = 0;
    int iMinor = 0;
    get_Ruby_BaseVersion(&iMajor, &iMinor);
@@ -446,7 +331,6 @@ void _copy_libraries()
    hw_execute_bash_command("ln -s /lib/aarch64-linux-gnu/libSDL2-2.0.so.0.14.0 /lib/aarch64-linux-gnu/libSDL2-2.0.so.0 2>/dev/null", NULL);
    hw_execute_bash_command("chmod 777 /lib/aarch64-linux-gnu/libSDL*", NULL);
    log_line("Done updating Radxa libraries.");
-   #endif
 }
 
 int _copy_update_binary_files()
@@ -539,15 +423,7 @@ int _copy_plugin_files()
    char szComm[MAX_FILE_PATH_SIZE];
    char szSrcPluginsFolder[MAX_FILE_PATH_SIZE];
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   snprintf(szSrcPluginsFolder, sizeof(szSrcPluginsFolder)/sizeof(szSrcPluginsFolder[0]), "%s%splugins/", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   #endif
-   #ifdef HW_PLATFORM_RADXA
    snprintf(szSrcPluginsFolder, sizeof(szSrcPluginsFolder)/sizeof(szSrcPluginsFolder[0]), "%s%splugins/", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_RADXA);
-   #endif
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-   snprintf(szSrcPluginsFolder, sizeof(szSrcPluginsFolder)/sizeof(szSrcPluginsFolder[0]), "%s%splugins/", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_OIPC);
-   #endif
 
    log_line("Copying plugins files from source folder: (%s)", szSrcPluginsFolder);
 
@@ -571,54 +447,7 @@ int _copy_config_files()
       return -1;
    }
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   char szSourceFile[MAX_FILE_PATH_SIZE];
-   snprintf(szSourceFile, sizeof(szSourceFile)/sizeof(szSourceFile[0]), "%s%sruby_profile", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   if ( access( szSourceFile, R_OK ) != -1 )
-   {
-      char szComm[MAX_FILE_PATH_SIZE];
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %s /root/.profile", szSourceFile);
-      //hw_execute_process_wait(szComm);
-      hw_execute_bash_command(szComm, NULL);
-      hw_execute_process_wait("chmod 777 /root/.profile");
-   }
 
-   snprintf(szSourceFile, sizeof(szSourceFile)/sizeof(szSourceFile[0]), "%s%sonyxfpv_profile", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   if ( access( szSourceFile, R_OK ) != -1 )
-   {
-      char szComm[MAX_FILE_PATH_SIZE];
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %s /root/.profile", szSourceFile);
-      //hw_execute_process_wait(szComm);
-      hw_execute_bash_command(szComm, NULL);
-      hw_execute_process_wait("chmod 777 /root/.profile");
-   }
-
-   snprintf(szSourceFile, sizeof(szSourceFile)/sizeof(szSourceFile[0]), "%s%sruby_config.txt", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   if ( access( szSourceFile, R_OK ) != -1 )
-   {
-      hardware_mount_boot();
-      hardware_sleep_ms(200);
-      char szComm[MAX_FILE_PATH_SIZE];
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %s /boot/config.txt", szSourceFile);
-      //hw_execute_process_wait(szComm);
-      hw_execute_bash_command(szComm, NULL);
-      hw_execute_process_wait("chmod 777 /boot/config.txt");
-   }
-
-   snprintf(szSourceFile, sizeof(szSourceFile)/sizeof(szSourceFile[0]), "%s%sonyxfpv_config.txt", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
-   if ( access( szSourceFile, R_OK ) != -1 )
-   {
-      hardware_mount_boot();
-      hardware_sleep_ms(200);
-      char szComm[MAX_FILE_PATH_SIZE];
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %s /boot/config.txt", szSourceFile);
-      //hw_execute_process_wait(szComm);
-      hw_execute_bash_command(szComm, NULL);
-      hw_execute_process_wait("chmod 777 /boot/config.txt");
-   }
-   #endif
-
-   #if defined(HW_PLATFORM_RADXA)
    char szSourceFile[MAX_FILE_PATH_SIZE];
    snprintf(szSourceFile, sizeof(szSourceFile)/sizeof(szSourceFile[0]), "%s%sruby_profile", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_RADXA);
    if ( access( szSourceFile, R_OK ) != -1 )
@@ -647,7 +476,6 @@ int _copy_config_files()
       hw_execute_bash_command(szComm, NULL);
       hw_execute_process_wait("chmod 777 /root/.profile");
    }
-   #endif
    return 0;
 }
 

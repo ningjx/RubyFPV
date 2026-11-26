@@ -45,10 +45,8 @@
 
 #include "../process_router_messages.h"
 #include "../pairing.h"
-#if defined (HW_PLATFORM_RADXA)
 #include "../../renderer/drm_core.h"
 #include "../../renderer/render_engine_cairo.h"
-#endif
 #include <time.h>
 #include <sys/resource.h>
 #include <pthread.h>
@@ -124,30 +122,14 @@ MenuControllerVideo::MenuControllerVideo(void)
    m_pItemsSelect[3]->setIsEditable();
    m_IndexHDMIRefreshRate = addMenuItem(m_pItemsSelect[3]);
 
-   m_IndexHDMIBoost = -1;
-   m_IndexHDMIOverscan = -1;
    m_IndexHDMIVSync = -1;
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   m_pItemsSlider[0] = new MenuItemSlider(L("HDMI Output Boost"), L("Sets the boost voltage level for the HDMI output."), 0,11,6, 0.15);
-   m_IndexHDMIBoost = addMenuItem(m_pItemsSlider[0]);
 
-   addMenuItem(new MenuItemText(s_szHDMIInfo, true));
-
-   m_pItemsSelect[2] = new MenuItemSelect(L("HDMI Overscan"), L("Default overscan (margins) on HDMI output. Requires a reboot after changing this value."));
-   m_pItemsSelect[2]->addSelection(L("Enabled"));
-   m_pItemsSelect[2]->addSelection(L("Disabled"));
-   m_pItemsSelect[2]->setIsEditable();
-   m_IndexHDMIOverscan = addMenuItem(m_pItemsSelect[2]);
-   #endif
-
-   #if defined (HW_PLATFORM_RADXA)
    m_pItemsSelect[6] = new MenuItemSelect(L("HDMI Vertical Sync"), L("Enable vertical sync renderging synchronization on the HDMI display."));
    m_pItemsSelect[6]->addSelection(L("Disabled"));
    m_pItemsSelect[6]->addSelection(L("Enabled"));
    m_pItemsSelect[6]->setIsEditable();
    m_IndexHDMIVSync = addMenuItem(m_pItemsSelect[6]);
-   #endif
 
    m_IndexCalibrateHDMI = addMenuItem(new MenuItem(L("Calibrate HDMI output"), L("Calibrate the colors, brightness and contrast on the controller display.")));
    m_pMenuItems[m_IndexCalibrateHDMI]->showArrow();
@@ -236,23 +218,6 @@ MenuControllerVideo::~MenuControllerVideo(void)
    if ( m_hdmigroupOrg != hdmi_get_current_resolution_group() ||
         m_hdmimodeOrg != hdmi_get_current_resolution_mode() )
    {
-      #if defined (HW_PLATFORM_RASPBERRY)
-      char szBuff[128];
-      sprintf(szBuff, "touch %s%s", FOLDER_CONFIG, FILE_TEMP_HDMI_CHANGED);
-      hw_execute_bash_command_silent(szBuff, NULL);
-
-      strcpy(szBuff, FOLDER_CONFIG);
-      strcat(szBuff, FILE_TEMP_HDMI_CHANGED);
-      FILE* fd = fopen(szBuff, "w");
-      if ( NULL != fd )
-      {
-         fprintf(fd, "%d %d\n", hdmi_get_current_resolution_group(), hdmi_get_current_resolution_mode() );
-         fprintf(fd, "%d %d %d\n", hdmi_get_current_resolution_width(), hdmi_get_current_resolution_height(), hdmi_get_current_resolution_refresh() );
-         fprintf(fd, "%d %d\n", m_hdmigroupOrg, m_hdmimodeOrg );
-         fclose(fd);
-      }
-
-      #endif
    }
 }
 
@@ -261,15 +226,6 @@ void MenuControllerVideo::valuesToUI()
    ControllerSettings* pCS = get_ControllerSettings();
    char szBuff[64];
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   if ( m_IndexHDMIBoost != -1 )
-      m_pItemsSlider[0]->setCurrentValue(pCS->iHDMIBoost);
-   if ( m_IndexHDMIOverscan != -1 )
-   {
-      pCS->iDisableHDMIOverscan = config_file_get_value("disable_overscan");
-      m_pItemsSelect[2]->setSelectedIndex(pCS->iDisableHDMIOverscan);
-   }
-   #endif
 
    if ( -1 != m_IndexHDMIVSync )
       m_pItemsSelect[6]->setSelectedIndex(pCS->iHDMIVSync);
@@ -345,13 +301,11 @@ void MenuControllerVideo::onReturnFromChild(int iChildMenuId, int returnValue)
 {
    Menu::onReturnFromChild(iChildMenuId, returnValue);
 
-   #if defined (HW_PLATFORM_RADXA)
    if ( 2 == iChildMenuId/1000 )
    {
       ruby_mark_reinit_hdmi_display();
       return;
    }
-   #endif
 
    if ( 5 == iChildMenuId/1000 )
    {
@@ -365,7 +319,6 @@ void MenuControllerVideo::onReturnFromChild(int iChildMenuId, int returnValue)
 
 int MenuControllerVideo::onBack()
 {
-   #if defined (HW_PLATFORM_RADXA)
    if ( m_hdmigroupOrg != hdmi_get_current_resolution_group() ||
         m_hdmimodeOrg != hdmi_get_current_resolution_mode() )
    {
@@ -374,7 +327,6 @@ int MenuControllerVideo::onBack()
       add_menu_to_stack(pMC);
       return 1;
    }
-   #endif
    return Menu::onBack();
 }
 
@@ -398,24 +350,6 @@ void MenuControllerVideo::onSelectItem()
       return;
    }
 
-   if ( m_IndexHDMIBoost == m_SelectedIndex )
-   {
-      char szBuff[64];
-      int hdmi_boost = m_pItemsSlider[0]->getCurrentValue();
-      if ( hdmi_boost == pCS->iHDMIBoost )
-         return;
-      pCS->iHDMIBoost = hdmi_boost;
-
-      hardware_mount_boot();
-      hardware_sleep_ms(50);
-      hw_execute_bash_command("cp /boot/config.txt config.txt", NULL);
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "sed -i 's/config_hdmi_boost=[0-9]*/config_hdmi_boost=%d/g' config.txt", hdmi_boost);
-      hw_execute_bash_command(szBuff, NULL);
-      hw_execute_bash_command("cp config.txt /boot/config.txt", NULL);
-      
-      save_ControllerSettings();
-      return;
-   }
 
    if ( m_IndexHDMIRes == m_SelectedIndex )
    {
@@ -433,30 +367,13 @@ void MenuControllerVideo::onSelectItem()
       return;
    }
 
-   if ( m_IndexHDMIOverscan == m_SelectedIndex )
-   {
-      pCS->iDisableHDMIOverscan = m_pItemsSelect[2]->getSelectedIndex();
-      save_ControllerSettings();
-      hardware_mount_boot();
-      hardware_sleep_ms(50);
-      hw_execute_bash_command("cp /boot/config.txt config.txt", NULL);
-
-      config_file_force_value("config.txt", "disable_overscan", pCS->iDisableHDMIOverscan);
-      hw_execute_bash_command("cp config.txt /boot/config.txt", NULL);
-
-      invalidate();
-      valuesToUI();
-      return;
-   }
 
    if ( (-1 != m_IndexHDMIVSync) && (m_IndexHDMIVSync == m_SelectedIndex) )
    {
       pCS->iHDMIVSync = m_pItemsSelect[6]->getSelectedIndex();
       save_ControllerSettings();
-      #if defined (HW_PLATFORM_RADXA)
       ruby_drm_enable_vsync(pCS->iHDMIVSync?true:false);
       send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED, PACKET_COMPONENT_LOCAL_CONTROL);
-      #endif
       invalidate();
       valuesToUI();
       return;

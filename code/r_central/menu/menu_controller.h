@@ -23,6 +23,5 @@ class MenuController: public Menu
       //int m_IndexShowCPUInfo, m_IndexShowVoltage;
       int m_IndexNetwork, m_IndexEncryption, m_IndexRadio;
       int m_IndexVideo, m_IndexTelemetry, m_IndexRecording;
-      bool m_bShownHDMIChangeNotif;
       int m_IndexDeveloper;
 };

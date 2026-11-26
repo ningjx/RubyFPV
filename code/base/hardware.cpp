@@ -47,18 +47,13 @@
 #include "gpio.h"
 #include "config.h"
 #include "hardware_procs.h"
-#include "hardware_camera.h"
 #include "hardware_files.h"
 #include "hardware_i2c.h"
 #include "../common/string_utils.h"
-#if defined(HW_PLATFORM_RADXA)
 #include <SDL2/SDL.h>
-#endif
 
 
-#ifdef HW_CAPABILITY_GPIO
 static int s_iButtonsWhereInited = 0;
-#endif
 
 static int s_ihwSwapButtons = 0;
 int sLastReadMenu = 0;
@@ -105,9 +100,7 @@ int sInitialReadQAPlus = 0;
 int sInitialReadQAMinus = 0;
 
 static u32 s_long_key_press_delta = 700;
-#ifdef HW_CAPABILITY_GPIO
 static u32 s_long_press_repeat_time = 120;
-#endif
 int s_bBlockCurrentPressedKeys = 0;
 
 bool s_bHardwareWasSetup = false;
@@ -126,160 +119,9 @@ bool s_bIsLedGreenBlinkingFast = false;
 u32 s_uTimeLedGreenBlinkUntil = 0;
 u32 s_uTimeLedGreenLastBlink = 0;
 
-bool s_bHardwareDetectedBoardType = false;
-u32  s_uHardwareBoardType = 0;
-bool s_bHarwareHasDetectedSystemType = false;
-int  s_iHardwareSystemIsVehicle = 0;
 
 int s_iHardwareJoystickCount = 0;
 hw_joystick_info_t s_HardwareJoystickInfo[MAX_JOYSTICK_INTERFACES];
-
-void _hardware_detectSystemType()
-{
-   log_line("[Hardware] Detecting system type...");
-   
-   char szBuff[256];
-   char szFile[MAX_FILE_PATH_SIZE];
-   strcpy(szFile, FOLDER_CONFIG);
-   strcat(szFile, FILE_CONFIG_SYSTEM_TYPE);
-   FILE* fd = fopen(szFile, "r");
-   if ( NULL != fd )
-   {
-      if ( 2 == fscanf(fd, "%d %u", &s_iHardwareSystemIsVehicle, &s_uHardwareBoardType) )
-      {
-         s_bHarwareHasDetectedSystemType = true;
-         log_line("[Hardware] Loaded system Type: %s, board type: %s", s_iHardwareSystemIsVehicle?"[vehicle]":"[controller]", str_get_hardware_board_name(s_uHardwareBoardType));
-         fclose(fd);
-         return;
-      }
-      log_softerror_and_alarm("[Hardware] Failed to parse system type config file [%s]", szFile); 
-      fclose(fd);
-   }
-   else
-      log_line("[Hardware] Can't open any previous hardware detection type file.");
-
-   log_line("[Hardware] Do full detection of board and system type...");
-   hw_execute_bash_command_raw("cat /proc/device-tree/model", szBuff);
-   log_line("[Hardware] Board description string: %s", szBuff);
-
-   s_uHardwareBoardType = hardware_getBoardType();
-   strncpy(szBuff, str_get_hardware_board_name(s_uHardwareBoardType), 255);
-   if ( szBuff[0] == 0 )
-      strcpy(szBuff, "N/A");
-   log_line("[Hardware] Detected board type: %s", szBuff);
-
-   int iDoAditionalChecks = 1;
-   s_iHardwareSystemIsVehicle = 0;
-
-   #if defined (HW_CAPABILITY_GPIO)
-   #if defined (HW_PLATFORM_RASPBERRY)
-   int val = GPIORead(GPIOGetPinDetectVehicle());
-   if ( val == 1 )
-   {
-      log_line("[Hardware] Detected GPIO signal to start as vehicle or relay.");
-      s_iHardwareSystemIsVehicle = 1;
-      iDoAditionalChecks = 0;
-   }
-   
-   val = GPIORead(GPIOGetPinDetectController());
-   if ( val == 1 )
-   {
-      log_line("[Hardware] Detected GPIO signal to start as controller.");
-      s_iHardwareSystemIsVehicle = 0;
-      iDoAditionalChecks = 0;
-   }
-   #endif
-
-   #endif
-   
-   #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
-   if( access( FILE_FORCE_VEHICLE, R_OK ) != -1 )
-   {
-      log_line("[Hardware] Detected file %s to force start as vehicle or relay.", FILE_FORCE_VEHICLE);
-      s_iHardwareSystemIsVehicle = 1;
-      iDoAditionalChecks = 0;
-   }   
-   strcpy(szFile, FOLDER_WINDOWS_PARTITION);
-   strcat(szFile, "forcevehicle.txt");
-   if( access( szFile, R_OK ) != -1 )
-   {
-      log_line("[Hardware] Detected file %s to force start as vehicle or relay.", szFile);
-      s_iHardwareSystemIsVehicle = 1;
-      iDoAditionalChecks = 0;
-   }   
-   if( access( FILE_FORCE_CONTROLLER, R_OK ) != -1 )
-   {
-      log_line("[Hardware] Detected file %s to force start as controller.", FILE_FORCE_CONTROLLER);
-      s_iHardwareSystemIsVehicle = 0;
-      iDoAditionalChecks = 0;
-   }   
-   #endif
-
-   #if defined (HW_CAPABILITY_I2C)
-   hw_execute_bash_command("modprobe i2c-dev", NULL);
-
-   #if defined (HW_PLATFORM_RASPBERRY)
-   // Initialize I2C bus 0 for different boards types
-   log_line("[Hardware] Initialize I2C busses...");
-   char szComm[256];
-   char szOutput[4096];
-   sprintf(szComm, "current_dir=$PWD; cd %s/; ./camera_i2c_config 2>/dev/null; cd $current_dir", VEYE_COMMANDS_FOLDER);
-   hw_execute_bash_command(szComm, szOutput);
-   strcat(szOutput, "\n*END*\n");
-   log_line("[Hardware] I2C config output:");
-   log_line(szOutput);
-   if ( ((s_uHardwareBoardType & BOARD_TYPE_MASK) == BOARD_TYPE_PI3APLUS) ||
-        ((s_uHardwareBoardType & BOARD_TYPE_MASK) == BOARD_TYPE_PI3B) ||
-        ((s_uHardwareBoardType & BOARD_TYPE_MASK) == BOARD_TYPE_PI3BPLUS) ||
-        ((s_uHardwareBoardType & BOARD_TYPE_MASK) == BOARD_TYPE_PI4B) )
-   {
-      log_line("[Hardware] Initializing I2C busses for Pi 3/4...");
-      hw_execute_bash_command("raspi-gpio set 0 ip", NULL);
-      hw_execute_bash_command("raspi-gpio set 1 ip", NULL);
-      hw_execute_bash_command("raspi-gpio set 44 ip", NULL);
-      hw_execute_bash_command("raspi-gpio set 44 a1", NULL);
-      hw_execute_bash_command("raspi-gpio set 45 ip", NULL);
-      hw_execute_bash_command("raspi-gpio set 45 a1", NULL);
-      hardware_sleep_ms(200);
-      hw_execute_bash_command("i2cdetect -y 0 0x0F 0x0F", NULL);
-      hardware_sleep_ms(200);
-      log_line("[Hardware] Done initializing I2C busses for Pi 3/4.");
-   }
-   #endif
-   #endif
-
-   if ( iDoAditionalChecks )
-   if( access( FILE_FORCE_VEHICLE_NO_CAMERA, R_OK ) != -1 )
-   {
-      log_line("[Hardware] Detected file %s to force start as vehicle or relay with no camera.", FILE_FORCE_VEHICLE_NO_CAMERA);
-      s_iHardwareSystemIsVehicle = 1;
-   }   
-
-   #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_OPENIPC_CAMERA)
-   if ( iDoAditionalChecks )
-   if ( hardware_hasCamera() && (hardware_getCameraType() != CAMERA_TYPE_NONE) )
-   {
-      log_line("[Hardware] Has Camera.");
-      s_iHardwareSystemIsVehicle = 1;
-   }
-   #endif
-   
-   if ( s_iHardwareSystemIsVehicle )
-   {
-      if ( 0 == hardware_hasCamera() )
-         log_line("[Hardware] Detected system as vehicle/relay without camera.");
-      else
-         log_line("[Hardware] Detected system as vehicle/relay with camera.");
-   }
-   else
-      log_line("[Hardware] Detected system as controller.");
-
-   hardware_writeBoardAndSystemType();
-
-   log_line("[Hardware] Detected system Type: %s", s_iHardwareSystemIsVehicle?"[vehicle]":"[controller]");
-
-   s_bHarwareHasDetectedSystemType = true;
-}
 
 int init_hardware()
 {
@@ -292,29 +134,19 @@ int init_hardware()
 
    int failed = 0;
 
-   #ifdef HW_CAPABILITY_GPIO
    int failedButtons = GPIOInitButtons();
    if ( failedButtons )
    {
-      #if defined (HW_PLATFORM_RASPBERRY)
-      log_softerror_and_alarm("[Hardware] Failed to set GPIOs for buttons (for Raspberry)");
-      #else
       log_softerror_and_alarm("[Hardware] Failed to set GPIOs for buttons (for Radxa)");
-      #endif
       failed = 1;
    }
    else
    {
-      #if defined (HW_PLATFORM_RASPBERRY)
-      log_line("[Hardware] Initialized GPIO buttons (for Raspberry)");
-      #else
       log_line("[Hardware] Initialized GPIO buttons (for Radxa)");
-      #endif
       s_iButtonsWhereInited = 1;
    }
 
-   log_line("[Hardware] Pins for buzzer: %d, vehicle detect: %d, controller detect: %d",
-      GPIOGetPinBuzzer(), GPIOGetPinDetectVehicle(), GPIOGetPinDetectController());
+   log_line("[Hardware] Pin for buzzer: %d", GPIOGetPinBuzzer());
 
    if ( (GPIOGetPinBuzzer() > 0) && (-1 == GPIOExport(GPIOGetPinBuzzer())) )
    {
@@ -325,30 +157,6 @@ int init_hardware()
    if ( (GPIOGetPinBuzzer() > 0) && (-1 == GPIODirection(GPIOGetPinBuzzer(), OUT)) )
    {
       log_line("[Hardware] Failed set GPIO configuration for pin buzzer.");
-      failed = 1;
-   }
-
-   if ( (GPIOGetPinDetectVehicle() > 0) && (-1 == GPIOExport(GPIOGetPinDetectVehicle())) )
-   {
-      log_line("[Hardware] Failed to get GPIO access to pin VehicleType.");
-      failed = 1;
-   }
-
-   if ( (GPIOGetPinDetectVehicle() > 0) && (-1 == GPIODirection(GPIOGetPinDetectVehicle(), IN)) )
-   {
-      log_line("[Hardware] Failed set GPIO configuration for pin VehicleType.");
-      failed = 1;
-   }
-
-   if ( (GPIOGetPinDetectController() > 0) && (-1 == GPIOExport(GPIOGetPinDetectController())) )
-   {
-      log_line("[Hardware] Failed to get GPIO access to pin ControllerType.");
-      failed = 1;
-   }
-
-   if ( (GPIOGetPinDetectController() > 0) && (-1 == GPIODirection(GPIOGetPinDetectController(), IN)) )
-   {
-      log_line("[Hardware] Failed set GPIO configuration for pin ControllerType.");
       failed = 1;
    }
 
@@ -391,23 +199,6 @@ int init_hardware()
       log_line("[Hardware] No GPIO for led green.");
 
   
-   #ifdef HW_PLATFORM_RASPBERRY
-   char szBuff[64];
-   if ( GPIOGetPinDetectVehicle() > 0 )
-   {
-      sprintf(szBuff, "gpio -g mode %d in", GPIOGetPinDetectVehicle());
-      hw_execute_bash_command_silent(szBuff, NULL);
-      sprintf(szBuff, "gpio -g mode %d down", GPIOGetPinDetectVehicle());
-      hw_execute_bash_command_silent(szBuff, NULL);
-   }
-   if ( GPIOGetPinDetectController() > 0 )
-   {
-      sprintf(szBuff, "gpio -g mode %d in", GPIOGetPinDetectController());
-      hw_execute_bash_command_silent(szBuff, NULL);
-      sprintf(szBuff, "gpio -g mode %d down", GPIOGetPinDetectController());
-      hw_execute_bash_command_silent(szBuff, NULL);
-   }
-   #endif
 
    if ( GPIOGetPinBuzzer() > 0 )
       GPIOWrite(GPIOGetPinBuzzer(), LOW);
@@ -426,7 +217,6 @@ int init_hardware()
    }
    else
       log_line("[Hardware] GPIO menu buttons where not setup yet.");
-   #endif
 
    s_iHardwareJoystickCount = 0;
    s_bHardwareWasSetup = true;
@@ -437,60 +227,6 @@ int init_hardware()
    
    if ( failed )
       return 0;
-   return 1;
-}
-
-int init_hardware_only_detection_pins()
-{
-   s_uTimeInitHardware = get_current_timestamp_ms();
-
-   #ifdef HW_CAPABILITY_GPIO
-   if (-1 == GPIOExport(GPIOGetPinDetectVehicle()))
-   {
-      log_line("[Hardware] Failed to get GPIO access to Ruby type PIN.");
-      return(0);
-   }
-
-   if (-1 == GPIODirection(GPIOGetPinDetectVehicle(), IN))
-   {
-      log_line("[Hardware] Failed set GPIO configuration for Ruby type PIN.");
-      return(0);
-   }
-
-   if (-1 == GPIOExport(GPIOGetPinDetectController()) )
-   {
-      log_line("[Hardware] Failed to get GPIO access to Ruby type C PIN.");
-      return(0);
-   }
-
-   if (-1 == GPIODirection(GPIOGetPinDetectController(), IN))
-   {
-      log_line("[Hardware] Failed set GPIO configuration for Ruby type C PIN.");
-      return(0);
-   }
-
-   #ifdef HW_PLATFORM_RASPBERRY
-   char szBuff[64];
-   if ( GPIOGetPinDetectVehicle() > 0 )
-   {
-      sprintf(szBuff, "gpio -g mode %d in", GPIOGetPinDetectVehicle());
-      hw_execute_bash_command_silent(szBuff, NULL);
-      sprintf(szBuff, "gpio -g mode %d down", GPIOGetPinDetectVehicle());
-      hw_execute_bash_command_silent(szBuff, NULL);
-   }
-   if ( GPIOGetPinDetectController() > 0 )
-   {
-      sprintf(szBuff, "gpio -g mode %d in", GPIOGetPinDetectController());
-      hw_execute_bash_command_silent(szBuff, NULL);
-      sprintf(szBuff, "gpio -g mode %d down", GPIOGetPinDetectController());
-      hw_execute_bash_command_silent(szBuff, NULL);
-   }
-   #endif
-   
-   log_line("[Hardware] GPIO setup successfully.");
-   #endif
-   s_iHardwareJoystickCount = 0;
-   s_bHardwareWasSetup = true;
    return 1;
 }
 
@@ -512,17 +248,9 @@ void hardware_reboot()
       if ( iCounter > 4 )
       {
          log_softerror_and_alarm("[Hardware] Regular reboot failed. Force reboot...");
-         #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-         hw_execute_bash_command_nonblock("reboot -f", NULL);
-         #else
          hw_execute_bash_command_nonblock("reboot -f --no-wall", NULL);
-         #endif
 
-         #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-         hw_execute_bash_command("reboot -f", NULL);
-         #else
          hw_execute_bash_command("reboot -f --no-wall", NULL);
-         #endif
 
          iCounter = 0;
       }
@@ -532,7 +260,6 @@ void hardware_reboot()
 
 void hardware_release()
 {
-   #ifdef HW_CAPABILITY_GPIO
    GPIOUnexport(GPIOGetPinMenu());
    GPIOUnexport(GPIOGetPinBack());
    GPIOUnexport(GPIOGetPinMinus());
@@ -546,9 +273,6 @@ void hardware_release()
    GPIOUnexport(GPIOGetPinBuzzer());
    GPIOUnexport(GPIOGetPinLedRed());
    GPIOUnexport(GPIOGetPinLedGreen());
-   GPIOUnexport(GPIOGetPinDetectVehicle());
-   GPIOUnexport(GPIOGetPinDetectController());
-   #endif
    log_line("[Hardware] Released!");
 }
 
@@ -557,176 +281,9 @@ void hardware_swap_buttons(int swap)
    s_ihwSwapButtons = swap;
 }
 
-void _hardware_detect_board_openipc(char* szBoardId)
-{
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   s_uHardwareBoardType = BOARD_TYPE_OPENIPC_GOKE200;
-   hw_execute_bash_command_raw("ipcinfo -c 2>/dev/null", szBoardId);
-   log_line("[Hardware] Detected board type: (%s)", szBoardId);
-   if ( NULL != strstr(szBoardId, "gk72") )
-   {
-      s_uHardwareBoardType = BOARD_TYPE_OPENIPC_GOKE200;
-      if ( NULL != strstr(szBoardId, "v210") )
-         s_uHardwareBoardType = BOARD_TYPE_OPENIPC_GOKE210;
-      if ( NULL != strstr(szBoardId, "v300") )
-         s_uHardwareBoardType = BOARD_TYPE_OPENIPC_GOKE300;
-   }
-   if ( NULL != strstr(szBoardId, "ssc338") )
-      s_uHardwareBoardType = BOARD_TYPE_OPENIPC_SIGMASTAR_338Q;
-   if ( NULL != strstr(szBoardId, "ssc33x") )
-      s_uHardwareBoardType = BOARD_TYPE_OPENIPC_SIGMASTAR_338Q;
-   #endif
-}
-
-void _hardware_detect_board_radxa(char* szBoardId)
-{
-   #if defined (HW_PLATFORM_RADXA)
-   s_uHardwareBoardType = BOARD_TYPE_RADXA_ZERO3;
-   char szOutput[4096];
-
-   if ( NULL != szBoardId )
-   {
-      hw_execute_bash_command_raw("uname -r", szOutput);
-      removeTrailingNewLines(szOutput);
-      strncpy(szBoardId, szOutput, 31);
-      szBoardId[31] = 0;
-   }
-
-   hw_execute_bash_command_raw("uname -a", szOutput);
-   removeTrailingNewLines(szOutput);
-   if ( NULL != strstr(szOutput, "radxa3c") )
-      s_uHardwareBoardType = BOARD_TYPE_RADXA_3C;
-
-   hw_execute_bash_command_raw("lscpu | grep Model", szOutput);
-   if ( NULL != strstr(szOutput, "Cortex-A55") )
-   {
-      bool bVRx = false;
-      if ( access("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq", R_OK) == -1 )
-         bVRx = true;
-      if ( access("/home/radxa/ruby", R_OK) != -1 )
-      if ( access("/home/8812eu_radxa.ko", R_OK) != -1 )
-      if ( (access("/home/radxa/ruby/drivers", R_OK) == -1) || bVRx )
-      {
-         hw_execute_bash_command_raw("lsusb | grep 0bda:a81a", szOutput);
-         char* pId = strstr(szOutput, "0bda:a81a");
-         if ( NULL != pId )
-         {
-            pId += 8;
-            pId = strstr(pId, "0bda:a81a");
-            if ( NULL != pId )
-            {
-               log_line("[Hardware] Detected RunCam VRx board.");
-               s_uHardwareBoardType = BOARD_TYPE_RADXA_RUNCAM_VRX;
-            }
-         }
-      }
-   }
-   #endif
-}
-
-u32 hardware_detectBoardType()
-{
-   if ( s_bHardwareDetectedBoardType )
-   {
-      log_line("[Hardware] Detected board %d (%s)", s_uHardwareBoardType, str_get_hardware_board_name(s_uHardwareBoardType));
-      return s_uHardwareBoardType;
-   }
-   s_bHardwareDetectedBoardType = true;
-
-   char szBoardId[64];
-   szBoardId[0] = 0;
-   #if defined (HW_PLATFORM_RASPBERRY)
-   hw_execute_bash_command("cat /proc/cpuinfo | grep 'Revision' | awk '{print $3}'", szBoardId);
-   removeTrailingNewLines(szBoardId);
-   log_line("[Hardware] Detected board Id: (%s)", szBoardId);
-
-   if ( strcmp(szBoardId, "a03111") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "a03112") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "a03113") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "a03114") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "a03115") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "a03116") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "b03111") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "b03112") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "b03114") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "b03115") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "b03116") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "c03111") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "c03112") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "c03114") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "c03115") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "c03116") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "d03114") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "d03115") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-   if ( strcmp(szBoardId, "d03116") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI4B;}
-
-   if ( strcmp(szBoardId, "9020e0") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3APLUS;}
-   if ( strcmp(szBoardId, "29020e0") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3APLUS;}
-
-   if ( strcmp(szBoardId, "a02082") == 0 )  { s_uHardwareBoardType = BOARD_TYPE_PI3B;}
-   if ( strcmp(szBoardId, "a22082") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3B;}
-   if ( strcmp(szBoardId, "a32082") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3B;}
-   if ( strcmp(szBoardId, "a52082") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3B;}
-   if ( strcmp(szBoardId, "a020d3") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3BPLUS;}
-   if ( strcmp(szBoardId, "2a02082") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3B;}
-   if ( strcmp(szBoardId, "2a22082") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3B;}
-   if ( strcmp(szBoardId, "2a32082") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3B;}
-   if ( strcmp(szBoardId, "2a52082") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3B;}
-   if ( strcmp(szBoardId, "2a020d3") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI3BPLUS;}
-
-   if ( strcmp(szBoardId, "900093") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO;}
-   if ( strcmp(szBoardId, "9000c1") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZEROW;}
-   if ( strcmp(szBoardId, "900092") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO;}
-   if ( strcmp(szBoardId, "1900093") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO;}
-   if ( strcmp(szBoardId, "19000c1") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZEROW;}
-   if ( strcmp(szBoardId, "2900092") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO;}
-   if ( strcmp(szBoardId, "2900093") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO;}
-   if ( strcmp(szBoardId, "29000c1") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZEROW;}
-
-   if ( strcmp(szBoardId, "902120") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO2;}
-   if ( strcmp(szBoardId, "2902120") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO2;}
-
-   if ( strcmp(szBoardId, "920092") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO;}
-   if ( strcmp(szBoardId, "920093") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO;}
-   if ( strcmp(szBoardId, "2920092") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO;}
-   if ( strcmp(szBoardId, "2920093") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PIZERO;}
-
-   if ( strcmp(szBoardId, "a01040") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI2B;}
-   if ( strcmp(szBoardId, "a21041") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI2BV11;}
-   if ( strcmp(szBoardId, "a01041") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI2BV11;}
-   if ( strcmp(szBoardId, "a22042") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI2BV12;}
-
-   if ( strcmp(szBoardId, "2a01040") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI2B;}
-   if ( strcmp(szBoardId, "2a21041") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI2BV11;}
-   if ( strcmp(szBoardId, "2a01041") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI2BV11;}
-   if ( strcmp(szBoardId, "2a22042") == 0 ) { s_uHardwareBoardType = BOARD_TYPE_PI2BV12;}
-   #endif
-
-   #if defined (HW_PLATFORM_RADXA)
-   _hardware_detect_board_radxa(szBoardId);
-   #endif
-
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   _hardware_detect_board_openipc(szBoardId);
-   #endif
-
-   char szBoardName[128];
-   strncpy(szBoardName, str_get_hardware_board_name(s_uHardwareBoardType), 127);
-   if ( szBoardName[0] == 0 )
-      strcpy(szBoardName, "N/A");
-   log_line("[Hardware] Detected board first time, board type for id (%s) (int: %d): %s", szBoardId, s_uHardwareBoardType, szBoardName);
-   return s_uHardwareBoardType;
-}
-
 u32 hardware_getBoardType()
 {
-   if ( ! s_bHardwareDetectedBoardType )
-      hardware_detectBoardType();
-   static bool s_bLogBoardTypeOnce = false;
-   if ( ! s_bLogBoardTypeOnce )
-      log_line("[Hardware] Board type is %d (%s)", s_uHardwareBoardType & BOARD_TYPE_MASK, str_get_hardware_board_name(s_uHardwareBoardType));
-   s_bLogBoardTypeOnce = true;
-   return s_uHardwareBoardType;
+   return BOARD_TYPE_RADXA_ZERO3;
 }
 
 
@@ -779,18 +336,9 @@ int hardware_get_board_subtype_index(u32 uBoardSubType)
 
 void hardware_detectBoardAndSystemType()
 {
-   if ( ! s_bHarwareHasDetectedSystemType )
-      _hardware_detectSystemType();
-   
-   if ( s_iHardwareSystemIsVehicle )
-   {
-      if ( 0 == hardware_hasCamera() )
-         log_line("[Hardware] Detected system as vehicle/relay without camera.");
-      else
-         log_line("[Hardware] Detected system as vehicle/relay with camera.");
-   }
-   else
-      log_line("[Hardware] Detected system as controller.");
+   hw_execute_bash_command("modprobe i2c-dev", NULL);
+   hardware_writeBoardAndSystemType();
+   log_line("[Hardware] Radxa Zero 3W ground station.");
 }
 
 void hardware_writeBoardAndSystemType()
@@ -799,17 +347,17 @@ void hardware_writeBoardAndSystemType()
    strcpy(szFile, FOLDER_CONFIG);
    strcat(szFile, FILE_CONFIG_SYSTEM_TYPE);
    hardware_file_check_and_fix_access(szFile);
-   log_line("[Hardware] Write system type (%d) and board type (%d) to file: %s", s_iHardwareSystemIsVehicle, s_uHardwareBoardType, szFile);
+   log_line("[Hardware] Write system type (%d) and board type (%d) to file: %s", hardware_is_vehicle(), hardware_getBoardType(), szFile);
    FILE* fd = fopen(szFile, "w");
    if ( NULL != fd )
    {
-      fprintf(fd, "%d %u\n", s_iHardwareSystemIsVehicle, s_uHardwareBoardType);
+      fprintf(fd, "%d %u\n", hardware_is_vehicle(), hardware_getBoardType());
       fclose(fd);
       hardware_file_check_and_fix_access(szFile);
    }
 
    char szBuff[256];
-   strncpy(szBuff, str_get_hardware_board_name(s_uHardwareBoardType), 255);
+   strncpy(szBuff, str_get_hardware_board_name(hardware_getBoardType()), 255);
    if ( szBuff[0] == 0 )
       strcpy(szBuff, "N/A");
 
@@ -821,25 +369,12 @@ void hardware_writeBoardAndSystemType()
       log_softerror_and_alarm("[Hardware] Failed to save board configuration to file: %s", szFile);
    else
    {
-      fprintf(fd, "%u %s\n", s_uHardwareBoardType, szBuff);
+      fprintf(fd, "%u %s\n", hardware_getBoardType(), szBuff);
       fclose(fd);
       hardware_file_check_and_fix_access(szFile);
    }
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   fd = fopen("/boot/ruby_board.txt", "w");
-   if ( NULL != fd )
-   {
-      fprintf(fd, "%u\n", s_uHardwareBoardType);
-      fclose(fd);
-      hardware_file_check_and_fix_access(szFile);
-   }
-   hw_execute_bash_command("cat /proc/device-tree/model > /boot/ruby_board_desc.txt", NULL);
-   #endif
 
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hw_execute_bash_command("cat /proc/device-tree/model > /root/ruby/config/ruby_board_desc.txt", NULL);
-   #endif
 }
 
 int hardware_board_is_raspberry(u32 uBoardType)
@@ -956,18 +491,6 @@ void hardware_enum_joystick_interfaces()
       s_HardwareJoystickInfo[i].countButtons = 0;
    }
 
-   #if defined (HW_PLATFORM_RASPBERRY)
-   for( int i=0; i<MAX_JOYSTICK_INTERFACES; i++ )
-   {
-      sprintf(szDevName, "/dev/input/js%d", i);
-      if ( ! _hardware_enum_joystick_query_device(szDevName, i, &(s_HardwareJoystickInfo[s_iHardwareJoystickCount])) )
-         continue;
-   
-      log_line("|  Found joystick interface [%s]: Name: %s, UID: %u, has %d axes and %d buttons.", szDevName, s_HardwareJoystickInfo[s_iHardwareJoystickCount].szName, s_HardwareJoystickInfo[s_iHardwareJoystickCount].uId, s_HardwareJoystickInfo[s_iHardwareJoystickCount].countAxes, s_HardwareJoystickInfo[s_iHardwareJoystickCount].countButtons);
-      s_iHardwareJoystickCount++;
-   }
-   #endif
-   #if defined (HW_PLATFORM_RADXA)
    SDL_Quit();
    SDL_JoystickEventState(SDL_ENABLE);
    if ( SDL_Init(SDL_INIT_JOYSTICK) < 0 )
@@ -1023,7 +546,6 @@ void hardware_enum_joystick_interfaces()
          }
       }
    }
-   #endif
    log_line("|  [Hardware] Enumerating hardware HID interfaces result: found %d input interfaces. |", s_iHardwareJoystickCount);
    log_line("-------------------------------------------------------------------------------------");
 }
@@ -1047,32 +569,7 @@ int hardware_open_joystick(int joystickIndex)
    if ( s_HardwareJoystickInfo[joystickIndex].deviceIndex < 0 )
       return 0;
 
-   #ifdef HW_PLATFORM_RASPBERRY
 
-   if ( s_HardwareJoystickInfo[joystickIndex].fd > 0 )
-   {
-      log_softerror_and_alarm("[Hardware] Opening HID interface /dev/input/js%d (it's already opened)", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
-      return 1;
-   }
-   char szDevName[256];
-   sprintf(szDevName, "/dev/input/js%d", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
-   if( access( szDevName, R_OK ) == -1 )
-   {
-      log_softerror_and_alarm("[Hardware] Failed to access HID interface /dev/input/js%d !", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
-      return 0;
-   }
-   s_HardwareJoystickInfo[joystickIndex].fd = open(szDevName, O_RDONLY | O_NONBLOCK);
-   if ( s_HardwareJoystickInfo[joystickIndex].fd <= 0 )
-   {
-      log_softerror_and_alarm("[Hardware] Failed to open HID interface /dev/input/js%d !", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
-      s_HardwareJoystickInfo[joystickIndex].fd = -1;
-      return 0;
-   }
-   log_line("[Hardware] Opened HID interface /dev/input/js%d;", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
-   return 1;
-   #endif
-
-   #if defined (HW_PLATFORM_RADXA)
    if ( NULL != s_HardwareJoystickInfo[joystickIndex].pObject )
    {
       log_softerror_and_alarm("[Hardware] Opening HID interface SDL joystick %d (it's already opened)", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
@@ -1090,7 +587,6 @@ int hardware_open_joystick(int joystickIndex)
    s_HardwareJoystickInfo[joystickIndex].pObject = pSDLJoystick;
    log_line("[Hardware] Opened HID interface SDL joystick %d", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
    return 1;
-   #endif
    return 0;
 }
 
@@ -1098,19 +594,11 @@ void hardware_close_joystick(int joystickIndex)
 {
    if ((joystickIndex < 0) || (joystickIndex >= s_iHardwareJoystickCount) )
       return;
-   #ifdef HW_PLATFORM_RASPBERRY
-   if ( -1 == s_HardwareJoystickInfo[joystickIndex].fd )
-      log_softerror_and_alarm("[Hardware] Closing HID interface /dev/input/js%d (it's already closed)", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
-   else
-      close(s_HardwareJoystickInfo[joystickIndex].fd);
-   #endif
 
-   #if defined (HW_PLATFORM_RADXA)
    if ( NULL == s_HardwareJoystickInfo[joystickIndex].pObject )
       log_softerror_and_alarm("[Hardware] Closing HID interface SDL joystick %d (it's already closed)", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
    else
       SDL_JoystickClose((SDL_Joystick*)s_HardwareJoystickInfo[joystickIndex].pObject);
-   #endif
    s_HardwareJoystickInfo[joystickIndex].pObject = NULL;
    s_HardwareJoystickInfo[joystickIndex].fd = -1;
    log_line("[Hardware] Closed HID interface /dev/input/js%d;", s_HardwareJoystickInfo[joystickIndex].deviceIndex);
@@ -1128,9 +616,7 @@ int hardware_is_joystick_opened(int joystickIndex)
 
 void hardware_uninit_joysticks()
 {
-   #if defined HW_PLATFORM_RADXA
    SDL_Quit();
-   #endif
 }
 
 // Returns the count of new events
@@ -1148,52 +634,7 @@ int hardware_read_joystick(int joystickIndex, int miliSec)
    memcpy( &s_HardwareJoystickInfo[joystickIndex].buttonsValuesPrev, &s_HardwareJoystickInfo[joystickIndex].buttonsValues, MAX_JOYSTICK_BUTTONS*sizeof(int));
    memcpy( &s_HardwareJoystickInfo[joystickIndex].axesValuesPrev, &s_HardwareJoystickInfo[joystickIndex].axesValues, MAX_JOYSTICK_AXES*sizeof(int));
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   if ( -1 == s_HardwareJoystickInfo[joystickIndex].fd )
-      return -1;
 
-   int countEvents = 0;
-   u32 timeStart = get_current_timestamp_micros();
-   u32 timeEnd = timeStart + miliSec*1000;
-   if ( timeEnd < timeStart )
-      timeEnd = timeStart;
-
-   while ( get_current_timestamp_micros() < timeEnd )
-   { 
-      hardware_sleep_micros(200);
-      struct js_event joystickEvent[8];
-      int iRead = read(s_HardwareJoystickInfo[joystickIndex].fd, &joystickEvent[0], sizeof(joystickEvent));
-      if ( iRead == 0 )
-         continue;
-      if ( iRead < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) )
-         continue;
-      if ( iRead < 0 )
-      {
-         log_softerror_and_alarm("[Hardware] Error on reading joystick data, joystick index: %d, error: %d", joystickIndex, errno);
-         hardware_close_joystick(joystickIndex);
-         return -1;
-      }
-      int count = iRead / sizeof(joystickEvent[0]);
-      for( int i=0; i<count; i++ )
-      {
-         if ( (joystickEvent[i].type & ~JS_EVENT_INIT) == JS_EVENT_BUTTON )
-         if ( joystickEvent[i].number >= 0 && joystickEvent[i].number < MAX_JOYSTICK_BUTTONS )
-         {
-            s_HardwareJoystickInfo[joystickIndex].buttonsValues[joystickEvent[i].number] = joystickEvent[i].value;
-            countEvents++;
-         }
-         if ( (joystickEvent[i].type & ~JS_EVENT_INIT) == JS_EVENT_AXIS )
-         if ( joystickEvent[i].number >= 0 && joystickEvent[i].number < MAX_JOYSTICK_AXES )
-         {
-            s_HardwareJoystickInfo[joystickIndex].axesValues[joystickEvent[i].number] = joystickEvent[i].value;
-            countEvents++;
-         }
-      }
-   }
-   return countEvents;
-   #endif
-
-   #if defined (HW_PLATFORM_RADXA)
    if ( NULL == s_HardwareJoystickInfo[joystickIndex].pObject )
       return -1;
 
@@ -1224,7 +665,6 @@ int hardware_read_joystick(int joystickIndex, int miliSec)
          iCountEvents++;
    }
    return iCountEvents;
-   #endif
 
    return -1;
 }
@@ -1233,28 +673,7 @@ u16 hardware_get_flags()
 {
    u16 retValue = 0xFFFF;
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   char szOut[1024];
-   hw_execute_bash_command_silent("vcgencmd get_throttled", szOut);
-   int len = strlen(szOut)-1;
-   while (len > 0 )
-   {
-      if ( szOut[len] == '=')
-         break;
-      len--;
-   }
-   if ( szOut[len] == '=' )
-   {
-      unsigned long ul = 0;
-      if ( 1 == sscanf(szOut+len+1, "0x%lX", &ul) )
-      {
-         u8 u = (ul & 0xF) | ((ul>>16) << 4);
-         retValue = u;
-      }
-   }
-   #else
    retValue = 0;
-   #endif
    return retValue;
 }
 
@@ -1263,7 +682,6 @@ void gpio_read_buttons_loop()
    if ( ! s_bHardwareWasSetup )
       return;
 
-   #ifdef HW_CAPABILITY_GPIO
 
    int iForceMenuPressed = 0;
    int iForceBackPressed = 0;
@@ -1277,11 +695,6 @@ void gpio_read_buttons_loop()
    int rQA1 = GPIORead(GPIOGetPinQA1());
    int rQA2 = GPIORead(GPIOGetPinQA2());
    int rQA3 = GPIORead(GPIOGetPinQA3());
-   #ifdef HW_PLATFORM_RASPBERRY
-   int rQA22 = GPIORead(GPIOGetPinQA22());
-   //int rQAPlus = 0;//GPIORead(GPIOGetPinQAPlus());
-   //int rQAMinus = 0;//GPIORead(GPIOGetPinQAMinus());
-   #endif
 
    u32 time_now = get_current_timestamp_ms();
 
@@ -1426,26 +839,6 @@ void gpio_read_buttons_loop()
       keyQA3DownStartTime += s_long_press_repeat_time;
    }
 
-   #ifdef HW_PLATFORM_RASPBERRY
-   if ( GPIOGetButtonsPullDirection() == rQA22 )
-   {
-      sKeyQA22Pressed = 0;
-      keyQA22DownStartTime = 0;
-   }
-   else if ( rQA22 != sLastReadQA22 )
-   {
-      sKeyQA22Pressed = 1;
-      keyQA22DownStartTime = time_now;
-   }
-   else
-      sKeyQA22Pressed = 0;
-
-   if ( (GPIOGetButtonsPullDirection() != rQA22) && 0 != keyQA22DownStartTime && time_now > (keyQA22DownStartTime+s_long_key_press_delta+s_long_press_repeat_time) )
-   {
-      sKeyQA22Pressed = 1;
-      keyQA22DownStartTime += s_long_press_repeat_time;
-   }
-   #endif
    /*
    if ( GPIOGetButtonsPullDirection() == rQAPlus )
    {
@@ -1515,10 +908,6 @@ void gpio_read_buttons_loop()
          s_bBlockCurrentPressedKeys = 0;
       if ( (GPIOGetButtonsPullDirection() == rQA3) && (GPIOGetButtonsPullDirection() != sLastReadQA3) )
          s_bBlockCurrentPressedKeys = 0;
-      #ifdef HW_PLATFORM_RASPBERRY
-      if ( (GPIOGetButtonsPullDirection() == rQA22) && (GPIOGetButtonsPullDirection() != sLastReadQA22) )
-         s_bBlockCurrentPressedKeys = 0;
-      #endif
       //if ( (GPIOGetButtonsPullDirection() == rQAMinus) && (GPIOGetButtonsPullDirection() != sLastReadQAMinus) )
       //   s_bBlockCurrentPressedKeys = 0;
       //if ( (GPIOGetButtonsPullDirection() == rQAPlus) && (GPIOGetButtonsPullDirection() != sLastReadQAPlus) )
@@ -1531,9 +920,6 @@ void gpio_read_buttons_loop()
    sLastReadQA1 = rQA1;
    sLastReadQA2 = rQA2;
    sLastReadQA3 = rQA3;
-   #ifdef HW_PLATFORM_RASPBERRY
-   sLastReadQA22 = rQA22;
-   #endif
    //sLastReadQAPlus = rQAPlus;
    //sLastReadQAMinus = rQAMinus;
 
@@ -1555,7 +941,6 @@ void gpio_read_buttons_loop()
       keyQA1DownStartTime = time_now;
       log_line("[Hardware] Set QA1 button as pressed after initial detection.");
    }
-   #endif
 }
 
 void _hardware_leds_loop()
@@ -1586,38 +971,24 @@ void _hardware_leds_loop()
       GPIOWrite(GPIOGetPinBuzzer(), LOW);
       hardware_led_red_set_off();
       hardware_led_green_set_off();
-      if ( hardware_is_running_on_runcam_vrx() )
-      {
-         hardware_led_red_set_on();
-         hardware_led_green_set_off();
-      }
    }
 
    if ( s_bIsLedRedBlinking || s_bIsLedRedBlinkingFast )
    {
       if ( uTimeNow >= s_uTimeLedRedBlinkUntil )
       {
-         if ( hardware_is_running_on_runcam_vrx() )
-            hardware_led_red_set_on();
-         else
-            hardware_led_red_set_off();
+         hardware_led_red_set_off();
       }
       else if ( (s_bIsLedRedBlinking && (uTimeNow >= s_uTimeLedRedLastBlink + 700)) ||
                 (s_bIsLedRedBlinkingFast && (uTimeNow >= s_uTimeLedRedLastBlink + 200)) )
       {
           if ( s_bIsLedRedOn )
           {
-             if ( hardware_is_running_on_runcam_vrx() )
-                GPIOWrite(GPIOGetPinLedRed(), HIGH);
-             else
-                GPIOWrite(GPIOGetPinLedRed(), LOW);
+             GPIOWrite(GPIOGetPinLedRed(), LOW);
           }
           else
           {
-             if ( hardware_is_running_on_runcam_vrx() )
-                GPIOWrite(GPIOGetPinLedRed(), LOW);
-             else
-                GPIOWrite(GPIOGetPinLedRed(), HIGH);
+             GPIOWrite(GPIOGetPinLedRed(), HIGH);
           }
           s_bIsLedRedOn = ! s_bIsLedRedOn;
           s_uTimeLedRedLastBlink = uTimeNow;
@@ -1628,27 +999,18 @@ void _hardware_leds_loop()
    {
       if ( uTimeNow >= s_uTimeLedGreenBlinkUntil )
       {
-         if ( hardware_is_running_on_runcam_vrx() )
-            hardware_led_green_set_on();
-         else
-            hardware_led_green_set_off();
+         hardware_led_green_set_off();
       }
       else if ( (s_bIsLedGreenBlinking && (uTimeNow >= s_uTimeLedGreenLastBlink + 700)) ||
                 (s_bIsLedGreenBlinkingFast && (uTimeNow >= s_uTimeLedGreenLastBlink + 200)) )
       {
           if ( s_bIsLedGreenOn )
           {
-             if ( hardware_is_running_on_runcam_vrx() )
-                GPIOWrite(GPIOGetPinLedGreen(), HIGH);
-             else
-                GPIOWrite(GPIOGetPinLedGreen(), LOW);
+             GPIOWrite(GPIOGetPinLedGreen(), LOW);
           }
           else
           {
-             if ( hardware_is_running_on_runcam_vrx() )
-                GPIOWrite(GPIOGetPinLedGreen(), LOW);
-             else
-                GPIOWrite(GPIOGetPinLedGreen(), HIGH);
+             GPIOWrite(GPIOGetPinLedGreen(), HIGH);
           }
           s_bIsLedGreenOn = ! s_bIsLedGreenOn;
           s_uTimeLedGreenLastBlink = uTimeNow;
@@ -1661,10 +1023,8 @@ void hardware_loop()
    if ( ! s_bHardwareWasSetup )
       return;
 
-   #ifdef HW_CAPABILITY_GPIO
    gpio_read_buttons_loop();
    _hardware_leds_loop();
-   #endif
 }
 
 int isKeyMenuPressed() { return sKeyMenuPressed > 0; }
@@ -1855,64 +1215,34 @@ void hardware_blockCurrentPressedKeys()
 
 int hardware_is_station()
 {
-   if ( ! s_bHarwareHasDetectedSystemType )
-      _hardware_detectSystemType();
-   return (s_iHardwareSystemIsVehicle==1)?0:1;
+   return 1;
 }
 
 int hardware_is_vehicle()
 {
-   if ( ! s_bHarwareHasDetectedSystemType )
-      _hardware_detectSystemType();
-   return s_iHardwareSystemIsVehicle;
-}
-
-int hardware_is_running_on_openipc()
-{
-   if ( ! s_bHarwareHasDetectedSystemType )
-      _hardware_detectSystemType();
-
-   return hardware_board_is_openipc(hardware_getBoardType());
-}
-
-int hardware_is_running_on_runcam_vrx()
-{
-   if ( ! s_bHarwareHasDetectedSystemType )
-      _hardware_detectSystemType();
-
-   return (hardware_getBoardType() == BOARD_TYPE_RADXA_RUNCAM_VRX)?1:0;
+   return 0;
 }
 
 void hardware_led_red_set_on()
 {
-   #ifdef HW_CAPABILITY_GPIO
-   if ( hardware_is_running_on_runcam_vrx() )
-      GPIOWrite(GPIOGetPinLedRed(), LOW);
-   else
-      GPIOWrite(GPIOGetPinLedRed(), HIGH);
+   GPIOWrite(GPIOGetPinLedRed(), HIGH);
 
    s_bIsLedRedOn = true;
    s_bIsLedRedBlinking = false;
    s_bIsLedRedBlinkingFast = false;
    s_uTimeLedRedBlinkUntil = 0;
    s_uTimeLedRedLastBlink = 0;
-   #endif
 }
 
 void hardware_led_red_set_off()
 {
-   #ifdef HW_CAPABILITY_GPIO
-   if ( hardware_is_running_on_runcam_vrx() )
-      GPIOWrite(GPIOGetPinLedRed(), HIGH);
-   else
-      GPIOWrite(GPIOGetPinLedRed(), LOW);
+   GPIOWrite(GPIOGetPinLedRed(), LOW);
 
    s_bIsLedRedOn = false;
    s_bIsLedRedBlinking = false;
    s_bIsLedRedBlinkingFast = false;
    s_uTimeLedRedBlinkUntil = 0;
    s_uTimeLedRedLastBlink = 0;
-   #endif
 }
 
 void hardware_led_red_set_blinking(u32 uPeriodToBlink)
@@ -1965,12 +1295,7 @@ void hardware_led_red_set_blinking_fast(u32 uPeriodToBlink)
 
 void hardware_led_green_set_on()
 {
-   #ifdef HW_CAPABILITY_GPIO
-   if ( hardware_is_running_on_runcam_vrx() )
-      GPIOWrite(GPIOGetPinLedGreen(), LOW);
-   else
-      GPIOWrite(GPIOGetPinLedGreen(), HIGH);
-   #endif
+   GPIOWrite(GPIOGetPinLedGreen(), HIGH);
    s_bIsLedGreenOn = true;
    s_bIsLedGreenBlinking = false;
    s_bIsLedGreenBlinkingFast = false;
@@ -1980,12 +1305,7 @@ void hardware_led_green_set_on()
 
 void hardware_led_green_set_off()
 {
-   #ifdef HW_CAPABILITY_GPIO
-   if ( hardware_is_running_on_runcam_vrx() )
-      GPIOWrite(GPIOGetPinLedGreen(), HIGH);
-   else
-      GPIOWrite(GPIOGetPinLedGreen(), LOW);
-   #endif
+   GPIOWrite(GPIOGetPinLedGreen(), LOW);
    s_bIsLedGreenOn = false;
    s_bIsLedGreenBlinking = false;
    s_bIsLedGreenBlinkingFast = false;
@@ -2082,19 +1402,8 @@ char* hardware_has_eth()
    return s_szHardwareETHName;
 }
 
-void hardware_set_default_sigmastar_cpu_freq()
-{
-   hw_execute_bash_command_raw("echo 'performance' | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor", NULL);
-   char szBuff[256];
-   snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "echo %d | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq", DEFAULT_FREQ_OPENIPC_SIGMASTAR*1000);
-   hw_execute_bash_command_raw(szBuff, NULL);
-   hw_execute_bash_command_raw("echo 800000 | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_min_freq", NULL);
-}
-
 void hardware_set_default_radxa_cpu_freq()
 {
-   if ( hardware_is_running_on_runcam_vrx() )
-      return;
    hw_execute_bash_command_raw("echo 'performance' | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor", NULL);
    char szBuff[256];
    snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "echo %d | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq", DEFAULT_FREQ_RADXA*1000);
@@ -2104,124 +1413,23 @@ void hardware_set_default_radxa_cpu_freq()
 
 int hardware_get_cpu_speed()
 {
-   #if defined(HW_PLATFORM_RASPBERRY)
-   char szOutput[64];
-   szOutput[0] = 0;
-   hw_execute_bash_command_raw_silent("vcgencmd measure_clock arm", szOutput);
 
-   if ( 0 == szOutput[0] )
-      return 0;
-
-   char* p = &szOutput[0];
-   int pos = 0;
-   while ( (*p) && (*p != '=') && pos < 63 )
-   {
-      p++;
-      pos++;
-   }
-
-   if ( 0 == (*p) || pos >= 63 )
-      return 0;
-
-   p++;
-   int len = strlen(p);
-   if ( len > 6 )
-   {
-     if ( p[len-1] == 10 || p[len-1] == 13 )
-     {
-        p[len-1] = 0;
-        len--;
-     }
-     if ( p[len-1] == 10 || p[len-1] == 13 )
-     {
-        p[len-1] = 0;
-        len--;
-     }
-     if ( len > 6 )
-        p[len-6] = 0;
-   }
-   return atoi(p);
-   #endif
-
-   #if defined(HW_PLATFORM_RADXA)
-   if ( hardware_is_running_on_runcam_vrx() )
-      return 1000;
    char szOutput[1024];
    hw_execute_bash_command_raw_silent("cat /sys/devices/system/cpu/cpufreq/policy0/cpuinfo_cur_freq 2>/dev/null", szOutput);
    return atoi(szOutput)/1000;
-   #endif
-
-   #if defined(HW_PLATFORM_OPENIPC_CAMERA)
-   char szOutput[1024];
-   hw_execute_bash_command_raw_silent("cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq 2>/dev/null", szOutput);
-   int iFreqMhz = atoi(szOutput)/1000;
-   if ( access("/sys/devices/system/cpu/cpu1/cpufreq/cpuinfo_cur_freq", R_OK) != -1 )
-   {
-      hw_execute_bash_command_raw_silent("cat /sys/devices/system/cpu/cpu1/cpufreq/cpuinfo_cur_freq 2>/dev/null", szOutput);
-      int iFreqMhz1 = atoi(szOutput)/1000;
-      if ( iFreqMhz1 > 10 )
-      if ( iFreqMhz1 < iFreqMhz )
-         iFreqMhz = iFreqMhz1;
-   }
-   return iFreqMhz;
-   #endif
-
-   return 1000;
 }
 
 int hardware_get_gpu_speed()
 {
-   #if defined (HW_PLATFORM_RASPBERRY)
-   char szOutput[64];
-   szOutput[0] = 0;
-   hw_execute_bash_command_raw_silent("vcgencmd measure_clock core", szOutput);
-
-   if ( 0 == szOutput[0] )
-      return 0;
-
-   char* p = &szOutput[0];
-   int pos = 0;
-   while ( (*p) && (*p != '=') && pos < 63 )
-   {
-      p++;
-      pos++;
-   }
-
-   if ( 0 == (*p) || pos >= 63 )
-      return 0;
-
-   p++;
-   int len = strlen(p);
-   if ( len > 6 )
-   {
-     if ( p[len-1] == 10 || p[len-1] == 13 )
-     {
-        p[len-1] = 0;
-        len--;
-     }
-     if ( p[len-1] == 10 || p[len-1] == 13 )
-     {
-        p[len-1] = 0;
-        len--;
-     }
-     if ( len > 6 )
-        p[len-6] = 0;
-   }
-   return atoi(p);
-   #elif defined(HW_PLATFORM_RADXA)
    char szOutput[1024];
    hw_execute_bash_command_raw_silent("cat /sys/devices/system/cpu/cpufreq/policy0/cpuinfo_cur_freq 2>/dev/null", szOutput);
    return atoi(szOutput)/1000;
-   #else
-   return 1000;
-   #endif
 }
 
 int hardware_get_cpu_temp()
 {
    int iTemp1 = 0, iTemp2 = 0;
 
-   #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    FILE* fd = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
    if ( NULL != fd )
    {
@@ -2245,104 +1453,9 @@ int hardware_get_cpu_temp()
    }
    if ( iTemp2 > iTemp1 )
       iTemp1 = iTemp2;
-   #endif
 
-   #ifdef HW_PLATFORM_OPENIPC_CAMERA
-   char szBuff[1024];
-   szBuff[0] = 0;
-   hw_execute_bash_command("ipcinfo -t", szBuff);
-   for( int i=0; i<(int)strlen(szBuff); i++ )
-   {
-      if ( szBuff[i] == '.' || szBuff[i] == 10 )
-      {
-         szBuff[i] = 0;
-         break;
-      }
-   }
-   iTemp1 = 1000 * atoi(szBuff);
-   #endif
 
    return iTemp1/1000;    
-}
-
-void hardware_set_oipc_freq_boost(int iFreqCPUMhz, int iGPUBoost)
-{
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-   {
-      hardware_set_oipc_cpu_freq(iFreqCPUMhz);
-      hardware_set_oipc_gpu_boost(iGPUBoost);
-   }
-   #endif
-}
-
-void hardware_set_oipc_cpu_freq(int iFreqCPUMhz)
-{
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hw_execute_bash_command_raw("echo 'performance' | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor", NULL);
-   char szComm[256];
-   sprintf(szComm, "echo %d | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq", iFreqCPUMhz*1000);
-   hw_execute_bash_command_raw(szComm, NULL);
-   hw_execute_bash_command_raw("echo 700000 | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_min_freq", NULL);
-   #endif
-}
-
-void hardware_set_oipc_gpu_boost(int iGPUBoost)
-{
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-   {
-      if ( 0 == iGPUBoost )
-      {
-         hw_execute_bash_command_raw("echo 384000000 > /sys/venc/ven_clock", NULL);
-         hw_execute_bash_command_raw("echo 320000000 > /sys/venc/ven_clock_2nd", NULL);
-      }
-      else if ( 1 == iGPUBoost )
-      {
-         hw_execute_bash_command_raw("echo 432000000 > /sys/venc/ven_clock", NULL);
-         hw_execute_bash_command_raw("echo 336000000 > /sys/venc/ven_clock_2nd", NULL);
-      }
-      else if ( 2 == iGPUBoost )
-      {
-         hw_execute_bash_command_raw("echo 480000000 > /sys/venc/ven_clock", NULL);
-         hw_execute_bash_command_raw("echo 348000000 > /sys/venc/ven_clock_2nd", NULL);
-      }
-      else
-      {
-         int iCore1 = (iGPUBoost/10)%10;
-         int iCore2 = (iGPUBoost/100)%10;
-         int iFreq1 = 0;
-         int iFreq2 = 0;
-         switch(iCore1)
-         {
-            case 0: iFreq1 = 384; break;
-            case 1: iFreq1 = 432; break;
-            case 2: iFreq1 = 480; break;
-            default: break;
-         }
-         switch(iCore2)
-         {
-            case 0: iFreq2 = 320; break;
-            case 1: iFreq2 = 336; break;
-            case 2: iFreq2 = 348; break;
-            case 3: iFreq2 = 384; break;
-            default: break;
-         }
-         if ( iFreq1 > 0 )
-         {
-            char szComm[256];
-            sprintf(szComm, "echo %d > /sys/venc/ven_clock", iFreq1*1000*1000);
-            hw_execute_bash_command_raw(szComm, NULL);
-         }
-         if ( iFreq2 > 0 )
-         {
-            char szComm[256];
-            sprintf(szComm, "echo %d > /sys/venc/ven_clock_2nd", iFreq2*1000*1000);
-            hw_execute_bash_command_raw(szComm, NULL);
-         }
-      }
-   }
-   #endif
 }
 
 void _hardware_set_int_affinity_core(const char* szIntName, int iCoreIndex)
@@ -2387,39 +1500,4 @@ void _hardware_set_int_affinity_core(const char* szIntName, int iCoreIndex)
 
 void hardware_balance_interupts()
 {
-   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   char szOutput[128];
-   hw_execute_bash_command_raw("nproc --all", szOutput);
-   removeTrailingNewLines(szOutput);
-   log_line("[Hardware] CPU cores: (%s)", szOutput);
-   strcat(szOutput, "\n");
-   int iCPUCoresCount = 1;
-   if ( (1 != sscanf(szOutput, "%d", &iCPUCoresCount)) || (1 == iCPUCoresCount) )
-   {
-      iCPUCoresCount = 1;
-      szOutput[0] = 0;
-      hw_execute_bash_command_raw("cat /proc/cpuinfo | grep processor | grep 0", szOutput);
-      removeTrailingNewLines(szOutput);
-      log_line("[Hardware] procinfo: (%s)", szOutput);
-      if ( strlen(szOutput) > 8 )
-      {
-         szOutput[0] = 0;
-         hw_execute_bash_command_raw("cat /proc/cpuinfo | grep processor | grep 1", szOutput);
-         removeTrailingNewLines(szOutput);
-         log_line("[Hardware] procinfo: (%s)", szOutput);
-         if ( strlen(szOutput) > 8 )
-         if ( NULL != strstr(szOutput, "1") )
-            iCPUCoresCount = 2;
-      }
-   }
-
-   if ( iCPUCoresCount > 1 )
-   {
-      log_line("[Hardware] Balancing interrupts (%d cores)...", iCPUCoresCount);
-      _hardware_set_int_affinity_core(":usb", 1);
-      _hardware_set_int_affinity_core("ms_serial", 1);
-   }
-   else
-      log_line("[Hardware] Can't balance interrupts: single core CPU.");
-   #endif
 }
