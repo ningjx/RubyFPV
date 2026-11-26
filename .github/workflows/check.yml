@@ -15,4 +15,4 @@ jobs:
           persist-credentials: false
       - run: make -j4 check
       - run: python3 tests/unit/image_input.py
-      - run: bash -n image/assemble.sh && bash -n image/build-runtime.sh && bash -n image/install-rootfs.sh
+      - run: for script in image/*.sh; do bash -n "$script" || exit 1; done

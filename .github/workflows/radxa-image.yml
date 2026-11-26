@@ -9,15 +9,14 @@ on:
         description: 'SHA-256 or SHA-512 of that download (required with a URL)'
         type: string
   push:
-    branches: [refactor-radxa-ground-station]
-    tags: ['image-*']
-    paths: ['image/**', 'mk/image.mk', '.github/workflows/radxa-image.yml']
+    tags: ['**']
 
 permissions:
   contents: read
 
 jobs:
   runtime:
+    if: github.event_name == 'workflow_dispatch' || github.event.created
     runs-on: ubuntu-24.04-arm
     container: debian:bookworm
     timeout-minutes: 45
@@ -67,11 +66,12 @@ jobs:
       - name: Compress and checksum disk
         run: |
           set -euo pipefail
-          name="rubyfpv-zero3w-${GITHUB_SHA:0:12}.img.xz"
+          commit=$(git rev-parse HEAD)
+          name="rubyfpv-zero3w-${commit:0:12}.img.xz"
           xz -T2 -3 -c "$RUNNER_TEMP/disk/station.img" > "dist/$name"
           xz -t "dist/$name"
           (cd dist && sha256sum "$name" > SHA256SUMS)
-          printf 'commit=%s\nbase=%s\nmpp_build=%s\n' "$GITHUB_SHA" "$(cat "$RUNNER_TEMP/disk/base-checksum.txt")" "$(cat payload/mpp-build-revision.txt)" > dist/build.txt
+          printf 'commit=%s\nbase=%s\nmpp_build=%s\n' "$commit" "$(cat "$RUNNER_TEMP/disk/base-checksum.txt")" "$(cat payload/mpp-build-revision.txt)" > dist/build.txt
       - uses: actions/upload-artifact@v4
         with:
           name: rubyfpv-zero3w-sd-image
@@ -79,3 +79,27 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+
+  release:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-image-${{ github.ref_type == 'tag' && github.ref_name || format('image-build-{0}', github.run_id) }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: rubyfpv-zero3w-sd-image
+          path: dist
+      - name: Verify assets and publish GitHub Release
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('image-build-{0}', github.run_id) }}
+        run: bash image/publish-release.sh dist

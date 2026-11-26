@@ -8,7 +8,7 @@
 
 ## 下载可刷卡的地面站镜像
 
-在 [Radxa Zero 3W 镜像构建记录](https://github.com/ningjx/RubyFPV/actions/workflows/radxa-image.yml)打开成功的运行，下载 **rubyfpv-zero3w-sd-image**。解开下载的 ZIP，按其中的 `SHA256SUMS` 校验 `.img.xz`，用支持 XZ 的写卡工具将它写入 microSD 卡。插卡前选好启动介质，接上 HDMI 和适配的图传网卡后上电。系统默认进入地面站，首次使用时在界面内搜索并配对已有 SSC338Q 空端。
+从 [GitHub Releases](https://github.com/ningjx/RubyFPV/releases) 选择所需版本，在 **Assets** 中下载 `.img.xz` 和 `SHA256SUMS`。在同一目录执行 `sha256sum -c SHA256SUMS`，校验通过后用支持 XZ 的写卡工具将镜像写入 microSD 卡。接上 HDMI 和适配的图传网卡，从 SD 卡启动。系统默认进入地面站，首次使用时在界面内搜索并配对已有 SSC338Q 空端。
 
 默认底图、自定义镜像入口、运行环境和启动日志见[镜像构建说明](image/README.md)。
 
