@@ -1,0 +1,21 @@
+[Unit]
+Description=RubyFPV Radxa Zero 3W ground station
+After=local-fs.target systemd-modules-load.service
+RequiresMountsFor=/var/lib/rubyfpv /config
+
+[Service]
+Type=exec
+WorkingDirectory=/home/radxa/ruby
+ExecStart=/home/radxa/ruby/ruby_start --service
+Restart=on-failure
+RestartSec=5s
+KillMode=control-group
+TimeoutStopSec=20s
+# Keep the legacy paths for helpers and plugins inside a root-owned directory.
+TemporaryFileSystem=/home
+BindPaths=/var/lib/rubyfpv:/home/radxa/ruby
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

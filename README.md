@@ -4,7 +4,13 @@
 
 在具备开发环境的 Radxa Linux 镜像上，从仓库根目录执行 `make -j4`。默认目标与 `make station` 都生成完整地面端，包括 `ruby_start`、`ruby_central` 和 `ruby_player_radxa`。构建需要 C/C++ 工具链、pkg-config、Rockchip MPP、libdrm、Cairo、SDL2、libpcap、libgpiod（1.x API）和 I²C 开发库。`make tests` 单独构建链路诊断工具。
 
-系统镜像和板上验收步骤见[专用版本路线图](docs/radxa-zero-3w-ssc338q-roadmap.md)。以下为上游 RubyFPV 项目介绍。
+新分支的源码入口、进程归属、构建命令和实板验收方法见[地面站开发指南](docs/ground-station-development.md)。[架构设计](docs/radxa-zero-3w-ground-station-architecture.md)记录了拆分原因，[专用版本路线图](docs/radxa-zero-3w-ssc338q-roadmap.md)保留了原版基线。以下为上游 RubyFPV 项目介绍。
+
+## 下载可刷卡的地面站镜像
+
+从 [GitHub Releases](https://github.com/ningjx/RubyFPV/releases) 选择所需版本，在 **Assets** 中下载 `.img.xz` 和 `SHA256SUMS`。在同一目录执行 `sha256sum -c SHA256SUMS`，校验通过后用支持 XZ 的写卡工具将镜像写入 microSD 卡。接上 HDMI 和适配的图传网卡，从 SD 卡启动。系统默认进入地面站，首次使用时在界面内搜索并配对已有 SSC338Q 空端。
+
+默认底图、自定义镜像入口、运行环境和启动日志见[镜像构建说明](image/README.md)。
 
 # RubyFPV: Open Source Digital FPV Radio System
 Ruby is a full open source solution (hardware and software) for robust end to end digital radio links, designed specifically for controlling and managing UAVs/drones/planes/cars and other remote vehicles
