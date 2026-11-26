@@ -1,0 +1,81 @@
+name: Radxa Zero 3W flashable image
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Optional HTTPS URL to a compatible .img.xz or raw .img'
+        type: string
+      base_checksum:
+        description: 'SHA-256 or SHA-512 of that download (required with a URL)'
+        type: string
+  push:
+    branches: [refactor-radxa-ground-station]
+    tags: ['image-*']
+    paths: ['image/**', 'mk/image.mk', '.github/workflows/radxa-image.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04-arm
+    container: debian:bookworm
+    timeout-minutes: 45
+    steps:
+      - name: Install Bookworm build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates curl build-essential cmake pkg-config libdrm-dev libcairo2-dev libfreetype-dev libpcap-dev libi2c-dev libgpiod-dev libsdl2-dev
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: make -j4 check
+      - name: Build station payload
+        run: bash image/build-runtime.sh /tmp/station-payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: station-payload
+          path: /tmp/station-payload/
+          if-no-files-found: error
+          retention-days: 3
+
+  image:
+    needs: runtime
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: station-payload
+          path: payload
+      - name: Verify and unpack base image
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          BASE_CHECKSUM: ${{ inputs.base_checksum }}
+        run: |
+          mkdir "$RUNNER_TEMP/disk" dist
+          python3 image/download-base.py "$RUNNER_TEMP/disk"
+      - name: Install and validate station on the target root filesystem
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cloud-guest-utils gdisk e2fsprogs
+          docker pull debian:bookworm-slim
+          sudo bash image/assemble.sh "$RUNNER_TEMP/disk/station.img" payload
+      - name: Compress and checksum disk
+        run: |
+          set -euo pipefail
+          name="rubyfpv-zero3w-${GITHUB_SHA:0:12}.img.xz"
+          xz -T2 -3 -c "$RUNNER_TEMP/disk/station.img" > "dist/$name"
+          xz -t "dist/$name"
+          (cd dist && sha256sum "$name" > SHA256SUMS)
+          printf 'commit=%s\nbase=%s\nmpp_build=%s\n' "$GITHUB_SHA" "$(cat "$RUNNER_TEMP/disk/base-checksum.txt")" "$(cat payload/mpp-build-revision.txt)" > dist/build.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rubyfpv-zero3w-sd-image
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

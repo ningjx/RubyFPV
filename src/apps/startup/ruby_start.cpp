@@ -66,6 +66,7 @@ static sem_t* s_pSemaphoreStarted = NULL;
 static int s_iBootCount = 0;
 
 static bool g_bDebug = false;
+static bool s_managedService = false;
 static bool g_bIsFirstBoot = false;
 static bool s_bIgnoreDrivers = false;
 
@@ -604,7 +605,7 @@ int _step_find_console()
    hw_execute_bash_command_silent(szComm, NULL);
 
 
-   if ( (NULL == tty_name) || (!foundGoodConsole) )
+   if ( !s_managedService && ((NULL == tty_name) || (!foundGoodConsole)) )
    {
       sprintf(szComm, "echo 'Ruby execute in wrong console. Abort.' >> /tmp/ruby_boot.log");
       hw_execute_bash_command_silent(szComm, NULL);
@@ -615,8 +616,10 @@ int _step_find_console()
    
    sprintf(szComm, "echo 'Ruby check semaphore...' >> /tmp/ruby_boot.log");
    hw_execute_bash_command_silent(szComm, NULL);
-   s_pSemaphoreStarted = sem_open("/RUBY_STARTED_SEMAPHORE", O_CREAT | O_EXCL, S_IWUSR | S_IRUSR, 0);
-   if ( ((SEM_FAILED == s_pSemaphoreStarted) || (NULL == s_pSemaphoreStarted)) && (!g_bDebug) )
+   // systemd owns the service lifetime, including retries within the same boot.
+   if (!s_managedService)
+      s_pSemaphoreStarted = sem_open("/RUBY_STARTED_SEMAPHORE", O_CREAT | O_EXCL, S_IWUSR | S_IRUSR, 0);
+   if ( !s_managedService && ((SEM_FAILED == s_pSemaphoreStarted) || (NULL == s_pSemaphoreStarted)) && (!g_bDebug) )
    {
       printf("\nRuby (v %d.%d b-%d) is starting...\n", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR, SYSTEM_SW_BUILD_NUMBER);
       fflush(stdout);
@@ -630,19 +633,21 @@ int _step_find_console()
    fflush(stdout);
 
 
-   system("sudo mount -o remount,rw /");
-   system("cd /home/radxa/ruby");
+   if (!s_managedService)
+      system("sudo mount -o remount,rw /");
    hardware_sleep_ms(50);
 
    sprintf(szComm, "mkdir -p %s", FOLDER_CONFIG);
    hw_execute_bash_command(szComm, NULL);
-   sprintf(szComm, "chmod 777 %sruby* 2>/dev/null", FOLDER_BINARIES);
-   hw_execute_bash_command(szComm, NULL);
-   sprintf(szComm, "chmod 777 %sonyx* 2>/dev/null", FOLDER_BINARIES);
-   hw_execute_bash_command(szComm, NULL);
-
-   hw_execute_bash_command("chown -hR root *", NULL);
-   hw_execute_bash_command("chgrp -hR root *", NULL);
+   if (!s_managedService)
+   {
+      sprintf(szComm, "chmod 777 %sruby* 2>/dev/null", FOLDER_BINARIES);
+      hw_execute_bash_command(szComm, NULL);
+      sprintf(szComm, "chmod 777 %sonyx* 2>/dev/null", FOLDER_BINARIES);
+      hw_execute_bash_command(szComm, NULL);
+      hw_execute_bash_command("chown -hR root *", NULL);
+      hw_execute_bash_command("chgrp -hR root *", NULL);
+   }
 
    sprintf(szComm, "chmod 777 %s* 2>/dev/null", FOLDER_CONFIG);
    hw_execute_bash_command(szComm, NULL);
@@ -683,8 +688,11 @@ int _step_check_file_system()
    int readWriteRetryCount = 0;
    FILE* fd = NULL;
    
-   hw_execute_bash_command("date -s 'next year'", NULL);
-   hw_execute_bash_command("date -s 'next year'", NULL);
+   if (!s_managedService)
+   {
+      hw_execute_bash_command("date -s 'next year'", NULL);
+      hw_execute_bash_command("date -s 'next year'", NULL);
+   }
 
    while ( ! readWriteOk )
    {
@@ -711,10 +719,11 @@ int _step_check_file_system()
       hardware_sleep_ms(100);
 
 
-      system("sudo mount -o remount,rw /");
-      system("sudo mount -o remount,rw /config");
-      system("cd /config; sudo mount -o remount,rw /config; cd /home/radxa/ruby");
-      system("cd /home/radxa/ruby");
+      if (!s_managedService)
+      {
+         system("sudo mount -o remount,rw /");
+         system("sudo mount -o remount,rw /config");
+      }
       hardware_sleep_ms(100);
 
       // For temporary fifo-s, same tmp root folder on all platforms
@@ -1221,6 +1230,7 @@ void handle_sigint(int sig)
   
 int main(int argc, char *argv[])
 {
+   s_managedService = argc == 2 && strcmp(argv[1], "--service") == 0;
    if ( strcmp(argv[argc-1], "-vehicle") == 0 || strcmp(argv[argc-1], "-rx_commands") == 0 || strcmp(argv[argc-1], "-rc") == 0 )
    {
       fprintf(stderr, "This build supports the Radxa Zero 3W ground station only.\n");
@@ -1256,7 +1266,7 @@ int main(int argc, char *argv[])
    if ( ! _step_find_console() )
    {
       _reset_fast_reboot_counter();
-      return 0;
+      return s_managedService ? EXIT_FAILURE : 0;
    }
 
    log_line_forced_to_file("Found good console. Continuing...");
@@ -1280,7 +1290,7 @@ int main(int argc, char *argv[])
    if ( _step_check_file_system() < 0 )
    {
       _reset_fast_reboot_counter();
-      return 0;
+      return s_managedService ? EXIT_FAILURE : 0;
    }
 
    FILE* fd = NULL;
@@ -1443,9 +1453,9 @@ int main(int argc, char *argv[])
    if ( g_bIsFirstBoot )
    {
       printf("\n\n\n");
-      printf("Ruby: First install initialization complete. Rebooting now...\n");
+      printf("Ruby: First install initialization complete.\n");
       printf("\n\n\n");
-      log_line("Ruby: First install initialization complete. Rebooting now...");
+      log_line("Ruby: First install initialization complete.");
       fflush(stdout);
 
       _reset_fast_reboot_counter();
@@ -1455,11 +1465,12 @@ int main(int argc, char *argv[])
       hw_execute_bash_command("sync", NULL);
 
       hardware_sleep_ms(500);
-      if ( ! g_bDebug )
+      if ( !g_bDebug && !s_managedService )
       {
          hardware_reboot();
       }
-      return 0;
+      if (!s_managedService)
+         return 0;
    }
  
 
@@ -1586,6 +1597,14 @@ int main(int argc, char *argv[])
       fflush(stdout);
 
       hw_execute_ruby_process(NULL, "ruby_alive", NULL, NULL);
+      if (s_managedService)
+      {
+         _reset_fast_reboot_counter();
+         // Preserve the unit's main PID. The watchdog supervises the UI and session.
+         execl(FOLDER_BINARIES "ruby_controller", "ruby_controller", (char*)NULL);
+         perror("exec ruby_controller");
+         return EXIT_FAILURE;
+      }
    
 
       hw_execute_ruby_process(NULL, "ruby_controller", NULL, NULL);

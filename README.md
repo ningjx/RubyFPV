@@ -6,6 +6,12 @@
 
 新分支的源码入口、进程归属、构建命令和实板验收方法见[地面站开发指南](docs/ground-station-development.md)。[架构设计](docs/radxa-zero-3w-ground-station-architecture.md)记录了拆分原因，[专用版本路线图](docs/radxa-zero-3w-ssc338q-roadmap.md)保留了原版基线。以下为上游 RubyFPV 项目介绍。
 
+## 下载可刷卡的地面站镜像
+
+在 [Radxa Zero 3W 镜像构建记录](https://github.com/ningjx/RubyFPV/actions/workflows/radxa-image.yml)打开成功的运行，下载 **rubyfpv-zero3w-sd-image**。解开下载的 ZIP，按其中的 `SHA256SUMS` 校验 `.img.xz`，用支持 XZ 的写卡工具将它写入 microSD 卡。插卡前选好启动介质，接上 HDMI 和适配的图传网卡后上电。系统默认进入地面站，首次使用时在界面内搜索并配对已有 SSC338Q 空端。
+
+默认底图、自定义镜像入口、运行环境和启动日志见[镜像构建说明](image/README.md)。
+
 # RubyFPV: Open Source Digital FPV Radio System
 Ruby is a full open source solution (hardware and software) for robust end to end digital radio links, designed specifically for controlling and managing UAVs/drones/planes/cars and other remote vehicles
 
