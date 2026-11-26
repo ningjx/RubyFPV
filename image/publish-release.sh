@@ -11,13 +11,8 @@ if (( $(stat -c %s "$image") >= 2 * 1024**3 )); then
     exit 1
 fi
 
-tag="$RELEASE_TAG"
-if [[ "$GITHUB_REF_TYPE" != tag ]]; then
-    # The ref may already exist when retrying. Verify its commit below in both cases.
-    if ! gh api --method POST "repos/$GH_REPO/git/refs" --silent -f ref="refs/tags/$tag" -f sha="$commit"; then
-        echo "Checking whether the manual build tag already exists." >&2
-    fi
-fi
+[[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF_TYPE" == tag ]] || { echo "Publishing requires a tag push." >&2; exit 1; }
+tag="$GITHUB_REF_NAME"
 tag_commit=$(gh api --method GET "repos/$GH_REPO/commits" -f sha="refs/tags/$tag" -F per_page=1 --jq '.[0].sha')
 [[ "$tag_commit" == "$commit" ]] || { echo "Tag $tag does not point to the built commit." >&2; exit 1; }
 
